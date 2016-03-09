@@ -132,6 +132,7 @@ type
     OnRedraw: TObjectMethod;
     Parent: TControl;
     constructor Create(AParent: TControl);
+    function IsIdentical(AFont: TFont): Boolean;
   published
     property FontColor: TColor read FFontColor write SetFontColor default clDefault;
     property FontSize: SmallInt read FFontSize write SetFontSize;
@@ -747,6 +748,11 @@ begin
         FFontStyles := Font.Style;
         FFontSize := Font.Size;
       end
+end;
+
+function TFontOptions.IsIdentical(AFont: TFont): Boolean;
+begin
+  Result:= ((AFont.Color=FontColor) and (AFont.Size=FontSize) and (AFont.Style=FontStyles));
 end;
 
 procedure TFontOptions.RecalcRedraw;

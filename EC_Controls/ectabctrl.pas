@@ -42,7 +42,8 @@ type
   {$PACKENUM 2}
   TECTabFlag = (etfFolded,         { tab is folded }
                 etfHasCloseBtn,    { tab has Close button }
-                etfHasImage);      { tab has valid image; (ImageIndex>=0) and assigned(ImageList) }
+                etfHasImage,       { tab has valid image; (ImageIndex>=0) and assigned(ImageList) }
+                etfParentFont);    { FontOptions of tab was not yet changed }
   TECTabFlags = set of TECTabFlag;
   TECTabOption = (etoCanBeFolded,    { tab can be folded by other tabs }
                   etoCanFold,        { tab can fold other tabs }
@@ -87,13 +88,16 @@ type
   { TECTab }
   TECTab = class(TCollectionItem)
   private
+    FColor: TColor;
     FControl: TControl;
     FFoldedTabs: TFPList;
+    FFontOptions: TFontOptions;
     FImageIndex: SmallInt;
     FOptions: TECTabOptions;
     FTag: PtrInt;
     FText: TCaption;
     FWidth: Integer;
+    procedure SetColor(AValue: TColor);
     procedure SetImageIndex(AValue: SmallInt);
     procedure SetOptions(AValue: TECTabOptions);
     procedure SetText(AValue: TCaption);
@@ -111,13 +115,17 @@ type
     PreferredWidth: SmallInt;
     PreviousID: Integer;
     function GetDisplayName: string; override;
+    procedure RecalcRedraw;
+    procedure Redraw;
   public
     constructor Create(ACollection: TCollection); override;
     destructor Destroy; override;
     function IsFolded: Boolean;
     property FoldedTabs: TFPList read FFoldedTabs write FFoldedTabs;
   published
+    property Color: TColor read FColor write SetColor default clDefault;
     property Control: TControl read FControl write FControl;
+    property FontOptions: TFontOptions read FFontOptions write FFontOptions;
     property ImageIndex: SmallInt read FImageIndex write SetImageIndex default -1;
     property Options: TECTabOptions read FOptions write SetOptions default cDefOptions;
     property Tag: PtrInt read FTag write FTag default 0;
@@ -445,7 +453,24 @@ resourcestring
 
 constructor TECTab.Create(ACollection: TCollection);
 begin
+  FColor:=clDefault;
+  Flags:=[etfParentFont];
   FFoldedTabs:=TFPList.Create;
+  FFontOptions:=TFontOptions.Create(nil);
+  with FFontOptions do
+    begin
+      if assigned(ACollection) then
+        begin
+          FontSize:=TECTabs(ACollection).FECTabCtrl.Font.Size;
+          FontStyles:=TECTabs(ACollection).FECTabCtrl.Font.Style;
+        end else
+        begin
+          FontSize:=0;
+          FontStyles:=[];
+        end;
+      OnRecalcRedraw:=@RecalcRedraw;
+      OnRedraw:=@Redraw;
+    end;
   FImageIndex:=-1;
   FOptions:=cDefOptions;
   PreviousID:=-1;
@@ -455,6 +480,7 @@ end;
 destructor TECTab.Destroy;
 begin
   FreeAndNil(FFoldedTabs);
+  FreeAndNil(FFontOptions);
   inherited Destroy;
 end;
 
@@ -469,7 +495,24 @@ begin
   if Result='' then Result:=cDefText+inttostr(ID);
 end;
 
+procedure TECTab.RecalcRedraw;
+begin
+  Changed(True);
+end;
+
+procedure TECTab.Redraw;
+begin
+  Changed(False);
+end;
+
 { TECTab.Setters }
+
+procedure TECTab.SetColor(AValue: TColor);
+begin
+  if FColor=AValue then exit;
+  FColor:=AValue;
+  if (etoVisible in Options) and not (etfFolded in Flags) then Changed(True);
+end;
 
 procedure TECTab.SetImageIndex(AValue: SmallInt);
 begin
@@ -951,6 +994,15 @@ begin
       for i:=0 to length(VisibleTabs)-1 do
         begin
           aHelpWidth:=2*cContentIndent;
+          if etfParentFont in VisibleTabs[i].Tab.Flags then
+            begin
+              Canvas.Font.Size:=Font.Size;
+              Canvas.Font.Style:=Font.Style;
+            end else
+            begin
+              Canvas.Font.Size:=VisibleTabs[i].Tab.FontOptions.FontSize;
+              Canvas.Font.Style:=VisibleTabs[i].Tab.FontOptions.FontStyles;
+            end;
           inc(aHelpWidth, ThemeServices.GetTextExtent(Canvas.Handle, aDetails, VisibleTabs[i].Tab.Text,
                                                       cBaseTextFlags, nil).Right);
           if etfHasImage in VisibleTabs[i].Tab.Flags then inc(aHelpWidth, Images.Width+cContentIndent);
@@ -1627,6 +1679,7 @@ begin
           FVisiTabs[j].Tab:=Tabs[i];
           FVisiTabs[j].Index:=i;
           Tabs[i].Flags:=[];
+          if Tabs[i].FontOptions.IsIdentical(Font) then include(Tabs[i].Flags, etfParentFont);
           if assigned(Images) and (Tabs[i].ImageIndex>=0) then include(Tabs[i].Flags, etfHasImage);
           if (not (etcoCloseBtnActiveOnly in Options) or (i=aTabIndex))
             and ((cCloseBtn*Tabs[i].Options)=cCloseBtn)
@@ -1875,6 +1928,17 @@ begin
     end;
 end;
 
+class destructor TCustomECTabCtrl.FinalizeClass;
+begin
+  FreeAndNil(DropDownMenu);
+  FreeAndNil(GlyphAdd);
+  FreeAndNil(GlyphClose);
+  FreeAndNil(GlyphCloseInact);
+  FreeAndNil(GlyphCloseDis);
+  FreeAndNil(GlyphCloseHigh);
+  FreeAndNil(Timer);
+end;
+
 function TCustomECTabCtrl.FindFolderOfTab(AIndex: Integer): Integer;
 var i, j: Integer;
 begin
@@ -1902,21 +1966,19 @@ begin
   if assigned(OnFold) then OnFold(self, AIndex, AFolder);
 end;
 
-class destructor TCustomECTabCtrl.FinalizeClass;
-begin
-  FreeAndNil(DropDownMenu);
-  FreeAndNil(GlyphAdd);
-  FreeAndNil(GlyphClose);
-  FreeAndNil(GlyphCloseInact);
-  FreeAndNil(GlyphCloseDis);
-  FreeAndNil(GlyphCloseHigh);
-  FreeAndNil(Timer);
-end;
-
 procedure TCustomECTabCtrl.FontChanged(Sender: TObject);
+var i: Integer;
 begin
   inherited FontChanged(Sender);
-  RecalcInvalidate;
+  BeginUpdate;
+  for i:=0 to Tabs.Count-1 do
+    if etfParentFont in Tabs[i].Flags then
+      begin
+        Tabs[i].FontOptions.FontColor:=Font.Color;
+        Tabs[i].FontOptions.FontSize:=Font.Size;
+        Tabs[i].FontOptions.FontStyles:=Font.Style;
+      end;
+  EndUpdate;
 end;
 
 function TCustomECTabCtrl.GetButtonsWidth: SmallInt;
@@ -2388,17 +2450,24 @@ var aDetails: TThemedElementDetails;
           end else
           Canvas.Draw(aPos, aTab.CloseBtnRect.Top+cCloseBtnBorder, GlyphCloseDis);
       end;
-    Canvas.Font.Assign(Font);
-    Canvas.Brush.Style:=bsClear;
-    if TabPosition in [tpTop, tpBottom] then
+    if etfParentFont in aTab.Flags then
       begin
-        Canvas.Font.Orientation:=0;
-        ThemeServices.DrawText(Canvas, aDetails, aTab.Text, aTab.CaptionRect, aFlags, 0);
+        Canvas.Font.Color:=Font.Color;
+        Canvas.Font.Size:=Font.Size;
+        Canvas.Font.Style:=Font.Style;
       end else
+      begin
+        Canvas.Font.Color:=aTab.FontOptions.FontColor;
+        Canvas.Font.Size:=aTab.FontOptions.FontSize;
+        Canvas.Font.Style:=aTab.FontOptions.FontStyles;
+      end;
+    Canvas.Brush.Style:=bsClear;
+    if TabPosition in [tpTop, tpBottom]
+      then ThemeServices.DrawText(Canvas, aDetails, aTab.Text, aTab.CaptionRect, aFlags, 0)
+      else
       begin
         if not bEnabled then
           Canvas.Font.Color:=GetMergedColor(ColorToRGB(clBtnText), ColorToRGB(clBtnFace), 0.6);
-        Canvas.Font.Orientation:=900;
         Canvas.TextOut(aTab.CaptionRect.Left, aTab.CaptionRect.Bottom, aTab.Text);
       end;
   end;
@@ -2422,6 +2491,10 @@ const caAlignment: array [Boolean, TAlignment] of Cardinal = ((DT_LEFT, DT_RIGHT
 begin
   {$IFDEF DBGTAB} DebugLn('TCustomECTabCtrl.Paint'); {$ENDIF}
   inherited Paint;
+  Canvas.Font.Assign(Font);
+  if TabPosition in [tpTop, tpBottom]
+    then Canvas.Font.Orientation:=0
+    else Canvas.Font.Orientation:=900;
   Canvas.Pen.Width:=1;
   Canvas.Pen.Style:=psSolid;
   bR2L:=IsRightToLeft;
@@ -2478,8 +2551,9 @@ begin
               begin
                 case Style of
                   eosButton: Canvas.DrawButtonBackground(VisibleTabs[i].Tab.PaintRect, eisPushed);
-                  eosPanel: Canvas.DrawPanelBackground(VisibleTabs[i].Tab.PaintRect, bvNone, bvLowered,
-                              0, 1, clDefault, clDefault, clBtnFace);
+                  eosPanel: Canvas.DrawPanelBackground(VisibleTabs[i].Tab.PaintRect,
+                              bvNone, bvLowered, 0, 1, clDefault, clDefault,
+                              GetColorResolvingDefault(VisibleTabs[i].Tab.Color, clBtnFace));
                   eosThemedPanel: Canvas.DrawThemedPanelBkgnd(VisibleTabs[i].Tab.PaintRect);
                 end;
                 PaintContent(i);
@@ -2497,8 +2571,9 @@ begin
         begin
           case Style of
             eosButton: Canvas.DrawButtonBackground(Tabs[TabIndex].PaintRect, eisEnabled);
-            eosPanel: Canvas.DrawPanelBackground(Tabs[TabIndex].PaintRect, bvNone, bvRaised,
-                        0, 1, clDefault, clDefault, cl3DLight);
+            eosPanel: Canvas.DrawPanelBackground(Tabs[TabIndex].PaintRect,
+                        bvNone, bvRaised, 0, 1, clDefault, clDefault,
+                        GetColorResolvingDefault(Tabs[TabIndex].Color, cl3DLight));
            eosThemedPanel: Canvas.DrawThemedPanelBkgnd(Tabs[TabIndex].PaintRect);
           end;
           if Focused then
@@ -2843,11 +2918,18 @@ begin
 end;
 
 procedure TCustomECTabCtrl.TabChanged(ARecalculate: Boolean);
+var i: Integer;
 begin
   {$IFDEF DBGTAB} DebugLn('TECTabCtrl.TabChanged '+booltostr(ARecalculate, 'T', 'F')); {$ENDIF}
-  if not ARecalculate
-    then Redraw
-    else RecalcInvalidate;
+  if not ARecalculate then
+    begin
+      for i:=0 to length(VisibleTabs)-1 do
+        if (etfParentFont in VisibleTabs[i].Tab.Flags) and
+          (VisibleTabs[i].Tab.FontOptions.FontColor<>Font.Color)
+          then exclude(VisibleTabs[i].Tab.Flags, etfParentFont);
+      Redraw;
+    end else
+    RecalcInvalidate;
 end;
 
 procedure TCustomECTabCtrl.UnfoldAllTabs(AFolder: Integer);

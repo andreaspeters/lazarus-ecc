@@ -1,3 +1,9 @@
+2016-03-05 0.9.4.2
+===================
+TCustomECTabCtrl: Implemented properties TECTab.FontOptions and TECTab.Color
+  (the second works only for Style=eosPanel).
+Added method TFontOptions.IsIdentical;.
+
 2016-02-25 0.9.4.0
 ===================
 TCustomECTabCtrl: release
