@@ -35,7 +35,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, FGL, Graphics, LCLIntf, LCLType, LMessages, Math, 
-  {$IFDEF DEBUG} LCLProc, {$ENDIF} LResources, LazFileUtils, StdCtrls, Types, Themes,
+  {$IFDEF DEBUG} LCLProc, {$ENDIF} LResources, StdCtrls, Types, Themes,
   Forms, ImgList, Laz2_DOM, Laz2_XMLRead, Laz2_XMLWrite, ECTypes;
 
 type
@@ -507,6 +507,11 @@ type
   procedure Register;
 
 implementation
+
+{$if lcl_fullversion >= 01070000}
+uses LazFileUtils
+{$endif}
+
 
 { TECDevice }
 
