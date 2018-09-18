@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -32,7 +32,7 @@ unit ECBevel;
 interface
 
 uses
-  Classes, Controls, ExtCtrls, Graphics, LResources, SysUtils, types, ECTypes;
+  Classes, Controls, ExtCtrls, Graphics, SysUtils, Types, ECTypes;
 
 type
   {$PACKENUM 2}
@@ -104,8 +104,6 @@ type
     property OnResize;
   end;
 
-procedure Register;
-
 const cECBevelAuto = -1;  { for lines; it set AX/AY to Width/Height-2 }
 
 implementation
@@ -129,6 +127,7 @@ begin
     begin
       FPointA:=TECBevel(Source).FPointA;
       FPointB:=TECBevel(Source).FPointB;
+      FShape:=TECBevel(Source).FShape;
       FStyle:=TECBevel(Source).Style;
     end else
     inherited Assign(Source);
@@ -560,12 +559,6 @@ begin
   if FThemed=AValue then exit;
   FThemed:=AValue;
   Invalidate;
-end;
-
-procedure Register;
-begin
-  {$I ecbevel.lrs}
-  RegisterComponents('EC-C', [TECBevel]);
 end;
 
 end.

@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2015-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public Licenhse as published by the Free Software Foundation; either version
@@ -32,8 +32,7 @@ unit ECHeader;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, ImgList, LCLType, LMessages, LResources,
-  Math, Themes, types, ECTypes;
+  Classes, SysUtils, Controls, Graphics, ImgList, LCLType, LMessages, Math, Themes, Types, ECTypes;
 
 type
   {$PACKENUM 2}
@@ -202,8 +201,6 @@ type
     property OnResize;
   end;
 
-procedure Register;
-
 implementation
 
 { TECHeaderItem }
@@ -219,7 +216,7 @@ end;
 function TECHeaderItem.GetDisplayName: string;
 begin
   Result:=Text;
-  if Result='' then Result:=cDefText+inttostr(ID);
+  if Result='' then Result:=cDefText+intToStr(ID);
 end;
 
 { TECHeaderItem.G/Setters }
@@ -297,7 +294,7 @@ begin
   inherited Notify(Item, Action);
   if Action=cnAdded then
     if not (csLoading in (Owner as TCustomECHeader).ComponentState) then
-      TECHeaderItem(Item).FText:=TECHeaderItem.cDefText+inttostr(Item.ID);
+      TECHeaderItem(Item).FText:=TECHeaderItem.cDefText+intToStr(Item.ID);
 end;
 
 procedure TECHeaderItems.Update(Item: TCollectionItem);
@@ -324,8 +321,8 @@ constructor TCustomECHeader.Create(AOwner: TComponent);
 var aIState: TItemState;
 begin
   inherited Create(AOwner);
-  ControlStyle:=ControlStyle+[csNoFocus, csParentBackground, csReplicatable]
-                            -csMultiClicks-[csCaptureMouse, csOpaque, csSetCaption];
+  ControlStyle:=ControlStyle+[csCaptureMouse, csNoFocus, csParentBackground, csReplicatable]
+                            -csMultiClicks-[csOpaque, csSetCaption];
   FBreakIndex:=cDefBreakIndex;
   FHighlighted:=-1;
   FOptions:=cDefOptions;
@@ -595,17 +592,11 @@ begin
       end else
       begin
         aBound:=Sections[SizeSection].Width;
-        if SizeBoundRight then
-          begin
-            i:=X-Sections[SizeSection].FBoundLeft-SizeInitX;
-            i:=Math.Max(i, Sections[SizeSection].MinWidth);
-            Sections[SizeSection].Width:=i;
-          end else
-          begin
-            i:=Sections[SizeSection].FBoundRight-X-SizeInitX;
-            i:=Math.Max(i, Sections[SizeSection].MinWidth);
-            Sections[SizeSection].Width:=i;
-          end;
+        if SizeBoundRight
+          then i:=X-Sections[SizeSection].FBoundLeft-SizeInitX
+          else i:=Sections[SizeSection].FBoundRight-X-SizeInitX;
+        i:=Math.Max(i, Sections[SizeSection].MinWidth);
+        Sections[SizeSection].Width:=i;
         if (aBound<>i) and assigned(OnSectionTrack) then OnSectionTrack(self, SizeSection, i);
       end;
 end;
@@ -708,8 +699,7 @@ begin
                   end;
                 aRect.Top:=(Height-aSize.cy+2) div 2;
                 aRect.Bottom:=aRect.Top+aSize.cy;
-                Canvas.Pen.Color:=clBtnText;
-                Canvas.DrawGlyph(aRect, cArrows[Ascendant], aIState);
+                Canvas.DrawGlyph(aRect, clBtnText, cArrows[Ascendant], aIState);
               end;
         end else
         PaintNonSectionArea(0, Width);
@@ -805,12 +795,6 @@ begin
       Ascendant:=False;
     end;
   if UpdateCount=0 then Invalidate;
-end;
-
-procedure Register;
-begin
-  {$I echeader.lrs}
-  RegisterComponents('EC-C', [TECHeader]);
 end;
 
 end.

@@ -1,3 +1,333 @@
+2018-03-06 0.9.30.0
+===================
+TECCheckListBox: fixed invalid typecast at InitializeWnd.
+
+2018-03-03 0.9.30.0
+===================
+TECColorCombo: improved managing of alpha channel.
+TECAccordion: added BevelWidth property for basic bevel (works in Qt4 for now).
+  Properties Left, Height, Top, Width and AnchorSideXxxxx are not stored
+  to *.lfm now (smaller filesize).
+
+2018-02-28 0.9.30.0
+===================
+TECComboBtn, TECColorCombo: improved Add items in all ItemOrders.
+  TECColorCombo can work in csOwnerDrawEditableFixed.
+
+2018-02-17 0.9.28.0
+===================
+TECTriangle: fixed autosizing
+
+2018-02-16 0.9.28.0
+===================
+TECSpinEdit, TECSpinPosition: improved positioning of buttons (added *.Resize)
+TECSpinBtns: published BorderSpacing (this bug was there for years)
+
+2018-02-13 0.9.28.0
+===================
+TECCheckListBox: Added property AutoHorSizeItems (default=True) for easier
+  cooperation with TECHeader. When True, property Indent is ignored.
+  Property Spacing now indicates width of columns indstead of gap between
+  checkboxes. Now Spacing can be equal to TECHeader.Section[i].Width.
+  I didn't introduce a new property (e.g. ColumnWidth) to prevent breaking;
+  of existing code.
+  Hint: ECCheckListBox has border (~2px). When ECHeader.Section[i].Width
+  and Spacing = 60 then top-right section should be ~62px for pixel fine
+  aligning of Sections and grid.
+  Default value of Spacing is changed to 28.
+  Improved AutosizeItemHeight, items are better centered when Grid=True.
+
+2018-02-12 0.9.28.0
+===================
+TECColorCombo: Fixed "Allocating Handle during creating..."
+
+2018-02-10 0.9.28.0
+===================
+Removed method TCanvasHelper.SetRealGyphColor. Improved method DrawGlyph.
+Fixed all cases where those methods are called.
+TECGrid: fixed remaining pushed header cell when change from Flat to other Style.
+Added function GetMergedMonoColor.
+TECScheme: improved drawing of FocusRet and BlockStyle ebsBlock.
+
+2018-02-07 0.9.28.0
+===================
+TECColorBtn, TECColorCombo: improve default value for property ColorLayout.
+
+2018-02-06 0.9.26.2
+===================
+TECGrid: added option egoThumbTracking (i.e. ThumbTracking can be Off now).
+
+2018-01-23 0.9.26.2
+===================
+TECGrid: Ctrl+C in multiselection.
+
+2018-01-20 0.9.26.2
+===================
+TECGrid: improved and tested multiselection.
+
+2018-01-12 0.9.26.0
+===================
+TECGrid: implemented multiselection.
+
+2018-01-06 0.9.26.0
+===================
+TECTabCtrl, TECGrid: removed reintroduced methods from TCollection descendants.
+
+2017-12-31 0.9.26.0
+===================
+TECAccordion: added ShowItem to designer popup menu.
+
+2017-12-30 0.9.26.0
+===================
+TECTabCtrl, TECGrid: added ShowTab/ShowColumn to designer popup menu.
+
+2017-12-23 0.9.26.0
+===================
+TECAccordion: removed event OnAdd. Property Items is not public anymore.
+  Improved deleting of TAccordionItem in OI/ComponentTree.
+
+2017-12-21 0.9.26.0
+===================
+TECSwitch: added GlyphStyle egsCircle. Improved glyphs. Added larger glyphs.
+TBaseECSlider: improved PositionToHint.
+
+2017-12-16 0.9.24.8
+===================
+Added property TECLink.LinkToHint.
+Improved deleting of TECTab in OI/ComponentTree.
+
+2017-12-09 0.9.24.8
+===================
+Improved hi-DPI icons.
+
+2017-11-25 0.9.24.8
+===================
+TECLink: code beautify
+
+2017-10-14 0.9.24.6
+===================
+TEC(Custom)SpinBtns(Plus) property Spacing - improved recalc/redraw.
+
+2017-10-12 0.9.24.4
+===================
+TECSpinController now controls TECSpinPosition too.
+
+2017-10-12 0.9.24.2
+===================
+Redesigned icons. They are now at *.svg and scripts also generate _150 and _200
+  *.png icons and bundle them to *lrs files for hi-dpi desktops.
+
+2017-09-27 0.9.24.0
+===================
+TCustomECSpeedBtn: improved ECTimer.Delay/Repeating when changing Mode property.
+  Changed design of highlighted Flat button.
+TSpeedBtnPlus: more published properties.
+
+2017-07-31 0.9.20.0
+===================
+TECTabCtrl: improved tab visibility, folding and closing.
+
+2017-03-30 0.9.16.0
+===================
+TECGrid: finished. Initial release.
+
+2016-12-28 0.9.14.0
+===================
+TECTabCtrl: added Option ectoVertTabHor (tabs are horizontal when TabPosition
+  is tpLeft or tpRight). Tabs are always in one row in this mode.
+TECTabCtrl: Added properties ImageIndexAdd and ImageIndexClose for custom images
+  (from image list Images).
+
+2016-10-05 0.9.12.0
+===================
+TECGrid: improved log2(0), SetFocus in MouseDown (GTk2).
+
+2016-10-01 0.9.10.4
+===================
+TECGrid: Deleting columns in design-time. Component editor (ecdesigntime.pas).
+TBaseECSlider: added two new styles for progress: epsOrthoTwin, epsGradLines and epsRipple.
+
+2016-09-28 0.9.10.2
+===================
+Improved TECScale and TECRuler: Division by zero at design/run-time.
+
+2016-09-26 0.9.10.0
+===================
+Improved: "length(Array)-1" replaced with "high(Array)" (TECScheme, TECConfCurve).
+TECScheme: improved methods TECDevices.GetInputs();
+TECGrid: completed
+TECAccordion: implemented DoMouseWheelDown/Up for rolling the items.
+TECTabCtrl, TECImageMenu, TECPositionBar, TECSpinPosition, TECSlider,
+  TECConfCurve, TECTriangle: improved DoMouseWheelDown/Up.
+
+2016-08-24 0.9.8.0
+===================
+TBaseScrollControl: properties IncrementX/Y and PageSizeX/Y replaced
+  with virtual methods GetIncrementX/Y and GetPageSizeX/Y.
+
+2016-08-24 0.9.6.22
+===================
+TBaseScrollControl: added properties PageSizeX and PageSizeY.
+TECGrid: alpha state
+
+2016-08-08 0.9.6.20
+===================
+TECSwitch: removed a few published properties (published already in TControl)
+TECGrid: incompleted implementation
+
+2016-07-24 0.9.6.20
+===================
+TECAccordion: removed DockSite property and On?Dock? events.
+TECGrid: initial implementation
+
+2016-07-21 0.9.6.20
+===================
+TECCheckListBox: added property AutosizeItemHeight and published ItemHeight.
+
+2016-07-17 0.9.6.20
+===================
+TECSpinEdit, TBaseECEditBtn: improved OnEnter in esoInCellEditor/eboInCellEditor mode.
+  It doesn't select text now when associated Btns are clicked.
+
+2016-07-08 0.9.6.18
+===================
+TECSpinEdit: improved OnEditingDone. Now is NOT triggered when SpinBtns are clicked.
+TBaseECEditBtn, TBaseECComboBt: improved OnEditingDone.
+  Now is NOT triggered when Btn is clicked.
+Added esoInCellEditor/eboInCellEditor + Flags for correct behaviour when above
+  controls are used as in-cell editors of the StringGrid.
+
+2016-06-19 0.9.6.16
+===================
+TECGrpCtrls: Added egoHighlightPanels to Options. Styles eosPanel and eosFinePanel
+  can now be shaded when highlighted, pushed etc.
+TECTriangle: reduces calls of DrawTriangleP when component is moved.
+
+2016-06-17 0.9.6.14
+===================
+Added new Style: eosFinePanel. Implemented to TECKnob, TBaseECSlider, TECRuler,
+  TECSwitch, TECGrpCtrls and TECTabCtrl.
+
+2016-06-16 0.9.6.12
+===================
+TECCheckListBox: added support for custom glyphs from Images (TImageList).
+
+2016-06-14 0.9.6.10
+===================
+TECTabCtrl: improved BtnAdd, event OnClick changed to OnMouseDown.
+  Tabs can be quicly added.
+  Protected var DragFolding moved to Flags.
+  Patched Wine bug where TPopupMenu.Close is triggered before TMenuItem.Click.
+
+2016-06-05 0.9.6.8
+===================
+TECTabCtrl: improved Hint, tab displays main Hint if it doesn't have its own.
+
+2016-06-05 0.9.6.6
+===================
+TECSpinPosition: patched bug (deleting component at design- and run-time).
+
+2016-06-04 0.9.6.4
+===================
+TECTabCtrl: added properties Hint and PopupMenu to TECTab.
+  Added options etcoLoopTabSelection.
+  Patched "index (-1) out of bounds" in DropDownMenu.
+
+2016-06-02 0.9.6.2
+===================
+TECTriangle: implemented.
+ECScale: added esvfMarkOctal to TScaleValueFormat.
+ECSpinCtrls: added evfMarkOctal to TValueFormat.
+
+2016-05-24 0.9.6.0
+===================
+TECAccordion: improved OnAdd, OnChange events.
+ImageIndex properties declared as TImageIndex (where possible).
+ECDesignTime: added ImageIndex property editors to TECAccordion,
+  TECSpinBtns, TECSpeddBtn and TBaseECSlider.
+
+2016-05-23 0.9.6.0
+===================
+TECAccordion: initial release.
+ECDesignTime: all Register methods moved here.
+
+2016-05-22 0.9.4.26
+===================
+TECAccordion (beta).
+TECTabCtrl: added event OnCloseQuery(Sender, Index, CanClose);.
+  Improved IsTabVisible (BoundRect -> ClientRect).
+  Added design-time component editor for Add, Insert, Delete and Move tab.
+New Unit: ECDesignTime for Component Editors, Property Editors
+  and Designer Hooks.
+
+2016-05-19 0.9.4.24
+===================
+Added TECAccordion (alpha).
+
+2016-04-23 0.9.4.22
+===================
+TECCheckListBox: added method InsertItem(). Patched hidden bug in DeleteItem().
+  Added event ItemChanged (TStringList(Items).OnChange;). Methods Items.Add,
+  Items.Insert, Items.Clear and Items.Delete now does not crash but they can
+  cause wrong pairing of text and checkboxes (Items and FStates).
+  Implemented property TextAlign: TAlignment. Its meaning is reversed when
+  Alignment is taRightJustify or BiDiMode is bdRightToLeft.
+
+2016-04-15 0.9.4.20
+===================
+Added egdMenu to TGlyphDesign. TECSpeedBtn can be a 'hamburger' button.
+TECCheckListBox: patch to DrawItem() method. Painting item background
+  and Selection in disabled state.
+
+2016-04-10 0.9.4.18
+===================
+TCustomECTabCtrl:Property Highlighted removed from published.
+  Added ClickedTabIndex checking to DragDrop method.
+  Added properties ColorActiveTab and ColorHighlighted.
+  TabStop is set to True by default.
+
+2016-04-09 0.9.4.16
+===================
+TCustomECTabCtrl: ThemeServices.GetTextExtent replaced with Canvas.TextExtent.
+  Patch to DragOver method.
+  (both are probably Windows specific bugs, unable to reproduce under Wine)
+
+2016-04-06 0.9.4.14
+===================
+Added copyright notice to year 2016.
+TCustomECTabCtrl: patched:
+  MouseWheel scrolling disabled while dragging (Middle button).
+  Displaying built-in drop-down menu (reset ClickedTabIndex to -1).
+
+2016-04-03 0.9.4.12
+===================
+TCustomECTabCtrl: Middle click on small buttons scrolls to
+  the leftmost/rightmost position.
+
+2016-03-31 0.9.4.10
+===================
+TCustomECSpeedBtn: Improved painting of pushed/pushed highlighted state
+  of button in toggle mode (in ecdrawglyph.inc).
+
+2016-03-29 0.9.4.10
+===================
+TCustomECTabCtrl: Removed cBaseTextFlags. Some flags (DT_SINGLELINE,
+  DT_ENDELLIPSIS) caused problems in Windows and Wine.
+
+2016-03-20 0.9.4.8
+===================
+TCustomECTabCtrl: Implemented TabMxWidth (only for etcoAutoSizeWidth).
+
+2016-03-05 0.9.4.6
+===================
+TCustomECTabCtrl: Implemented MouseWheel. Implemented Scroll methods.
+  Improved MovePrev/Next and SelectPrev/Next methods. Changed BtnClick to MouseUp.
+  Implemented etcoAutoSizeHeight/Width Options separately.
+
+2016-03-05 0.9.4.4
+===================
+TCustomECTabCtrl: Implemented disabled look for properties TECTab.Color.
+
 2016-03-05 0.9.4.2
 ===================
 TCustomECTabCtrl: Implemented properties TECTab.FontOptions and TECTab.Color

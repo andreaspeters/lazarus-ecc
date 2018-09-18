@@ -19,11 +19,20 @@ Use OnChange or OnExit instead.
 TECCheckListBox does not support sorting. TStringList(Items).Sort will not
 crash, but it will sort Text only. CheckBoxes and their Captions will be messed.
 
+TECCheckListBox: do not use methods of property Items (Items.Add, Items.Delete
+  etc.). Use methods AddItem, DeleteItem etc. instead. It is due to internal
+  design of the control (synchronization of Items (list) and States (array)).
+
 TECScheme: "uses" section: FileUtil replaced with LazFileUtils due to
   changes in Lazarus trunk. See CHANGELOG. If you need to install ECScheme
   to Lazarus 1.4.x, revert this change.
 
 TECTabCtrl: can be visually "ugly" or "incorrect" with some desktop themes
   or some Style setting. (KDE4 Breeze; GTk2 and Style = eosThemedPanel).
+
+ImageIndex property editors (in OI) is not possible for Collections.
+  That's because TCollectionItem does not know its owner, which has
+  owner, which has Images: TCustomImageList.
+
 
 

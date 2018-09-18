@@ -4,9 +4,9 @@ unit Unit1;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, RTTIGrids, Forms, Controls, Graphics, Dialogs, ComCtrls, ExtCtrls,
-  StdCtrls, ActnList, Menus, Grids, Spin, ECSwitch, ECSlider, ECImageMenu, ECSpinCtrls, ECEditBtns,
-  ECProgressBar, ECRuler, DateUtils, ECTypes, ECGroupCtrls, ECBevel, ECLink, LCLType, Math;
+  Classes, SysUtils, RTTIGrids, Forms, Controls, Graphics, Dialogs, ComCtrls, ExtCtrls, StdCtrls, ActnList, Menus,
+  Grids, Spin, ECSwitch, ECSlider, ECImageMenu, ECSpinCtrls, ECEditBtns, ECProgressBar, ECRuler, DateUtils, ECTypes,
+  ECGroupCtrls, ECBevel, ECLink, ECHeader, ECCheckListBox, ECTriangle, LCLType, Math, Types;
 
 type          
   { TForm1 }
@@ -17,19 +17,31 @@ type
     ECBevel4: TECBevel;
     ECBevel5: TECBevel;
     ECBevel6: TECBevel;
+    ECBevel7: TECBevel;
+    ECBevel8: TECBevel;
+    ECCheckListBox1: TECCheckListBox;
     ECColorBtn11: TECColorBtn;
     ECColorCombo25: TECColorCombo;
+    ECColorCombo26: TECColorCombo;
+    ECComboBtn2: TECComboBtn;
+    ECHeader1: TECHeader;
     ECLink1: TECLink;
     ECLink2: TECLink;
     ECLink3: TECLink;
     ECLink4: TECLink;
+    ECSlider34: TECSlider;
     ECSpeedBtn42: TECSpeedBtn;
     ECSpeedBtn43: TECSpeedBtn;
     ECSpinPosition1: TECSpinPosition;
     ECSpinPosition2: TECSpinPosition;
+    ECTriangle1: TECTriangle;
+    ECTriangle2: TECTriangle;
+    ECTriangle3: TECTriangle;
     GroupBox3: TGroupBox;
     Label80: TLabel;
     Label81: TLabel;
+    Label82: TLabel;
+    Label83: TLabel;
     PageControl1: TPageControl;
     TabSheet1: TTabSheet;
     TabSheet15: TTabSheet;
@@ -476,7 +488,6 @@ type
     Label79: TLabel;
     procedure ECLink1Click(Sender: TObject);
     procedure ECSpeedBtn43HoldDown(Sender: TObject);
-    procedure PageControl1Change(Sender: TObject);
     procedure PaintBox1Paint(Sender: TObject);
     procedure ECSlider10Change(Sender: TObject);
     procedure CheckBox2Change(Sender: TObject);
@@ -507,10 +518,8 @@ type
     procedure ECComboSpeedBtnClick(Sender: TObject);
     procedure ECCheckGroup1ItemClick(Sender: TObject; Index: integer);
     procedure PaintBox6Paint(Sender: TObject);
-    procedure ECRuler6MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
     procedure RadioGroup2Click(Sender: TObject);
-    procedure StringGrid1SelectEditor(Sender: TObject; aCol, aRow: Integer; var Editor: TWinControl
-      );
+    procedure StringGrid1SelectEditor(Sender: TObject; aCol, aRow: Integer; var Editor: TWinControl);
     procedure ECSpinEdit20KeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure ECSpinEdit20EditingDone(Sender: TObject);
     procedure ECComboBtn1EditingDone(Sender: TObject);
@@ -722,7 +731,6 @@ begin
         end else
         begin
           d:=(d-50)/50;
-          writeln(d);
           r:=round(d*255+r*(1-d));
           g:=round(d*255+g*(1-d));
           b:=round(d*255+b*(1-d));
@@ -747,7 +755,7 @@ end;
 
 procedure TForm1.ECSlider29Change(Sender: TObject);
 begin
-  WriteLn('Logarithmic Position: ', floattostrF(ECSlider29.LogarithmicPosition, ffFixed, 0, 3));
+  Label82.Caption:='Logarithmic Position: '+floattostrF(ECSlider29.LogarithmicPosition, ffFixed, 0, 3);
 end;
 
 procedure TForm1.Image1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
@@ -760,11 +768,6 @@ end;
 procedure TForm1.ECPositionBar9Change(Sender: TObject);
 begin
   PaintBox5.Invalidate;
-end;
-
-procedure TForm1.ECRuler6MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
-begin
-  writeln(X);
 end;
 
 procedure TForm1.PaintBox5Paint(Sender: TObject);
@@ -887,7 +890,6 @@ begin
         end else
         begin
           d:=(d-50)/50;
-          writeln(d);
           r:=round(d*255+r*(1-d));
           g:=round(d*255+g*(1-d));
           b:=round(d*255+b*(1-d));
@@ -925,7 +927,7 @@ end;
 
 procedure TForm1.ECSpeedBtn14Release(Sender: TObject);
 begin
-  writeln('Released');
+  ShowMessage('OnRelease triggered.');
 end;
 
 procedure TForm1.ECCombo2Change(Sender: TObject);
@@ -973,7 +975,6 @@ end;
 
 procedure TForm1.ECSpeedBtn31DrawGlyph(Sender: TObject; AState: TItemState);
 begin
-  writeln('OnDrawGlyph ', AState);
   with (Sender as TECSpeedBtn).BtnBitmaps[aState].Canvas do
     begin
       Pen.Width:=1;
@@ -1010,11 +1011,6 @@ end;
 procedure TForm1.ECSpeedBtn43HoldDown(Sender: TObject);
 begin
   ShowMessage('OnHoldDown triggered.');
-end;
-
-procedure TForm1.PageControl1Change(Sender: TObject);
-begin
-
 end;
 
 procedure TForm1.CheckBox3Change(Sender: TObject);

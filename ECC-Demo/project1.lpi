@@ -1,20 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="9"/>
+    <Version Value="11"/>
     <General>
       <SessionStorage Value="InProjectDir"/>
       <MainUnit Value="0"/>
       <Title Value="project1"/>
       <ResourceType Value="res"/>
       <UseXPManifest Value="True"/>
+      <Icon Value="0"/>
     </General>
     <i18n>
       <EnableI18N LFM="False"/>
     </i18n>
-    <VersionInfo>
-      <StringTable ProductVersion=""/>
-    </VersionInfo>
     <BuildModes Count="2">
       <Item1 Name="Default" Default="True"/>
       <Item2 Name="Final">
@@ -64,9 +62,10 @@
       <Version Value="2"/>
     </PublishOptions>
     <RunParams>
-      <local>
-        <FormatVersion Value="1"/>
-      </local>
+      <FormatVersion Value="2"/>
+      <Modes Count="1">
+        <Mode0 Name="default"/>
+      </Modes>
     </RunParams>
     <RequiredPackages Count="3">
       <Item1>
@@ -111,15 +110,18 @@
       </SyntaxOptions>
     </Parsing>
     <CodeGeneration>
-      <Optimizations>
-        <OptimizationLevel Value="0"/>
-      </Optimizations>
+      <Checks>
+        <RangeChecks Value="True"/>
+      </Checks>
     </CodeGeneration>
     <Linking>
       <Debugging>
         <UseHeaptrc Value="True"/>
       </Debugging>
     </Linking>
+    <Other>
+      <CustomOptions Value="-godwarfsets"/>
+    </Other>
   </CompilerOptions>
   <Debugging>
     <Exceptions Count="3">

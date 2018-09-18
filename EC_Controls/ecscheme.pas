@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -35,8 +35,8 @@ interface
 
 uses
   Classes, SysUtils, Controls, FGL, Graphics, LCLIntf, LCLType, LMessages, Math, 
-  {$IFDEF DEBUG} LCLProc, {$ENDIF} LResources, StdCtrls, Types, Themes,
-  Forms, ImgList, Laz2_DOM, Laz2_XMLRead, Laz2_XMLWrite, ECTypes;
+  {$IFDEF DEBUG} LCLProc, {$ENDIF} LazFileUtils, Types, Themes, Forms, ImgList,
+  Laz2_DOM, Laz2_XMLRead, Laz2_XMLWrite, ECTypes;
 
 type
   {$PACKENUM 2}
@@ -44,7 +44,7 @@ type
   TBlockStyle = (ebsButton, ebsPanel, ebsBlock, ebsRounded, ebsRhombus, ebsEllipse);
   TConnectionOption = (ecoL_Connection,       { connection with L-shape }
                        ecoL_VertThenHor,      { L-shape conn. is vertical then horizontal }
-                       ecoArrow,              { no arrow on connection }
+                       ecoArrow,              { arrow on connection }
                        ecoBold,               { connection line width is doubled }
                        ecoDashed, ecoDotted,  { solid, dash, dot or dash-dot }
                        ecoUser0 = 24, ecoUser1, ecoUser2, ecoUser3,
@@ -199,7 +199,7 @@ type
     FScheme: TCustomECScheme;
     procedure CalculateItem(AItem: TECDevice);
     function DoAddConnection(AInput, AOutput: Integer; AColor: TColor;
-                AOptions: TConnectionOptions): TAddConnectionResult;
+               AOptions: TConnectionOptions): TAddConnectionResult;
     procedure UpdateScheme;
     procedure UpdateSelection(ASelected: Boolean);
   public const
@@ -364,21 +364,21 @@ type
     class function GetControlClassDefaultSize: TSize; override;
     function GetFullCaption(ADevice: TECDevice): string;
     procedure GetGridDelta(out DX, DY: SmallInt);
+    function GetIncrementX: Integer; override;
+    function GetIncrementY: Integer; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure KeyUp(var Key: Word; Shift: TShiftState); override;
     procedure LoadDeviceFromXML(AIndex: Integer; ADeviceNode: TDOMNode;
-               AXMLFlags: TXMLFlags = cXMLFlagsAll); virtual;
+                AXMLFlags: TXMLFlags = cXMLFlagsAll); virtual;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
-    procedure PaintConnection(ADevice, AOutput: Integer; ADefColor: TColor;
-                BFullRepaint: Boolean); virtual;
+    procedure PaintConnection(ADevice, AOutput: Integer; ADefColor: TColor; BFullRepaint: Boolean); virtual;
     procedure PaintContent(AIndex: Integer; ABlockRect: TRect); virtual;
     procedure Paint; override;
     procedure SaveDeviceToXML(AIndex: Integer; AXMLDoc: TXMLDocument;
                 ADeviceNode: TDOMNode; AXMLFlags: TXMLFlags = cXMLFlagsAll); virtual;
     procedure SetCursor(Value: TCursor); override;
-    procedure SetDefaultScrollParams; override;
     procedure SetHint(const Value: TTranslateString); override;
     procedure SetParent(NewParent: TWinControl); override;
     procedure UpdateDevice(ADevice: TECDevice);
@@ -458,8 +458,6 @@ type
     property FullAreaHeight;
     property FullAreaWidth;
     property Grid;
-    property IncrementX default cDefBlockWidth;
-    property IncrementY default cDefBlockHeight;  
     property Indent;
     property Layout;
 	  property Options;
@@ -504,14 +502,7 @@ type
     property OnUTF8KeyPress;
   end;
     
-  procedure Register;
-
 implementation
-
-{$if lcl_fullversion >= 01070000}
-uses LazFileUtils
-{$endif}
-
 
 { TECDevice }
 
@@ -523,25 +514,25 @@ begin
 end;
 
 function TECDevice.DeleteConnIndex(AIndex: Integer): Boolean;
-var i, aLength: Integer;
+var i, aLengthM1: Integer;
 begin
-  aLength:=length(Outputs);
-  Result:= (AIndex>=0) and (AIndex<aLength);
+  aLengthM1:=high(Outputs);
+  Result:= (AIndex>=0) and (AIndex<=aLengthM1);
   if Result then
     begin
-      for i:=AIndex+1 to aLength-1 do
+      for i:=AIndex+1 to aLengthM1 do
         Outputs[i-1]:=Outputs[i];
-      SetLength(FOutputs, aLength-1);
+      SetLength(FOutputs, aLengthM1);
       UpdateScheme;
     end;
 end;
 
 function TECDevice.DeleteConnInput(AInput: Integer): Boolean;
-var i, aIndex, aLength: Integer;
+var i, aIndex, aLengthM1: Integer;
 begin
   Result:=False;
-  aLength:=length(Outputs);
-  for i:=0 to aLength-1 do
+  aLengthM1:=high(Outputs);
+  for i:=0 to aLengthM1 do
     if Outputs[i].Input=AInput then
       begin
         Result:=True;
@@ -550,9 +541,9 @@ begin
       end;
   if Result then
     begin
-      for i:=aIndex+1 to aLength-1 do
+      for i:=aIndex+1 to aLengthM1 do
         Outputs[i-1]:=Outputs[i];
-      SetLength(FOutputs, aLength-1);
+      SetLength(FOutputs, aLengthM1);
       UpdateScheme;
     end;
 end;
@@ -561,7 +552,7 @@ procedure TECDevice.ChangeConnectionProperties(AInput: Integer; AColor: TColor;
   AOptions: TConnectionOptions);
 var i: Integer;
 begin
-  for i:=0 to length(Outputs)-1 do
+  for i:=0 to high(Outputs) do
     if Outputs[i].Input=AInput then
       begin
         Outputs[i].Color:=AColor;
@@ -832,10 +823,10 @@ var i, j: Integer;
 begin
   Result:=0;
   for i:=0 to AIndex-1 do
-    for j:=0 to length(Items[i].Outputs)-1 do
+    for j:=0 to high(Items[i].Outputs) do
       if Items[i].Outputs[j].Input=AIndex then inc(Result);
   for i:=AIndex+1 to Count-1 do
-    for j:=0 to length(Items[i].Outputs)-1 do
+    for j:=0 to high(Items[i].Outputs) do
       if Items[i].Outputs[j].Input=AIndex then inc(Result);        
 end;
 
@@ -883,35 +874,29 @@ begin
 end;
 
 function TECDevices.ClearInputs(AIndex: Integer): Integer;
-var i, j, k, aLength: Integer;
+
+  procedure DeleteOutput(ADevice: Integer);
+  var j, k, aLengthM1: Integer;
+  begin
+    aLengthM1:=high(Items[ADevice].Outputs);
+    for j:=0 to aLengthM1 do
+      if Items[ADevice].Outputs[j].Input=AIndex then
+        begin
+          for k:=j+1 to aLengthM1 do
+            Items[ADevice].Outputs[k-1]:=Items[ADevice].Outputs[k];
+          SetLength(Items[ADevice].FOutputs, aLengthM1);
+          inc(Result);
+          break;  { can't have doubled connections }
+        end;
+  end;
+
+var i: Integer;
 begin
   Result:=0;
   for i:=0 to AIndex-1 do
-    begin
-      aLength:=length(Items[i].Outputs);
-      for j:=0 to aLength-1 do
-        if Items[i].Outputs[j].Input=AIndex then
-          begin
-            for k:=j+1 to aLength-1 do
-              Items[i].Outputs[k-1]:=Items[i].Outputs[k];
-            SetLength(Items[i].FOutputs, aLength-1);
-            inc(Result);
-            break;  { can't have doubled connections }
-          end;      
-    end;
+    DeleteOutput(i);
   for i:=AIndex+1 to Count-1 do
-    begin
-      aLength:=length(Items[i].Outputs);
-      for j:=0 to aLength-1 do
-        if Items[i].Outputs[j].Input=AIndex then
-          begin
-            for k:=j+1 to aLength-1 do
-              Items[i].Outputs[k-1]:=Items[i].Outputs[k];
-            SetLength(Items[i].FOutputs, aLength-1);
-            inc(Result);
-            break;  { can't have doubled connections }
-          end;     
-    end;
+    DeleteOutput(i);
  if Result>0 then FScheme.UpdateScheme;
 end;
 
@@ -936,16 +921,16 @@ begin
 end;
 
 function TECDevices.DeleteConnection(AInput, AOutput: Integer): Boolean;
-var i, j, aLength: Integer;
+var i, j, aLengthM1: Integer;
 begin
   Result:=False;
-  aLength:=length(Items[AOutput].Outputs);
-  for i:=0 to aLength-1 do
+  aLengthM1:=high(Items[AOutput].Outputs);
+  for i:=0 to aLengthM1 do
     if Items[AOutput].Outputs[i].Input=AInput then
       begin
-        for j:=i+1 to aLength-1 do
+        for j:=i+1 to aLengthM1 do
           Items[AOutput].Outputs[j-1]:=Items[AOutput].Outputs[j];
-        SetLength(Items[AOutput].FOutputs, aLength-1);
+        SetLength(Items[AOutput].FOutputs, aLengthM1);
         Result:=True;
         break;  { can't have doubled connections }
       end;
@@ -995,24 +980,33 @@ begin  { no checking for existing reversed conn., no scheme update }
 end;
 
 function TECDevices.GetInputs(AIndex: Integer): TIntegerDynArray;
-var i, j: Integer;
-begin
-  SetLength(Result, 0);
-  for i:=0 to AIndex-1 do                             
-    for j:=0 to length(Items[i].Outputs)-1 do
-      if Items[i].Outputs[j].Input=AIndex then
+
+  procedure CheckOutputs(ADevice: Integer);
+  var j: Integer;
+  begin
+    for j:=0 to high(Items[ADevice].Outputs) do
+      if Items[ADevice].Outputs[j].Input=AIndex then
         begin
           SetLength(Result, length(Result)+1);
-          Result[length(Result)-1]:=i;
+          Result[high(Result)]:=ADevice;
           break;  { can't have doubled connections }
         end;
+  end;
+
+var i: Integer;
+begin
+  SetLength(Result, 0);
+  for i:=0 to AIndex-1 do
+    CheckOutputs(i);
+  for i:=AIndex+1 to Count-1 do
+    CheckOutputs(i);
 end;
 
 function TECDevices.GetOutputs(AIndex: Integer): TIntegerDynArray;
 var i: Integer;
 begin
   SetLength(Result, length(Items[AIndex].Outputs));
-  for i:=0 to length(Items[AIndex].Outputs)-1 do
+  for i:=0 to high(Items[AIndex].Outputs) do
     Result[i]:=Items[AIndex].Outputs[i].Input;
 end; 
 
@@ -1020,7 +1014,7 @@ function TECDevices.HasDirectOutput(AOutput, AInput: Integer): Boolean;
 var i: Integer;
 begin
   Result:=False;
-  for i:=0 to length(Items[AOutput].Outputs)-1 do
+  for i:=0 to high(Items[AOutput].Outputs) do
     if Items[AOutput].Outputs[i].Input=AInput then
       begin
         Result:=True;
@@ -1043,7 +1037,7 @@ var aLevel: Integer;
     if aLevel>0 then APath[aLevel-1]:=ADevice;       
     inc(aLevel);  
     { loop and test all outputs of current device }
-    for i:=0 to length(Items[ADevice].Outputs)-1 do
+    for i:=0 to high(Items[ADevice].Outputs) do
       begin
         if Items[ADevice].Outputs[i].Input=AInput then 
           begin
@@ -1082,7 +1076,7 @@ begin
   Result:=False;
   inc(FScheme.UpdateCount);
   aOutIndex:=-1;
-  for i:=0 to length(Items[ADevice].Outputs)-1 do
+  for i:=0 to high(Items[ADevice].Outputs) do
     if Items[ADevice].Outputs[i].Input=AInput then
       begin
         aOutIndex:=i;
@@ -1403,7 +1397,7 @@ begin
       case ABlockStyle of
         ebsBlock:
           begin
-            ACanvas.FillRect(ARect);
+            ACanvas.Pen.JoinStyle:=pjsMiter;
             ACanvas.Frame(ARect);
           end;
         ebsRounded:
@@ -1426,6 +1420,8 @@ begin
         ebsEllipse:
           begin
             ACanvas.AntialiasingMode:=amOn;
+            dec(ARect.Right);
+            dec(ARect.Bottom);
             ACanvas.Ellipse(ARect);
           end;
       end;
@@ -1492,6 +1488,16 @@ begin
     end;
 end;
 
+function TCustomECScheme.GetIncrementX: Integer;
+begin
+  Result:=BlockWidth;
+end;
+
+function TCustomECScheme.GetIncrementY: Integer;
+begin
+  Result:=BlockHeight;
+end;
+
 function TCustomECScheme.GetNewDevicePos: TPoint;
 var i: Integer;
 begin
@@ -1532,10 +1538,10 @@ begin
           then ClientAreaTop:=0
           else ClientAreaLeft:=0;
       end;
-    VK_LEFT: ClientAreaLeft:=ClientAreaLeft-IncrementX;
-    VK_UP: ClientAreaTop:=ClientAreaTop-IncrementY;
-    VK_RIGHT: ClientAreaLeft:=ClientAreaLeft+IncrementX;
-    VK_DOWN: ClientAreaTop:=ClientAreaTop+IncrementY;
+    VK_LEFT: ClientAreaLeft:=ClientAreaLeft-GetIncrementX;
+    VK_UP: ClientAreaTop:=ClientAreaTop-GetIncrementY;
+    VK_RIGHT: ClientAreaLeft:=ClientAreaLeft+GetIncrementX;
+    VK_DOWN: ClientAreaTop:=ClientAreaTop+GetIncrementY;
     otherwise bUsed:=False;
   end;
   if bUsed then Key:=0;			 
@@ -1870,7 +1876,7 @@ begin
         begin
           bSelectNotEmpty:=False;
           bSelectionChange:=False;
-          aRect:=NormalizeRectangle(X+ClientAreaLeft, Y+ClientAreaTop,
+          aRect:=NormalizedRect(X+ClientAreaLeft, Y+ClientAreaTop,
 				           FSelStartPoint.X+ClientAreaLeft, FSelStartPoint.Y+ClientAreaTop);
           for i:=0 to Devices.Count-1 do
             begin
@@ -1896,10 +1902,10 @@ begin
     end;
 end;
 
-procedure TCustomECScheme.PaintConnection(ADevice, AOutput: Integer; ADefColor: TColor;
-  BFullRepaint: Boolean);
+procedure TCustomECScheme.PaintConnection(ADevice, AOutput: Integer; ADefColor: TColor; BFullRepaint: Boolean);
 var aConnectWidth: SmallInt;
     aInput, aPenWidth: Integer;
+    aPenColor: TColor;
     aPenStyle: TPenStyle;
     aSrcPoint: TPoint;
 const cNonShiftShapes = [ebsRhombus, ebsEllipse];
@@ -1926,7 +1932,7 @@ const cNonShiftShapes = [ebsRhombus, ebsEllipse];
     aSrcPoint:=Canvas.PenPos;
     aRect:=Rect(aSrcPoint.X+ALeft-aConnectWidth, aSrcPoint.Y+ATop-aConnectWidth,
                 aSrcPoint.X+ARight+aConnectWidth, aSrcPoint.Y+ABottom+aConnectWidth);
-    Canvas.DrawGlyph(aRect, AGlyph, eisEnabled);
+    Canvas.DrawGlyph(aRect, aPenColor, AGlyph, eisEnabled);
     Canvas.Pen.Style:=aPenStyle;
     Canvas.Pen.Width:=aPenWidth;
     Canvas.MoveTo(aSrcPoint);
@@ -2021,7 +2027,8 @@ begin
   if not bFullRepaint
     then Canvas.Pen.Width:=1
     else Canvas.Pen.Width:=aConnectWidth;
-  Canvas.Pen.Color:=GetColorResolvingDefAndEnabled(Devices[ADevice].Outputs[AOutput].Color, ADefColor, IsEnabled);
+  aPenColor:=GetColorResolvingDefAndEnabled(Devices[ADevice].Outputs[AOutput].Color, ADefColor, IsEnabled);
+  Canvas.Pen.Color:=aPenColor;
   if not (esoRectangularConnect in Options) then
     begin  { direct (slant) connections }
       { draw arrow }
@@ -2198,7 +2205,7 @@ begin
           FBlock.TransparentColor:=Brush.Color;
           FBlock.TransparentClear;
           aColor:=GetColorResolvingDefault(BlockColor, clBtnText);
-          if not bEnabled then aColor:=GetMergedColor(aColor, clBtnFace, 0.5);
+          if not bEnabled then aColor:=GetMergedMonoColor(aColor, clBtnFace, 0.5);
           FBlock.Canvas.Pen.Color:=aColor;
           DrawBlock(FBlock.Canvas, Rect(0, 0, FBlock.Width, FBlock.Height), BlockStyle, bEnabled);
           exclude(FFlags, esfNeedRedraw);
@@ -2221,10 +2228,11 @@ begin
   aFPEMask:=Math.GetExceptionMask;
   Math.SetExceptionMask(aFPEMask+[exZeroDivide]);
   for i:=0 to Devices.Count-1 do
-    for j:=0 to length(Devices.Items[i].Outputs)-1 do
+    for j:=0 to high(Devices.Items[i].Outputs) do
       PaintConnection(i, j, aColor, bFullRepaint);
   Math.SetExceptionMask(aFPEMask);
 
+  LCLIntf.SetBkColor(Canvas.Handle, ColorToRGB(clBtnFace));
   { draw devices }
   Canvas.AntialiasingMode:=amOff;
   Canvas.Font.Size:=BlockFontSize;
@@ -2251,7 +2259,7 @@ begin
             else
             begin
               aColor:=GetColorResolvingDefault(Devices[i].Color, clBtnText);
-              if not bEnabled then aColor:=GetMergedColor(GetMonochromaticColor(aColor), clBtnFace, 0.55);
+              if not bEnabled then aColor:=GetMergedMonoColor(aColor, clBtnFace, 0.55);
               Canvas.Pen.Color:=aColor;
               DrawBlock(Canvas, aRect, Devices[i].Style, bEnabled);
             end;
@@ -2369,7 +2377,7 @@ begin
     end;
 end;
 
-{ saves scheme to file, i.e. xml file contains scheme in <ROOT><ASchemeNode... }
+{ saves scheme to file, i.e. xml file contains scheme in <ROOT><ASchemeNode>... }
 procedure TCustomECScheme.SaveSchemeToXML(AFileName: string;
             ASchemeNode: DOMString; AXMLFlags: TXMLFlags = cXMLFlagsAll);
 var XMLDoc: TXMLDocument;
@@ -2379,24 +2387,27 @@ begin
   if FileExistsUTF8(AFileName) then 
     ReadXMLFile(XMLDoc, AFileName, [xrfAllowSpecialCharsInAttributeValue]);
   if not assigned(XMLDoc) then XMLDoc:=TXMLDocument.Create;
-  with XMLDoc do
-    begin
-      if not assigned(DocumentElement) then
-        begin
-          aNode:=CreateElement(cRoot);
-          AppendChild(aNode); 
-        end;    
-      if ASchemeNode='' then ASchemeNode:=cScheme;
-      aNode:=DocumentElement.FindNode(ASchemeNode); 
-      if not assigned(aNode) then
-        begin
-          aNode:=CreateElement(ASchemeNode);
-          DocumentElement.AppendChild(aNode);
-        end;   
-      SaveSchemeToXML(XMLDoc, aNode, AXMLFlags);
-      WriteXMLFile(XMLDoc, AFileName);
-      Free;
-    end;
+  try
+    with XMLDoc do
+      begin
+        if not assigned(DocumentElement) then
+          begin
+            aNode:=CreateElement(cRoot);
+            AppendChild(aNode);
+          end;
+        if ASchemeNode='' then ASchemeNode:=cScheme;
+        aNode:=DocumentElement.FindNode(ASchemeNode);
+        if not assigned(aNode) then
+          begin
+            aNode:=CreateElement(ASchemeNode);
+            DocumentElement.AppendChild(aNode);
+          end;
+        SaveSchemeToXML(XMLDoc, aNode, AXMLFlags);
+        WriteXMLFile(XMLDoc, AFileName);
+      end;
+  finally
+    XMLDoc.Free;
+  end;
 end;
 
 procedure TCustomECScheme.SaveSchemeToXML(AXMLDoc: TXMLDocument;
@@ -2459,13 +2470,6 @@ begin
   inherited SetCursor(Value);
   if not (esfCursorLock in FFlags) then FCursorBkgnd:=Value;   
 end;           
-
-procedure TCustomECScheme.SetDefaultScrollParams;
-begin
-  IncrementX:=cDefBlockWidth;
-  IncrementY:=cDefBlockHeight; 
-  FScrollBars:=ssAutoBoth;
-end;     
 
 procedure TCustomECScheme.SetHint(const Value: TTranslateString);
 var aOldHint: string;
@@ -2600,7 +2604,6 @@ var i: Integer;
 begin
   if (FBlockHeight=AValue) or (AValue<0) then exit;
   FBlockHeight:=AValue;
-  IncrementY:=AValue;
   if esoIdenticalBlocks in Options then
     begin
       inc(UpdateCount);
@@ -2626,7 +2629,6 @@ var i: Integer;
 begin
   if (FBlockWidth=AValue) or (AValue<0) then exit;
   FBlockWidth:=AValue;
-  IncrementX:=AValue;
   if esoIdenticalBlocks in Options then
     begin
       inc(UpdateCount);
@@ -2747,12 +2749,6 @@ begin
   if bIdentBlocksChanged then FFlags:=FFlags+[esfNeedRecalc, esfNeedRedraw];
   if bInv then InvalidateNonUpdated;
 end;
-
-procedure Register;
-begin
-  {$I ecscheme.lrs}
-  RegisterComponents('EC-C', [TECScheme]);
-end;  
 
 end.
 

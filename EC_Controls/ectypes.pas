@@ -1,7 +1,10 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
  
-  Copyright (C) 2013-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2018 Vojtěch Čihák, Czech Republic
+
+  Credit: class TBaseScrollControl is based on TScrollingControl by Theo.
+    https://github.com/theo222/lazarus-thumbviewer/blob/master/scrollingcontrol.pas
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -44,6 +47,8 @@ type
                   eclRGBColor, eclBGRColor, eclARGBColor, eclABGRColor, eclRGBAColor, eclBGRAColor,
                   eclCMYColor, eclYMCColor, eclACMYColor, eclAYMCColor, eclCMYAColor, eclYMCAColor,
                   eclHSBColor, eclBSHColor, eclAHSBColor, eclABSHColor, eclHSBAColor, eclBSHAColor);
+  TEditingDoneFlag = (edfAllowDoExitInCell, edfEnterWasInKeyDown, edfForceEditingDone);
+  TEditingDoneFlags = set of TEditingDoneFlag;
   TGlyphDesign = (egdNone, egdEmpty, egdArrowDec, egdArrowInc,
                   egdArrowUp, egdArrowRight, egdArrowDown, egdArrowLeft,
                   egdArrowUR, egdArrowDR, egdArrowDL, egdArrowUL,
@@ -71,19 +76,19 @@ type
                   egdSizeArrUp, egdSizeArrRight, egdSizeArrDown, egdSizeArrLeft,
                   egdRectBeveled, egdRectFramed,  { coloured with 3D/clBtnText frame }
                   egdWinRectClr, egdWinRoundClr,  { for color dialogs }
-                  egdWindowRect, egdWindowRound);  { Total: egdNone + egdEmpty + 90 glyphs }
+                  egdWindowRect, egdWindowRound, egdMenu);  { Total: egdNone + egdEmpty + 91 glyphs }
   TIncrementalMode = (eimContinuous, eimDiscrete);
   TItemState = (eisDisabled, eisHighlighted, eisEnabled, 
                 eisPushed, eisPushedHihlighted, eisPushedDisabled);	
   TItemStates = set of TItemState;
   TObjectOrientation = (eooHorizontal, eooVertical);
   TObjectPos = (eopTop, eopRight, eopBottom, eopLeft);
-  TObjectStyle = (eosButton, eosPanel, eosThemedPanel);
+  TObjectStyle = (eosButton, eosPanel, eosThemedPanel, eosFinePanel);
   TRedrawMode = (ermHoverKnob, ermMoveKnob, ermFreeRedraw, ermRedrawBkgnd, ermRecalcRedraw);
   TTickDesign = (etdSimple, etdThick, etd3DLowered, etd3DRaised);
   TTickStyle = (etsSolid, etsDotted);
   TValuesVisibility = (evvNone, evvBounds, evvValues, evvAll);
-  { Events }
+  { events }
   TIntegerEvent = procedure(Sender: TObject; AIndex: Integer) of object;
   TIntegerMethod = procedure(AIndex: Integer) of object;
   TMouseMethod = procedure(Button: TMouseButton; Shift: TShiftState) of object;
@@ -96,8 +101,11 @@ type
   public
     procedure DrawButtonBackground(ARect: TRect; AEnabled: Boolean);  
     procedure DrawButtonBackground(ARect: TRect; AItemState: TItemState); overload;
+    procedure DrawFinePanelBkgnd(ARect: TRect; ABevelCut: TBevelCut; ABevelWidth: SmallInt;
+                AColor3DDark, AColor3DLight, AColor: TColor; AFillBkgnd: Boolean);
     procedure DrawFocusRectNonThemed(const ARect: TRect);
-    procedure DrawGlyph(ARect: TRect; AGlyphDesign: TGlyphDesign; AState: TItemState);
+    procedure DrawGlyph(ARect: TRect; AGlyphColor: TColor; AGlyphDesign: TGlyphDesign;
+                AState: TItemState = eisEnabled);
     procedure DrawPanelBackground(ARect: TRect; ABevelInner, ABevelOuter: TBevelCut;
                 ABevelWidth: Integer; AColor: TColor);      
     procedure DrawPanelBackground(ARect: TRect; ABevelInner, ABevelOuter: TBevelCut;
@@ -105,7 +113,6 @@ type
     procedure DrawThemedPanelBkgnd(ARect: TRect);
     function GlyphExtent(AGlyphDesign: TGlyphDesign): TSize;
     procedure SetFontParams(AOrientation: Integer; ASize: Integer; AStyle: TFontStyles);
-    procedure SetRealGlyphColor(AGlyphColor: TColor; AState: TItemState); overload;
   end;
   
   { TBitmapHelper }
@@ -132,6 +139,7 @@ type
     OnRedraw: TObjectMethod;
     Parent: TControl;
     constructor Create(AParent: TControl);
+    procedure ApplyTo(AFont: TFont; ADefColor: TColor);
     function IsIdentical(AFont: TFont): Boolean;
   published
     property FontColor: TColor read FFontColor write SetFontColor default clDefault;
@@ -201,7 +209,7 @@ type
     FTickMarkSpacing: SmallInt;
     FTickMarkStyle: TTickStyle;
     FWidth: Integer;
-    procedure SetBackgroundColor(AValue: TColor);
+    procedure SetBackgroundColor(const AValue: TColor);
     procedure SetBevelWidth(const AValue: SmallInt);
     procedure SetColor(const AValue: TColor);
     procedure SetCursor(const AValue: TCursor);
@@ -237,7 +245,7 @@ type
     procedure RecalcRedraw;
     procedure SetSize(AWidth, AHeight: Integer);
     property BackgroundColor: TColor read FBackgroundColor write SetBackgroundColor;
-  public                            
+  public
     property BevelWidth: SmallInt read FBevelWidth write SetBevelWidth default cDefBevelWidth;
     property Color: TColor read FColor write SetColor default clDefault;
     property Cursor: TCursor read FCursor write SetCursor default crHandPoint;
@@ -255,8 +263,6 @@ type
   private
     FAreaHeight: Integer;
     FAreaWidth: Integer;    
-    FIncrementX: SmallInt;
-    FIncrementY: SmallInt;
     function GetFullAreaHeight: Integer;
     function GetFullAreaWidth: Integer;  
     procedure SetAreaHeight(AValue: Integer);
@@ -266,15 +272,19 @@ type
     procedure SetScrollBars(AValue: TScrollStyle);
   protected
     FClientAreaLeft: Integer;
-    FClientAreaTop: Integer;        
+    FClientAreaTop: Integer;
     FRequiredArea: TPoint;  { area where all devices can fit }
     FScrollBars: TScrollStyle;
     FScrollInfoHor, FScrollInfoVert: TScrollInfo;
-    procedure CreateWnd; override;
-    procedure SetDefaultScrollParams; virtual;
+    procedure CreateHandle; override;
+    procedure DoUpdated; virtual;
+    function GetIncrementX: Integer; virtual;
+    function GetIncrementY: Integer; virtual;
+    function GetPageSizeX: Integer; virtual;
+    function GetPageSizeY: Integer; virtual;
     procedure UpdateRequiredAreaHeight; virtual; abstract; 
     procedure UpdateRequiredAreaWidth; virtual; abstract;  
-    procedure UpdateScrollBars(AValue: TScrollStyle);
+    procedure UpdateScrollBars;
     procedure UpdateScrollInfoHor;
     procedure UpdateScrollInfoVert;  
     procedure WMHScroll(var Msg: TWMScroll); message WM_HSCROLL;
@@ -283,8 +293,8 @@ type
   public
     UpdateCount: SmallInt;
     constructor Create(AOwner: TComponent); override;
-    procedure BeginUpdate;
-    procedure EndUpdate;
+    procedure BeginUpdate; virtual;
+    procedure EndUpdate; virtual;
     procedure InvalidateNonUpdated;
     property AreaHeight: Integer read FAreaHeight write SetAreaHeight default -1;
     property AreaWidth: Integer read FAreaWidth write SetAreaWidth default -1;  
@@ -292,8 +302,6 @@ type
     property ClientAreaTop: Integer read FClientAreaTop write SetClientAreaTop stored False;
     property FullAreaHeight: Integer read GetFullAreaHeight;
     property FullAreaWidth: Integer read GetFullAreaWidth;
-    property IncrementX: SmallInt read FIncrementX write FIncrementX default 1;
-    property IncrementY: SmallInt read FIncrementY write FIncrementY default 1;
     property ScrollBars: TScrollStyle read FScrollBars write SetScrollBars default ssAutoBoth;
   end;
 
@@ -305,17 +313,29 @@ procedure ColorToHSBA(AColor: TColor; out H, S, B, A: Byte);
 
 procedure ColorToRGBA(AColor: TColor; out R, G, B, A: Byte);
 
-function ColorToStrLayouted(AColor: TColor; AColorLayout: TColorLayout): string;
+function ColorToStrLayouted(AColor: TColor; AColorLayout: TColorLayout; APrefix: string = ''): string;
+
+function GetColorIntensity(AColor: TColor): Integer; inline;
 
 function GetColorResolvingDefault(ASourceColor, ADefColor: TColor): TColor; inline;
+
+function GetColorResolvingEnabled(ASourceColor: TColor; AEnabled: Boolean): TColor; inline;
 
 function GetColorResolvingDefAndEnabled(ASourceColor, ADefColor: TColor; AEnabled: Boolean): TColor; inline;
 
 function GetMergedColor(AColor, BColor: TColor; AProportion: Single): TColor;
 
+function GetMergedMonoColor(AColor, BColor: TColor; AProportion: Single): TColor;
+
 function GetMonochromaticColor(AColor: TColor): TColor;
 
+function GetSaturatedColor(AColor: TColor; AValue: Single): TColor;
+
 procedure IncludeRectangle(var AResultRect: TRect; const AppendRect: TRect);
+
+function InRangeCO(const AValue, AMin, AMax: Integer): Boolean; inline;  { closed, opened }
+
+function IsColorDark(AColor: TColor): Boolean;
 
 function IsInRange(AValue, ALimit, BLimit: Integer): Boolean;
 
@@ -323,7 +343,15 @@ function IsRectIntersect(ARect, BRect: TRect): Boolean;
 
 function LinearToLogarithmic(AValue, AMin, AMax, ALogarithmBase: Double): Double;
 
-function NormalizeRectangle(PointAX, PointAY, PointBX, PointBY: Integer): TRect;
+function ModifyBrightness(AColor: TColor; ABrighness: Single): TColor;
+
+function NormalizedRect(AX, AY, BX, BY: Integer): TRect;
+
+procedure NormalizeRectangle(var ARect: TRect);
+
+function PointToRect(const APoint: TPoint; ASize: Integer): TRect;
+
+function RectToPoint(const ARect: TRect): TPoint;
 
 function TrimColorString(const AString: string): string;
 
@@ -373,41 +401,56 @@ begin
   A := (AColor shr 24) and $000000FF;
 end;
 
-function ColorToStrLayouted(AColor: TColor; AColorLayout: TColorLayout): string;
+function ColorToStrLayouted(AColor: TColor; AColorLayout: TColorLayout; APrefix: string = ''): string;
 var RCH, GMS, BYB, A: Byte;  { Red/Cyan/Hue, Green/Magenta/Saturation, Blue/Yellow/Brightness, Alpha }
 begin
+  if AColorLayout = eclSystemBGR then
+    if ColorToIdent(AColor, Result)
+      then exit  { Exit! }
+      else AColorLayout := eclBGRColor;
   case AColorLayout of
     eclRGBColor..eclYMCAColor: ColorToRGBA(AColor, RCH, GMS, BYB, A);
     eclHSBColor..eclBSHAColor: ColorToHSBA(AColor, RCH, GMS, BYB, A);
   end;
   case AColorLayout of
-    eclSystemBGR: Result := ColorToString(AColor);
-    eclRGBColor: Result := inttohex(RCH, 2) + inttohex(GMS, 2) + inttohex(BYB, 2);
-    eclBGRColor: Result := inttohex(BYB, 2) + inttohex(GMS, 2) + inttohex(RCH, 2);
-    eclARGBColor: Result := inttohex(A, 2) + inttohex(RCH, 2) + inttohex(GMS, 2) + inttohex(BYB, 2);
-    eclABGRColor: Result := inttohex(A, 2) + inttohex(BYB, 2) + inttohex(GMS, 2) + inttohex(RCH, 2);
-    eclRGBAColor: Result := inttohex(RCH, 2) + inttohex(GMS, 2) + inttohex(BYB, 2) +  inttohex(A, 2);
-    eclBGRAColor: Result := inttohex(BYB, 2) + inttohex(GMS, 2) + inttohex(RCH, 2) + inttohex(A, 2);
-    eclCMYColor: Result := inttohex(255 - RCH, 2) + inttohex(255 - GMS, 2)  + inttohex(255 - BYB, 2);
-    eclYMCColor: Result := inttohex(255 - BYB, 2) + inttohex(255 - GMS, 2)  + inttohex(255 - RCH, 2);
-    eclACMYColor: Result := inttohex(A, 2) + inttohex(255 - RCH, 2) + inttohex(255 - GMS, 2)  + inttohex(255 - BYB, 2);
-    eclAYMCColor: Result := inttohex(A, 2) + inttohex(255 - BYB, 2) + inttohex(255 - GMS, 2)  + inttohex(255 - RCH, 2);
-    eclCMYAColor: Result := inttohex(255 - RCH, 2) + inttohex(255 - GMS, 2)  + inttohex(255 - BYB, 2) + inttohex(A, 2);
-    eclYMCAColor: Result := inttohex(255 - BYB, 2) + inttohex(255 - GMS, 2)  + inttohex(255 - RCH, 2) + inttohex(A, 2);
-    eclHSBColor: Result := inttohex(RCH, 2) + inttohex(GMS, 2) + inttohex(BYB, 2);
-    eclBSHColor: Result := inttohex(BYB, 2) + inttohex(GMS, 2) + inttohex(RCH, 2);
-    eclAHSBColor: Result := inttohex(A, 2) + inttohex(RCH, 2) + inttohex(GMS, 2) + inttohex(BYB, 2);
-    eclABSHColor: Result := inttohex(A, 2) + inttohex(BYB, 2) + inttohex(GMS, 2) + inttohex(RCH, 2);
-    eclHSBAColor: Result := inttohex(RCH, 2) + inttohex(GMS, 2) + inttohex(BYB, 2) +  inttohex(A, 2);
-    eclBSHAColor: Result := inttohex(BYB, 2) + inttohex(GMS, 2) + inttohex(RCH, 2) + inttohex(A, 2);
+    eclRGBColor: Result := intToHex(RCH, 2) + intToHex(GMS, 2) + intToHex(BYB, 2);
+    eclBGRColor: Result := intToHex(BYB, 2) + intToHex(GMS, 2) + intToHex(RCH, 2);
+    eclARGBColor: Result := intToHex(A, 2) + intToHex(RCH, 2) + intToHex(GMS, 2) + intToHex(BYB, 2);
+    eclABGRColor: Result := intToHex(A, 2) + intToHex(BYB, 2) + intToHex(GMS, 2) + intToHex(RCH, 2);
+    eclRGBAColor: Result := intToHex(RCH, 2) + intToHex(GMS, 2) + intToHex(BYB, 2) + intToHex(A, 2);
+    eclBGRAColor: Result := intToHex(BYB, 2) + intToHex(GMS, 2) + intToHex(RCH, 2) + intToHex(A, 2);
+    eclCMYColor: Result := intToHex(255 - RCH, 2) + intToHex(255 - GMS, 2)  + intToHex(255 - BYB, 2);
+    eclYMCColor: Result := intToHex(255 - BYB, 2) + intToHex(255 - GMS, 2)  + intToHex(255 - RCH, 2);
+    eclACMYColor: Result := intToHex(A, 2) + intToHex(255 - RCH, 2) + intToHex(255 - GMS, 2) + intToHex(255 - BYB, 2);
+    eclAYMCColor: Result := intToHex(A, 2) + intToHex(255 - BYB, 2) + intToHex(255 - GMS, 2) + intToHex(255 - RCH, 2);
+    eclCMYAColor: Result := intToHex(255 - RCH, 2) + intToHex(255 - GMS, 2) + intToHex(255 - BYB, 2) + intToHex(A, 2);
+    eclYMCAColor: Result := intToHex(255 - BYB, 2) + intToHex(255 - GMS, 2) + intToHex(255 - RCH, 2) + intToHex(A, 2);
+    eclHSBColor: Result := intToHex(RCH, 2) + intToHex(GMS, 2) + intToHex(BYB, 2);
+    eclBSHColor: Result := intToHex(BYB, 2) + intToHex(GMS, 2) + intToHex(RCH, 2);
+    eclAHSBColor: Result := intToHex(A, 2) + intToHex(RCH, 2) + intToHex(GMS, 2) + intToHex(BYB, 2);
+    eclABSHColor: Result := intToHex(A, 2) + intToHex(BYB, 2) + intToHex(GMS, 2) + intToHex(RCH, 2);
+    eclHSBAColor: Result := intToHex(RCH, 2) + intToHex(GMS, 2) + intToHex(BYB, 2) + intToHex(A, 2);
+    eclBSHAColor: Result := intToHex(BYB, 2) + intToHex(GMS, 2) + intToHex(RCH, 2) + intToHex(A, 2);
   end;
+  Result := APrefix + Result;
 end;     
+
+function GetColorIntensity(AColor: TColor): Integer;
+begin
+  Result:=341*(AColor and $FF + (AColor shr 8) and $FF + (AColor shr 16) and $FF) shr 10;
+end;
 
 function GetColorResolvingDefault(ASourceColor, ADefColor: TColor): TColor;
 begin
   Result := ASourceColor;
   if Result = clDefault then Result := ADefColor;
 end; 
+
+function GetColorResolvingEnabled(ASourceColor: TColor; AEnabled: Boolean): TColor;
+begin
+  Result := ASourceColor;
+  if not AEnabled then Result := GetMonochromaticColor(Result);
+end;
 
 function GetColorResolvingDefAndEnabled(ASourceColor, ADefColor: TColor; AEnabled: Boolean): TColor;
 begin
@@ -427,12 +470,32 @@ begin
   Result := RGBToColor(aR, aG, aB);
 end;
 
+function GetMergedMonoColor(AColor, BColor: TColor; AProportion: Single): TColor;
+var i, j: Integer;
+begin
+  i := GetColorIntensity(ColorToRGB(AColor));
+  j := GetColorIntensity(ColorToRGB(BColor));
+  i := j + trunc((i - j)*AProportion);
+  Result := (i shl 16) or (i shl 8) or i;
+end;
+
 function GetMonochromaticColor(AColor: TColor): TColor;
+var i: Integer;
+begin
+  i := GetColorIntensity(ColorToRGB(AColor));
+  Result := (i shl 16) or (i shl 8) or i;
+end;
+
+function GetSaturatedColor(AColor: TColor; AValue: Single): TColor;  { (monochrom) 0..1 (no change) }
 var r, g, b: Integer;
+    aComplement: Single;
 begin
   GetRGBIntValues(ColorToRGB(AColor), r, g, b);
-  r := 341*(r + g + b) shr 10;
-  Result := RGBToColor(r, r, r);
+  aComplement := 0.33333*(1 - AValue)*(r + g + b);
+  r := trunc(AValue*r + aComplement);
+  g := trunc(AValue*g + aComplement);
+  b := trunc(AValue*b + aComplement);
+  Result := RGBToColor(r, g, b);
 end;
 
 procedure IncludeRectangle(var AResultRect: TRect; const AppendRect: TRect);
@@ -441,6 +504,16 @@ begin
   AResultRect.Top := Math.min(AResultRect.Top, AppendRect.Top);
   AResultRect.Right := Math.max(AResultRect.Right, AppendRect.Right);
   AResultRect.Bottom := Math.max(AResultRect.Bottom, AppendRect.Bottom);
+end;
+
+function InRangeCO(const AValue, AMin, AMax: Integer): Boolean;
+begin
+  Result := ((AValue >= AMin) and (AValue < AMax));
+end;
+
+function IsColorDark(AColor: TColor): Boolean;
+begin
+  Result := (GetColorIntensity(ColorToRGB(AColor)) < 160);
 end;
 
 function IsInRange(AValue, ALimit, BLimit: Integer): Boolean;
@@ -466,24 +539,72 @@ begin
     then AMax := logn(ALogarithmBase, AMax)
     else AMax := 0;
   Result := power(ALogarithmBase, AMin + (AMax - AMin)*aProportion);  
-end;  
+end;
 
-function NormalizeRectangle(PointAX, PointAY, PointBX, PointBY: Integer): TRect;
-var i: Integer;
+function ModifyBrightness(AColor: TColor; ABrighness: Single): TColor;
+var r, g, b: Integer;
 begin
-  if PointAX > PointBX then
+  GetRGBIntValues(AColor, r, g, b);
+  b := round(b*ABrighness);
+  if b > 255 then b := 255;
+  g := round(g*ABrighness);
+  if g > 255 then g := 255;
+  r:=round(r*ABrighness);
+  if r > 255 then r := 255;
+  Result:=RGBToColor(r, g, b);
+end;
+
+function NormalizedRect(AX, AY, BX, BY: Integer): TRect;
+begin
+  if AX<=BX then
     begin
-      i := PointAX;
-      PointAX := PointBX;
-      PointBX := i;
-    end;
-  if PointAY > PointBY then
+      Result.Left:=AX;
+      Result.Right:=BX;
+    end else
     begin
-      i := PointAY;
-      PointAY := PointBY;
-      PointBY := i;
+      Result.Left:=BX;
+      Result.Right:=AX;
     end;
-  Result := Rect(PointAX, PointAY, PointBX, PointBY);
+  if AY<=BY then
+    begin
+      Result.Top:=AY;
+      Result.Bottom:=BY;
+    end else
+    begin
+      Result.Top:=BY;
+      Result.Bottom:=AY;
+    end;
+end;
+
+procedure NormalizeRectangle(var ARect: TRect);
+var k: Integer;
+begin
+  if ARect.Left > ARect.Right then
+    begin
+      k := ARect.Left;
+      ARect.Left := ARect.Right;
+      ARect.Right := k;
+    end;
+  if ARect.Top > ARect.Bottom then
+    begin
+      k := ARect.Top;
+      ARect.Top := ARect.Bottom;
+      ARect.Bottom := k;
+    end;
+end;
+
+function PointToRect(const APoint: TPoint; ASize: Integer): TRect;
+begin
+  Result.Left := APoint.X - ASize div 2;
+  Result.Top := APoint.Y - ASize div 2;
+  Result.Right := Result.Left + ASize;
+  Result.Bottom := Result.Top + ASize;
+end;
+
+function RectToPoint(const ARect: TRect): TPoint;
+begin
+  Result.X := (ARect.Left + ARect.Right) div 2;
+  Result.Y := (ARect.Top + ARect.Bottom) div 2;
 end;
 
 function TrimColorString(const AString: string): string;
@@ -495,8 +616,7 @@ begin
     begin
       {$IFDEF DBGLINE} DebugLn('Character '+ AString[i]); {$ENDIF}
       aChar := aString[i];
-      if (aChar in ['0'..'9']) or (aChar in ['A'..'F']) or (aChar in ['a'..'f']) 
-        then Result:=Result + aChar;
+      if (aChar in ['0'..'9', 'A'..'F', 'a'..'f']) then Result := Result + aChar;
     end;
   {$IFDEF DBGLINE} DebugLn('Result: '+ Result); {$ENDIF}
 end;     
@@ -507,11 +627,9 @@ var i, aLength: SmallInt;
 begin
   if ALayout > eclSystemBGR then
     begin      
-      if ALayout in [eclARGBColor, eclABGRColor, eclRGBAColor, eclBGRAColor,
-                     eclACMYColor, eclAYMCColor, eclCMYAColor, eclYMCAColor,
-                     eclAHSBColor, eclABSHColor, eclHSBAColor, eclBSHAColor]
-        then aLength := 8
-        else aLength := 6;
+      if ALayout in [eclRGBColor, eclBGRColor, eclCMYColor, eclYMCColor, eclHSBColor, eclBSHColor]
+        then aLength := 6
+        else aLength := 8;
       AString := TrimColorString(AString);
       {$IFDEF DBGLINE} DebugLn('AColorString ' + AString); {$ENDIF}
       AString:= RightStr(AString, aLength);
@@ -565,24 +683,21 @@ begin
         end;
         Result := True;
       except
-        Result := False;
       end;
     end else
     begin
       try
-        AString := trim(AString);
-        if not IdentToColor(AString, AColor) then
+        Result := IdentToColor(trim(AString), AColor);
+        if not Result then
           begin
             AString := TrimColorString(AString);
-            if AString <> '' 
-              then AColor := TColor(Hex2Dec(AString))
-              else AColor := clBlack;
+            i := length(AString);
+            Result := (i in [6, 8]);
+            if Result then AColor := TColor(Hex2Dec(AString));
           end;
-        Result := True;
       except
-        Result := False;
       end;
-    end;                    
+    end;
 end;
 
 operator = (ARect, BRect: TRect): Boolean;
@@ -604,6 +719,41 @@ procedure TCanvasHelper.DrawButtonBackground(ARect: TRect; AItemState: TItemStat
 begin                
   ThemeServices.DrawElement(Handle,
     ThemeServices.GetElementDetails(caThemedItems[AItemState]), ARect, nil);   
+end;
+
+procedure TCanvasHelper.DrawFinePanelBkgnd(ARect: TRect; ABevelCut: TBevelCut; ABevelWidth: SmallInt;
+            AColor3DDark, AColor3DLight, AColor: TColor; AFillBkgnd: Boolean);
+var i: Integer;
+    aProportion: Single;
+    aSwapColor: TColor;
+begin
+  AColor3DDark := GetColorResolvingDefault(AColor3DDark, clBtnShadow);
+  AColor3DLight := GetColorResolvingDefault(AColor3DLight, clBtnHilight);
+  if ABevelCut = bvLowered then
+    begin
+      aSwapColor := AColor3DDark;
+      AColor3DDark := AColor3DLight;
+      AColor3DLight := aSwapColor;
+    end;
+  Pen.Width := 1;
+  for i := 0 to ABevelWidth - 1 do
+    begin
+      if not (ABevelCut = bvLowered)
+        then aProportion := i/ABevelWidth
+        else aProportion := 1 - (i + 1)/ABevelWidth;
+      Pen.Color := GetMergedColor(AColor, AColor3DLight, aProportion);
+      Line(ARect.Left + i, ARect.Top + i, ARect.Left + i, ARect.Bottom - i);
+      Line(ARect.Left + i, ARect.Top + i, ARect.Right - i, ARect.Top + i);
+      Pen.Color := GetMergedColor(AColor, AColor3DDark, aProportion);
+      Line(ARect.Left + i, ARect.Bottom - i - 1, ARect.Right - i, ARect.Bottom - i - 1);
+      Line(ARect.Right - i - 1, ARect.Top + i, ARect.Right - i - 1, ARect.Bottom - i);
+    end;
+  if AFillBkgnd then
+    begin
+      Brush.Color := AColor;
+      InflateRect(ARect, -ABevelWidth, -ABevelWidth);
+      FillRect(ARect);
+    end;
 end;
 
 procedure TCanvasHelper.DrawFocusRectNonThemed(const ARect: TRect);
@@ -643,7 +793,7 @@ begin
   if not bDefault3D then
     begin
       AColor3DDark := GetColorResolvingDefault(AColor3DDark, clBtnShadow);
-      AColor3DLight := GetColorResolvingDefault(AColor3DLight, clBtnHilight);   
+      AColor3DLight := GetColorResolvingDefault(AColor3DLight, clBtnHiLight);
     end;
   Brush.Color := AColor;
   if bDefault3D then
@@ -652,7 +802,7 @@ begin
     end else
     case ABevelOuter of
       bvLowered: Frame3D(ARect, AColor3DDark, AColor3DLight, ABevelWidth);
-      bvRaised: Frame3D(ARect, AColor3DLight, AColor3DDark, ABevelWidth);     
+      bvRaised: Frame3D(ARect, AColor3DLight, AColor3DDark, ABevelWidth);
       bvSpace: Frame3D(ARect, ABevelWidth, bvSpace);
     end;
   Frame3D(ARect, ABevelSpace, bvSpace);
@@ -662,7 +812,7 @@ begin
     end else
     case ABevelInner of
       bvLowered: Frame3D(ARect, AColor3DDark, AColor3DLight, ABevelWidth);
-      bvRaised: Frame3D(ARect, AColor3DLight, AColor3DDark, ABevelWidth); 
+      bvRaised: Frame3D(ARect, AColor3DLight, AColor3DDark, ABevelWidth);
       bvSpace: Frame3D(ARect, ABevelWidth, bvSpace);
     end;
   FillRect(ARect);
@@ -697,22 +847,11 @@ procedure TCanvasHelper.SetFontParams(AOrientation: Integer; ASize: Integer; ASt
 begin
   with Font do
     begin
-      Orientation:=AOrientation;
-      Size:=ASize;
-      Style:=AStyle;
+      Orientation := AOrientation;
+      Size := ASize;
+      Style := AStyle;
     end;
 end;
-
-procedure TCanvasHelper.SetRealGlyphColor(AGlyphColor: TColor; AState: TItemState);
-begin
-  AGlyphColor := GetColorResolvingDefault(AGlyphColor, clBtnText);
-  if AState in [eisHighlighted, eisPushedHihlighted] 
-    then AGlyphColor := GetMergedColor(clWhite, AGlyphColor, 0.27)
-    else if AState in [eisDisabled, eisPushedDisabled] then
-           AGlyphColor := GetMergedColor(Pixels[Width div 2, Height div 2], AGlyphColor, 0.67);     
-  Brush.Color := AGlyphColor;
-  Pen.Color := AGlyphColor;
-end;      
 
 { TBitmapHelper }
 
@@ -747,12 +886,23 @@ begin
       begin
         FFontStyles := Font.Style;
         FFontSize := Font.Size;
-      end
+      end;
+end;
+
+procedure TFontOptions.ApplyTo(AFont: TFont; ADefColor: TColor);
+begin
+  AFont.BeginUpdate;
+  if FontColor <> clDefault
+    then AFont.Color := FontColor
+    else if AFont.Color = clDefault then AFont.Color := ADefColor;
+  AFont.Size := FontSize;
+  AFont.Style := FontStyles;
+  AFont.EndUpdate;
 end;
 
 function TFontOptions.IsIdentical(AFont: TFont): Boolean;
 begin
-  Result:= ((AFont.Color=FontColor) and (AFont.Size=FontSize) and (AFont.Style=FontStyles));
+  Result := ((AFont.Color = FontColor) and (AFont.Size = FontSize) and (AFont.Style = FontStyles));
 end;
 
 procedure TFontOptions.RecalcRedraw;
@@ -796,8 +946,8 @@ begin
   FBevelOuter := bvRaised;
   FBevelWidth := 1;           
   Color := clDefault;   
-  FColor3DDark:=clDefault;
-  FColor3DLight:=clDefault;
+  FColor3DDark := clDefault;
+  FColor3DLight := clDefault;
 end;   
 
 procedure TECBaseControl.BeginUpdate;
@@ -967,18 +1117,17 @@ begin
 end;     
 
 procedure TECCustomKnob.DrawKnobs;
-var aColor: TColor;
-    aHeight, aWidth, h, i, j, k: Integer;
+var aHeight, aWidth, h, i, j, k: Integer;
     aLight, aVert: Boolean;
     aRect: TRect;
 
   procedure DrawPanelBevel(AKnob: TBitmap);
   var aColor3DDark, aColor3DLight: TColor;
   begin
+    aColor3DDark := Parent.FColor3DDark;
+    aColor3DLight := Parent.FColor3DLight;
     with AKnob.Canvas do
       begin
-        aColor3DDark := Parent.FColor3DDark;
-        aColor3DLight := Parent.FColor3DLight;
         if (aColor3DDark = clDefault) and (aColor3DLight = clDefault) then
           begin
             Frame3D(aRect, BevelWidth, bvRaised);
@@ -989,19 +1138,6 @@ var aColor: TColor;
             Frame3D(aRect, aColor3DLight, aColor3DDark, BevelWidth);
           end;
       end;
-  end;
-
-  function ModifyBrightness(AColor: TColor; ABrighness: Single): TColor;
-  var r, g, b: Integer;
-  begin
-    GetRGBIntValues(AColor, r, g, b);
-    b := round(b*ABrighness);
-    if b > 255 then b := 255;
-    g := round(g*ABrighness);
-    if g > 255 then g := 255;
-    r:=round(r*ABrighness);
-    if r > 255 then r := 255;
-    Result:=RGBToColor(r, g, b);
   end;
 
   procedure DrawTick(AKnob: TBitmap; AEnabled: Boolean = True);
@@ -1046,7 +1182,7 @@ var aColor: TColor;
             begin
               if TickMarkStyle = etsSolid then
                 begin 
-                  DrawLine(i, h-1, j, aBrightness[aLight, AEnabled, 0]);
+                  DrawLine(i, h - 1, j, aBrightness[aLight, AEnabled, 0]);
                   DrawLine(i, h, j, aBrightness[aLight, AEnabled, 0]);
                 end else
                 begin
@@ -1083,6 +1219,7 @@ var aColor: TColor;
       end;
   end;
 
+var aColor: TColor;
 begin
   {$IFDEF DBGLINE} DebugLn('DrawKnobs'); {$ENDIF}
   if (UpdateCount = 0) and assigned(Parent) and assigned(Parent.Parent) then
@@ -1111,10 +1248,22 @@ begin
             aRect := Rect(i, i, Width - i, Height - i);
             KnobNormal.Canvas.Brush.Color := GetColorResolvingDefault(Color, BackgroundColor);
             KnobNormal.Canvas.FillRect(aRect);
-            KnobDisabled.Canvas.Brush.Color := ModifyBrightness(ColorToRGB(KnobNormal.Canvas.Brush.Color), 0.97);
+            KnobDisabled.Canvas.Brush.Color := ModifyBrightness(ColorToRGB(KnobNormal.Canvas.Brush.Color), 0.94);
             KnobDisabled.Canvas.FillRect(aRect);
             KnobHighlighted.Canvas.Brush.Color := ModifyBrightness(ColorToRGB(KnobNormal.Canvas.Brush.Color), 1.07);
             KnobHighlighted.Canvas.FillRect(aRect);
+          end;
+        eosFinePanel:
+          begin
+            aColor := GetColorResolvingDefault(Color, BackgroundColor);
+            KnobNormal.Canvas.DrawFinePanelBkgnd(aRect, bvRaised, BevelWidth,
+              Parent.FColor3DDark, Parent.FColor3DLight, aColor, True);
+            aColor := ModifyBrightness(ColorToRGB(KnobNormal.Canvas.Brush.Color), 0.94);
+            KnobDisabled.Canvas.DrawFinePanelBkgnd(aRect, bvRaised, BevelWidth,
+              Parent.FColor3DDark, Parent.FColor3DLight, aColor, True);
+            aColor := ModifyBrightness(ColorToRGB(KnobNormal.Canvas.Brush.Color), 1.07);
+            KnobHighlighted.Canvas.DrawFinePanelBkgnd(aRect, bvRaised, BevelWidth,
+              Parent.FColor3DDark, Parent.FColor3DLight, aColor, True);
           end;
       end;
       aVert := (Parent.FOrientation = eooVertical);
@@ -1202,7 +1351,7 @@ end;
 
 { TECCustomKnob.Setters }
 
-procedure TECCustomKnob.SetBackgroundColor(AValue: TColor);
+procedure TECCustomKnob.SetBackgroundColor(const AValue: TColor);
 var aTransColor: TColor;
 begin
   if FBackgroundColor = AValue then exit;
@@ -1308,10 +1457,10 @@ end;
 constructor TBaseScrollControl.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  FAreaHeight:=-1;
-  FAreaWidth:=-1;
+  FAreaHeight := -1;
+  FAreaWidth := -1;
   { scrollbars }
-  SetDefaultScrollParams;
+  FScrollBars := ssAutoBoth;
 end;   
 
 procedure TBaseScrollControl.BeginUpdate;
@@ -1319,107 +1468,107 @@ begin
   inc(UpdateCount);
 end; 
 
-procedure TBaseScrollControl.CreateWnd;
+procedure TBaseScrollControl.CreateHandle;
 begin
-  inherited CreateWnd;
-  FClientAreaLeft:=ClientRect.Left;
-  FClientAreaTop:=ClientRect.Top;
-  FScrollInfoHor.fMask:=SIF_RANGE or SIF_PAGE or SIF_POS or SIF_DISABLENOSCROLL;  
-  FScrollInfoHor.nMax:=0;
-  FScrollInfoHor.nMin:=0;
-  FScrollInfoHor.nPos:=0;
-  FScrollInfoVert:=FScrollInfoHor;  
-  FScrollInfoHor.nPage:=ClientWidth;
-  FScrollInfoVert.nPage:=ClientHeight;
-end;   
+  inherited CreateHandle;
+  FClientAreaLeft := ClientRect.Left;
+  FClientAreaTop := ClientRect.Top;
+  FScrollInfoHor.fMask := SIF_RANGE or SIF_PAGE or SIF_POS or SIF_DISABLENOSCROLL;
+  FScrollInfoHor.nMax := 0;
+  FScrollInfoHor.nMin := 0;
+  FScrollInfoHor.nPos := 0;
+  FScrollInfoVert := FScrollInfoHor;
+  FScrollInfoHor.nPage := ClientWidth;
+  FScrollInfoVert.nPage := ClientHeight;
+  UpdateScrollBars;
+end;
+
+procedure TBaseScrollControl.DoUpdated;
+begin
+  Invalidate;
+end;
 
 procedure TBaseScrollControl.EndUpdate;
 begin
   dec(UpdateCount);
-  if UpdateCount=0 then Invalidate;
+  if UpdateCount = 0 then DoUpdated;
 end;
         
 procedure TBaseScrollControl.InvalidateNonUpdated;
 begin
-  if UpdateCount=0 then Invalidate;
+  if UpdateCount = 0 then DoUpdated;
 end;
 
-procedure TBaseScrollControl.SetDefaultScrollParams;
+procedure TBaseScrollControl.UpdateScrollBars;
 begin
-  FIncrementX:=1;
-  FIncrementY:=1;
-  FScrollBars:=ssAutoBoth;
-end;     
-           
-procedure TBaseScrollControl.UpdateScrollBars(AValue: TScrollStyle);
-begin
-  case AValue of
-  ssNone: 
-    begin
-      ShowScrollBar(Handle, SB_HORZ, False);
-      ShowScrollBar(Handle, SB_VERT, False);
-    end; 
-  ssHorizontal: 
-    begin
-      ShowScrollBar(Handle, SB_HORZ, True);
-      ShowScrollBar(Handle, SB_VERT, False);
-    end;    
-  ssVertical: 
-    begin
-      ShowScrollBar(Handle, SB_HORZ, False);
-      ShowScrollBar(Handle, SB_VERT, True);
-    end;  
-  ssBoth: 
-    begin
-      ShowScrollBar(Handle, SB_HORZ, True);
-      ShowScrollBar(Handle, SB_VERT, True);
-    end;
-  ssAutoHorizontal: 
-    begin
-      ShowScrollBar(Handle, SB_HORZ, FRequiredArea.X>ClientWidth);
-      ShowScrollBar(Handle, SB_VERT, False);
-    end;     
-  ssAutoVertical: 
-    begin
-      ShowScrollBar(Handle, SB_HORZ, False);
-      ShowScrollBar(Handle, SB_VERT, FRequiredArea.Y>ClientHeight);
-    end;   
-  ssAutoBoth: 
-    begin
-      ShowScrollBar(Handle, SB_HORZ, FRequiredArea.X>ClientWidth);
-      ShowScrollBar(Handle, SB_VERT, FRequiredArea.Y>ClientHeight);
-    end;
-  end;
+  case ScrollBars of
+    ssNone:
+      begin
+        ShowScrollBar(Handle, SB_HORZ, False);
+        ShowScrollBar(Handle, SB_VERT, False);
+      end;
+    ssHorizontal:
+      begin
+        ShowScrollBar(Handle, SB_HORZ, True);
+        ShowScrollBar(Handle, SB_VERT, False);
+      end;
+    ssVertical:
+      begin
+        ShowScrollBar(Handle, SB_HORZ, False);
+        ShowScrollBar(Handle, SB_VERT, True);
+      end;
+    ssBoth:
+      begin
+        ShowScrollBar(Handle, SB_HORZ, True);
+        ShowScrollBar(Handle, SB_VERT, True);
+      end;
+    ssAutoHorizontal:
+      begin
+        ShowScrollBar(Handle, SB_HORZ, FRequiredArea.X > ClientWidth);
+        ShowScrollBar(Handle, SB_VERT, False);
+      end;
+    ssAutoVertical:
+      begin
+        ShowScrollBar(Handle, SB_HORZ, False);
+        ShowScrollBar(Handle, SB_VERT, FRequiredArea.Y > ClientHeight);
+      end;
+    ssAutoBoth:
+      begin
+        ShowScrollBar(Handle, SB_HORZ, FRequiredArea.X > ClientWidth);
+        ShowScrollBar(Handle, SB_VERT, FRequiredArea.Y > ClientHeight);
+      end;
+  end;  {case}
   UpdateScrollInfoHor;
   UpdateScrollInfoVert;
 end;  
 
 procedure TBaseScrollControl.UpdateScrollInfoHor;
 begin
-  FScrollInfoHor.nPos:=ClientAreaLeft;
-  FScrollInfoHor.nMax:=FullAreaWidth;
+  FScrollInfoHor.nPos := ClientAreaLeft;
+  FScrollInfoHor.nMax := FullAreaWidth;
   if HandleAllocated then SetScrollInfo(Handle, SB_Horz, FScrollInfoHor, False);
 end;
 
 procedure TBaseScrollControl.UpdateScrollInfoVert;
 begin
-  FScrollInfoVert.nPos:=ClientAreaTop;
-  FScrollInfoVert.nMax:=FullAreaHeight;
+  FScrollInfoVert.nPos := ClientAreaTop;
+  FScrollInfoVert.nMax := FullAreaHeight;
   if HandleAllocated then SetScrollInfo(Handle, SB_Vert, FScrollInfoVert, False);
 end;             
 
 procedure TBaseScrollControl.WMHScroll(var Msg: TWMScroll);
 begin
-  { modify ClientArea and its setter will adjust scrollbar }
+  { modify ClientAreaLeft and its setter will adjust H-scrollbar }
   {$IFDEF DBGLINE} DebugLn('TBaseECScheme.WMHScroll'); {$ENDIF}
   case Msg.ScrollCode of
-    SB_LINELEFT: ClientAreaLeft:=ClientAreaLeft-IncrementX;
-    SB_LINERIGHT: ClientAreaLeft:=ClientAreaLeft+IncrementX;  
-    SB_PAGELEFT: ClientAreaLeft:=ClientAreaLeft-ClientWidth;  
-    SB_PAGERIGHT: ClientAreaLeft:=ClientAreaLeft+ClientWidth;
-    SB_THUMBPOSITION, SB_THUMBTRACK: ClientAreaLeft:=Msg.Pos;
-    SB_LEFT: ClientAreaLeft:=0;
-    SB_RIGHT: ClientAreaLeft:=FullAreaWidth;
+    SB_LINELEFT: ClientAreaLeft := ClientAreaLeft - GetIncrementX;
+    SB_LINERIGHT: ClientAreaLeft := ClientAreaLeft + GetIncrementX;
+    SB_PAGELEFT: ClientAreaLeft := ClientAreaLeft - GetPageSizeX;
+    SB_PAGERIGHT: ClientAreaLeft := ClientAreaLeft + GetPageSizeX;
+    SB_THUMBPOSITION, SB_THUMBTRACK: ClientAreaLeft := Msg.Pos;
+    SB_LEFT: ClientAreaLeft := 0;
+    SB_RIGHT: ClientAreaLeft := FullAreaWidth;
+    SB_ENDSCROLL: ClientAreaLeft := Msg.Pos;  { when repaints during tracking is disabled by children }
   end;
 end;
 
@@ -1427,30 +1576,33 @@ procedure TBaseScrollControl.WMSize(var Message: TLMSize);
 var aCW, aCH: Integer;
 begin
   {$IFDEF DBGLINE} DebugLn('WMSize W: ', inttostr(Width), ', H: ', inttostr(Height)); {$ENDIF}
-  inherited WMSize(Message); 
-  aCW:=ClientWidth;
-  aCH:=ClientHeight;
-  FScrollInfoHor.nPage:=aCW;
-  FScrollInfoVert.nPage:=aCH;
-  if (AreaWidth>-1) and (AreaWidth<aCW) then AreaWidth:=aCW;
-  if (AreaHeight>-1) and (AreaHeight<aCH) then AreaHeight:=aCH;
-  ClientAreaLeft:=Math.min(ClientAreaLeft, FRequiredArea.X-aCW);
-  ClientAreaTop:=Math.min(ClientAreaTop, FRequiredArea.Y-aCH);
-  UpdateScrollBars(ScrollBars);      
+  inherited WMSize(Message);
+  aCW := ClientWidth;
+  aCH := ClientHeight;
+  {$IFDEF DBGLINE} DebugLn('WMSize CW: ', inttostr(ClientWidth), ', CH: ', inttostr(ClientHeight)); {$ENDIF}
+  FScrollInfoHor.nPage := aCW;
+  FScrollInfoVert.nPage := aCH;
+  if (AreaWidth > -1) and (AreaWidth < aCW) then AreaWidth := aCW;
+  if (AreaHeight > -1) and (AreaHeight < aCH) then AreaHeight := aCH;
+  ClientAreaLeft := Math.min(ClientAreaLeft, FRequiredArea.X - aCW);
+  ClientAreaTop := Math.min(ClientAreaTop, FRequiredArea.Y - aCH);
+  UpdateScrollBars;
   Invalidate;
 end;
 
-procedure TBaseScrollControl.WMVScroll(var Msg: TWMScroll); 
+procedure TBaseScrollControl.WMVScroll(var Msg: TWMScroll);
 begin
-  {$IFDEF DEBUG} DebugLn('TBaseECScheme.WMVScroll'); {$ENDIF}
+  { modify ClientAreaTop and its setter will adjust V-scrollbar }
+  {$IFDEF DBGLINE} DebugLn('TBaseECScheme.WMVScroll'); {$ENDIF}
   case Msg.ScrollCode of
-    SB_LINEUP: ClientAreaTop:=ClientAreaTop-IncrementY;
-    SB_LINEDOWN: ClientAreaTop:=ClientAreaTop+IncrementY;
-    SB_PAGEUP: ClientAreaTop:=ClientAreaTop-ClientHeight;
-    SB_PAGEDOWN: ClientAreaTop:=ClientAreaTop+ClientHeight;
-    SB_THUMBPOSITION, SB_THUMBTRACK: ClientAreaTop:=Msg.Pos;
-    SB_TOP: ClientAreaTop:=0;
-    SB_BOTTOM: ClientAreaTop:=FullAreaHeight;
+    SB_LINEUP: ClientAreaTop := ClientAreaTop - GetIncrementY;
+    SB_LINEDOWN: ClientAreaTop := ClientAreaTop + GetIncrementY;
+    SB_PAGEUP: ClientAreaTop := ClientAreaTop - GetPageSizeY;
+    SB_PAGEDOWN: ClientAreaTop := ClientAreaTop + GetPageSizeY;
+    SB_THUMBPOSITION, SB_THUMBTRACK: ClientAreaTop := Msg.Pos;
+    SB_TOP: ClientAreaTop := 0;
+    SB_BOTTOM: ClientAreaTop := FullAreaHeight;
+    SB_ENDSCROLL: ClientAreaTop := Msg.Pos;  { when repaints during tracking is disabled by chidren }
   end;    
 end;   
 
@@ -1458,61 +1610,81 @@ end;
 
 function TBaseScrollControl.GetFullAreaHeight: Integer;
 begin
-  Result:=Math.max(ClientHeight, FRequiredArea.Y);
+  Result := Math.max(ClientHeight, FRequiredArea.Y);
 end;
 
 function TBaseScrollControl.GetFullAreaWidth: Integer;
 begin
-  Result:=Math.max(ClientWidth, FRequiredArea.X);
-end; 
+  Result := Math.max(ClientWidth, FRequiredArea.X);
+end;
+
+function TBaseScrollControl.GetIncrementX: Integer;
+begin
+  Result := 1;
+end;
+
+function TBaseScrollControl.GetIncrementY: Integer;
+begin
+  Result := 1;
+end;
+
+function TBaseScrollControl.GetPageSizeX: Integer;
+begin
+  Result := ClientWidth;
+end;
+
+function TBaseScrollControl.GetPageSizeY: Integer;
+begin
+  Result := ClientHeight;
+end;
          
 procedure TBaseScrollControl.SetAreaHeight(AValue: Integer);
 begin
-  if AValue>=0 then AValue:=Math.max(AValue, ClientHeight);
-  if (FAreaHeight=AValue) or ((AValue<0) and (FAreaHeight<0)) then exit;
-  FAreaHeight:=AValue;
+  if AValue >= 0 then AValue := Math.max(AValue, ClientHeight);
+  if (FAreaHeight = AValue) or ((AValue < 0) and (FAreaHeight < 0)) then exit;
+  FAreaHeight := AValue;
   UpdateRequiredAreaHeight;
-  UpdateScrollBars(ScrollBars);
+  UpdateScrollBars;
   Invalidate;
 end;
 
 procedure TBaseScrollControl.SetAreaWidth(AValue: Integer);
 begin
-  if AValue>=0 then AValue:=Math.max(AValue, ClientWidth);
-  if (FAreaWidth=AValue) or ((AValue<0) and (FAreaWidth<0)) then exit;
-  FAreaWidth:=AValue;
+  if AValue >= 0 then AValue := Math.max(AValue, ClientWidth);
+  if (FAreaWidth = AValue) or ((AValue < 0) and (FAreaWidth < 0)) then exit;
+  FAreaWidth := AValue;
   UpdateRequiredAreaWidth;
-  UpdateScrollBars(ScrollBars);
+  UpdateScrollBars;
   Invalidate;
-end; 
+end;
 
 procedure TBaseScrollControl.SetClientAreaLeft(AValue: Integer);
 begin
-  if AValue<0 
-    then AValue:=0
-    else if AValue>(FullAreaWidth-ClientWidth) then AValue:=FullAreaWidth-ClientWidth;     
-  if FClientAreaLeft=AValue then exit;
-  FClientAreaLeft:=AValue;
-  UpdateScrollBars(ScrollBars);
+  if AValue < 0
+    then AValue := 0
+    else if AValue > (FullAreaWidth - ClientWidth) then AValue := FullAreaWidth - ClientWidth;
+  if FClientAreaLeft = AValue then exit;
+  FClientAreaLeft := AValue;
+  UpdateScrollBars;
   InvalidateNonUpdated;  
 end;
  
 procedure TBaseScrollControl.SetClientAreaTop(AValue: Integer);
 begin
-  if AValue<0 
-    then AValue:=0
-    else if AValue>(FullAreaHeight-ClientHeight) then AValue:=FullAreaHeight-ClientHeight;
-  if FClientAreaTop=AValue then exit;
-  FClientAreaTop:=AValue;
-  UpdateScrollBars(ScrollBars);
-  InvalidateNonUpdated;  
+  if AValue < 0
+    then AValue := 0
+    else if AValue > (FullAreaHeight-ClientHeight) then AValue := FullAreaHeight - ClientHeight;
+  if FClientAreaTop = AValue then exit;
+  FClientAreaTop := AValue;
+  UpdateScrollBars;
+  InvalidateNonUpdated;
 end;  
 
 procedure TBaseScrollControl.SetScrollBars(AValue: TScrollStyle);
 begin
-  if FScrollBars=AValue then exit;
-  FScrollBars:=AValue;
-  UpdateScrollBars(AValue);
+  if FScrollBars = AValue then exit;
+  FScrollBars := AValue;
+  UpdateScrollBars;
 end;
 
 initialization

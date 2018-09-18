@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -32,8 +32,7 @@ unit ECConfCurve;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, LMessages, LResources, Math,
-  ECTypes, Themes, types;
+  Classes, SysUtils, Controls, Graphics, LMessages, Math, ECTypes, Themes, Types;
 
 type
   {$PACKENUM 2}
@@ -216,8 +215,6 @@ type
     property OnResize;
   end;
 
-procedure Register;
-
 implementation
 
 { TCustomECConfCurve }
@@ -323,33 +320,36 @@ begin
 end;
 
 procedure TCustomECConfCurve.DeletePoint(AIndex: Integer);
-var i, aLength: Integer;
+var i, aLengthM1: Integer;
 begin
-  aLength:=length(Points);
-  if (AIndex>=0) and (AIndex<aLength) then
+  aLengthM1:=high(Points);
+  if (AIndex>=0) and (AIndex<=aLengthM1) then
     begin
-      for i:=AIndex to aLength-2 do
+      for i:=AIndex to aLengthM1-1 do
         Points[i]:=Points[i+1];
-      SetLength(Points, aLength-1);
+      SetLength(Points, aLengthM1);
       InvalidateNonUpdated;
     end;
 end;
 
-function TCustomECConfCurve.DoMouseWheel(Shift: TShiftState;
-  WheelDelta: Integer; MousePos: TPoint): Boolean;
+function TCustomECConfCurve.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
 var aInc: Single;
     i: Integer;
 begin
   Result:=inherited DoMouseWheel(Shift, WheelDelta, MousePos);
-  if ([ecoReadOnly, ecoWheelShifts]*Options)=[ecoWheelShifts] then
+  if not Result then
     begin
-      aInc:=WheelShift;
-      if WheelDelta<0 then aInc:=-aInc;
-      if not (ecoFixedMin in Options) then FValueAtMin:=FValueAtMin+aInc;
-      if not (ecoFixedMax in Options) then FValueAtMax:=FValueAtMax+aInc;
-      for i:=0 to length(Points)-1 do
-        Points[i].Y:=Points[i].Y+aInc;
-      InvalidateNonUpdated;
+      if ([ecoReadOnly, ecoWheelShifts]*Options)=[ecoWheelShifts] then
+        begin
+          aInc:=WheelShift;
+          if WheelDelta<0 then aInc:=-aInc;
+          if not (ecoFixedMin in Options) then FValueAtMin:=FValueAtMin+aInc;
+          if not (ecoFixedMax in Options) then FValueAtMax:=FValueAtMax+aInc;
+          for i:=0 to high(Points) do
+            Points[i].Y:=Points[i].Y+aInc;
+          InvalidateNonUpdated;
+        end;
+      Result:=True;
     end;
 end;
 
@@ -574,7 +574,7 @@ begin
                   exit;  { Exit! }
                 end;
             end;
-          for i:=0 to length(Points)-1 do
+          for i:=0 to high(Points) do
             if [epoFixedX, epoFixedY]*Points[i].Options<>[epoFixedX, epoFixedY] then
               begin
                 aPoint:=GetCanvasPoint(Points[i].X, Points[i].Y);
@@ -618,7 +618,7 @@ begin
                     if FHovered>0
                       then aLeftBound:=Points[FHovered-1].X
                       else aLeftBound:=MinX;
-                    if FHovered<(length(Points)-1)
+                    if FHovered<high(Points)
                       then aRightBound:=Points[FHovered+1].X
                       else aRightBound:=MaxX;
                     if f<aLeftBound
@@ -718,15 +718,15 @@ begin
   if Style=ecsLinear then
     begin
       Canvas.MoveTo(GetCanvasPoint(MinX, ValueAtMin));
-      for i:=0 to length(Points)-1 do
+      for i:=0 to high(Points) do
         Canvas.LineTo(GetCanvasPoint(Points[i].X, Points[i].Y));
       Canvas.LineTo(GetCanvasPoint(MaxX, ValueAtMax));
     end else
     begin
       SetLength(aPoints, 4+3*length(Points));
       aPoints[0]:=GetCanvasPoint(MinX, ValueAtMin);
-      aPoints[length(aPoints)-1]:=GetCanvasPoint(MaxX, ValueAtMax);
-      for i:=0 to length(Points)-1 do
+      aPoints[high(aPoints)]:=GetCanvasPoint(MaxX, ValueAtMax);
+      for i:=0 to high(Points) do
         aPoints[3+i*3]:=GetCanvasPoint(Points[i].X, Points[i].Y);
       if Smoothness>0 then
         begin
@@ -737,7 +737,7 @@ begin
           aSmoothX:=0;
           aSmoothY:=-Smoothness;
         end;
-      for i:=0 to length(aPoints)-1 do
+      for i:=0 to high(aPoints) do
         begin
           case i mod 3 of
             1:
@@ -807,7 +807,7 @@ begin
   if ecoFixedMin in Options
     then Canvas.FillRect(aRect)
     else Canvas.Frame(aRect);
-  for i:=0 to length(Points)-1 do
+  for i:=0 to high(Points) do
     begin
       aPoint:=GetCanvasPoint(Points[i].X, Points[i].Y);
       aRect:=GetPointRect(aPoint, eppMiddle);
@@ -960,11 +960,6 @@ begin
   InvalidateNonUpdated;
 end;
 
-procedure Register;
-begin
-  {$I ecconfcurve.lrs}
-  RegisterComponents('EC-C', [TECConfCurve]);
-end;
-
 end.
+
 

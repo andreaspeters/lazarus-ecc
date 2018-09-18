@@ -1,7 +1,7 @@
-{**************************************************************************************************
+{********************s******************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,12 +34,12 @@ unit ECSwitch;
 interface
 
 uses
-  Classes, SysUtils, Controls, StdCtrls, Graphics, Math, ActnList, Forms, Menus,   
+  Classes, SysUtils, Controls, StdCtrls, Graphics, Math, ActnList, Forms,
   LCLIntf, LMessages, LCLProc, LResources, LCLType, Themes, Types, ECTypes;
 
 type
   {$PACKENUM 2}
-  TGlyphStyle = (egsNone, egsOneZero, egsCircles, egsPlusMinus, egsDot); 
+  TGlyphStyle = (egsNone, egsOneZero, egsCircles, egsPlusMinus, egsDot, egsCircle);
     
   { TECSwitchKnob }
   TECSwitchKnob = class(TECCustomKnob)
@@ -99,7 +99,7 @@ type
     procedure SetSwitchHeight(AValue: Integer);
     procedure SetSwitchWidth(AValue: Integer);
   protected const
-    caClrGlyph: array[False..True] of TColor = ($D8D8D8, $F4F4F4);
+    caClrGlyph: array[False..True] of TColor = ($D8D8D8, $FFFFFF);
     cDefGlyphStyle = egsOneZero;
     cDefGrooveIndent = 7;
     cDefKnobIndent = 4;
@@ -107,16 +107,22 @@ type
     cDefSwitchWidth = 64;
     cFocusRectIndent: SmallInt = 3;
     cIndent = 5;
+  protected type
+    TResourceGlyph = (rgCircle4, rgCircle8, rgCircle12, rgZero4 ,rgZero8, rgZero12);
+  protected const
+    cSmallGlyph = 4;
+    cMediumGlyph = 8;
+    cLargeGlyph = 12;
   protected
     CaptionPoint, GlyphOnePoint, GlyphZeroPoint, SwitchPoint: TPoint;
     CaptionSize: TSize;
-    GlyphSize: SmallInt;  {0 - No glyph; 4 - Small glyph; 8 - Normal glyph }
+    GlyphSize: SmallInt;  {0 - No glyph; 4 - Small; 8 - Medium; 12 - Large glyph }
     InitMouseCoord: Integer;
     KnobCaptured: Boolean;                  
     KnobMouseDown: Boolean;
     KnobPosUnchecked, KnobPosChecked, KnobPosGrayed: Integer;
     NeedCalculate: Boolean;
-    class var GlyphFullCircle8, GlyphZero8, GlyphDot4, GlyphZero4: TPortableNetworkGraphic;
+    class var ArGlyphs: array [TResourceGlyph, 0..1] of TPortableNetworkGraphic;
     class constructor LoadGlyph;
     class destructor FreeGlyph;  
   protected  
@@ -193,7 +199,6 @@ type
     property Color3DDark;
     property Color3DLight;
     property Constraints;
-    property Cursor;
     property DragCursor;
     property DragKind;
     property DragMode;
@@ -203,14 +208,8 @@ type
 		property GrooveCheckedClr;		
     property GrooveIndent;
     property GrooveUncheckedClr;
-    property Height;
-    property HelpContext;
-    property HelpKeyword;
-    property HelpType;
-    property Hint;
     property Knob;
     property KnobIndent;
-    property Left;
     property Orientation default eooHorizontal;
     property ParentBiDiMode;
     {property ParentColor;}  { not needed }
@@ -225,9 +224,7 @@ type
     property SwitchWidth;
     property TabOrder;
     property TabStop default True;
-    property Top;
     property Visible;
-    property Width;
     property OnChangeBounds;
     property OnChange;
     property OnClick;
@@ -249,8 +246,6 @@ type
     property OnStartDrag;
     property OnUTF8KeyPress;   
   end;
-
-procedure Register;
 
 implementation
 
@@ -311,24 +306,27 @@ begin
 end;
 
 class constructor TCustomECSwitch.LoadGlyph;
+const castrGlyphNames: array [0..1, TResourceGlyph] of string = (('circle4', 'circle8', 'circle12',
+        'zero4', 'zero8', 'zero12'), ('circle5', 'circle9', 'circle13', 'zero5', 'zero9', 'zero13'));
+var aGlyph: TResourceGlyph;
+    aOdd: SmallInt;
 begin
   {$I ecswitch.lrs}
-  GlyphFullCircle8 := TPortableNetworkGraphic.Create;
-  GlyphFullCircle8.LoadFromLazarusResource('fullcircle8');  
-  GlyphZero8 := TPortableNetworkGraphic.Create;
-  GlyphZero8.LoadFromLazarusResource('zero8');  
-  GlyphDot4 := TPortableNetworkGraphic.Create;
-  GlyphDot4.LoadFromLazarusResource('fullcircle4');  
-  GlyphZero4 := TPortableNetworkGraphic.Create;
-  GlyphZero4.LoadFromLazarusResource('zero4');
+  for aGlyph in TResourceGlyph do
+    for aOdd := 0 to 1 do
+      begin
+        ArGlyphs[aGlyph, aOdd] := TPortableNetworkGraphic.Create;
+        ArGlyphs[aGlyph, aOdd].LoadFromLazarusResource(castrGlyphNames[aOdd, aGlyph]);
+      end;
 end;
 
 class destructor TCustomECSwitch.FreeGlyph;
+var aGlyph: TResourceGlyph;
+    aOdd: SmallInt;
 begin
-  FreeAndNil(GlyphFullCircle8);
-  FreeAndNil(GlyphZero8);
-  FreeAndNil(GlyphDot4);
-  FreeAndNil(GlyphZero4);
+  for aGlyph in TResourceGlyph do
+    for aOdd := 0 to 1 do
+      FreeAndNil(ArGlyphs[aGlyph, aOdd]);
 end;  
 
 procedure TCustomECSwitch.CalculatePreferredSize(var PreferredWidth, 
@@ -346,11 +344,11 @@ begin
       if CaptionPos in [eopRight, eopLeft] then
         begin
           PreferredWidth := SwitchWidth + cIndent + aTextSize.cx;
-          PreferredHeight := max(SwitchHeight, aTextSize.cy);
+          PreferredHeight := Math.max(SwitchHeight, aTextSize.cy);
         end else
         begin
           PreferredHeight := aTextSize.cy + cIndent + SwitchHeight;
-          PreferredWidth := max(SwitchWidth, aTextSize.cx);
+          PreferredWidth := Math.max(SwitchWidth, aTextSize.cx);
         end;
     end else
     begin
@@ -366,13 +364,27 @@ begin
 end;
 
 procedure TCustomECSwitch.Calculate;
-var aHelp, aMax, aUnchecked, aChecked: Integer;
+
+  procedure CalcGlyphSize(ALogHeight, ALogSwithWidth: SmallInt);
+  begin
+    dec(ALogHeight, 2*FGrooveIndent);  { Logical Switch Height -> Log. Groove Height }
+    if ((ALogHeight > 19) and (ALogSwithWidth > 59))
+      then GlyphSize := cLargeGlyph
+      else if ((ALogHeight > 13) and (ALogSwithWidth > 48))
+             then GlyphSize := cMediumGlyph
+             else if ((ALogHeight > 7) and (ALogSwithWidth > 40))
+                    then GlyphSize := cSmallGlyph
+                    else GlyphSize := 0;
+  end;
+
+var aHelp, aUnchecked, aChecked: Integer;
     aRealCaptionPos: TObjectPos;
     aCaption: string;
     aTextSize: TSize;
     bRightToLeft: Boolean;
 begin
   {$IFDEF DBGSWITCH} DebugLn('TCustomECSwitch.Calculate'); {$ENDIF}
+  aHelp := 0;
   aRealCaptionPos := CaptionPos;
   bRightToLeft := IsRightToLeft;
   if bRightToLeft then
@@ -394,19 +406,14 @@ begin
           SwitchPoint.Y := (Height - SwitchHeight) div 2;
         end else
         begin    
-          aMax := Width - max(aTextSize.cx, SwitchWidth);
           aHelp := (aTextSize.cx - SwitchWidth) div 2;
           if bRightToLeft then
             begin
-              if aHelp < 0 then
-                begin
-                  CaptionPoint.X := aMax - aHelp;
-                  SwitchPoint.X := aMax;
-                end else
-                begin
-                  CaptionPoint.X := aMax;
-                  SwitchPoint.X := aMax + aHelp;
-                end;      
+              CaptionPoint.X := Width - Math.max(aTextSize.cx, SwitchWidth);
+              SwitchPoint.X := CaptionPoint.X;
+              if aHelp < 0
+                then dec(CaptionPoint.X, aHelp)
+                else inc(SwitchPoint.X, aHelp);
             end else
             begin
               if aHelp < 0 then
@@ -488,22 +495,19 @@ begin
         else SwitchPoint.X := 0;
       SwitchPoint.Y := (Height - SwitchHeight) div 2;
     end;
-  GlyphSize := 0;
   if Orientation = eooHorizontal then
     begin
+      CalcGlyphSize(SwitchHeight, SwitchWidth);
       aUnchecked := SwitchPoint.X + KnobIndent;  
       aChecked := SwitchPoint.X + SwitchWidth - KnobIndent - Knob.Width;
       Knob.Top := SwitchPoint.Y + (SwitchHeight - Knob.Height) div 2; 
-      aMax := SwitchHeight - 2*FGrooveIndent;
-      if ((aMax > 12) and (SwitchWidth >= 48)) 
-        then GlyphSize := 8
-        else if ((aMax > 6) and (SwitchWidth >= 42)) then GlyphSize := 4;
-      if GlyphSize > 0 then
+      aHelp := GlyphSize + SwitchHeight and 1;
+      if aHelp > 0 then
         begin
-          GlyphOnePoint.X := (SwitchPoint.X + FGrooveIndent + aChecked - GlyphSize) div 2;
+          GlyphOnePoint.X := (SwitchPoint.X + FGrooveIndent + 1 + aChecked - aHelp) div 2;
           GlyphZeroPoint.X := (SwitchPoint.X + SwitchWidth - FGrooveIndent 
-                               + aUnchecked + Knob.Width - GlyphSize) div 2;
-          GlyphOnePoint.Y := (SwitchPoint.Y + SwitchPoint.Y + SwitchHeight - GlyphSize) div 2;
+                               + aUnchecked + Knob.Width - aHelp) div 2;
+          GlyphOnePoint.Y := SwitchPoint.Y + (SwitchHeight - aHelp) div 2;
           GlyphZeroPoint.Y := GlyphOnePoint.Y;
         end;
       if bRightToLeft then 
@@ -517,20 +521,18 @@ begin
         end; 
     end else 
     begin
+      CalcGlyphSize(SwitchWidth, SwitchHeight);
       aUnchecked := SwitchPoint.Y + SwitchHeight - KnobIndent - Knob.Height;
       aChecked := SwitchPoint.Y + KnobIndent;
       Knob.Left := SwitchPoint.X + (SwitchWidth - Knob.Width) div 2;
-      aMax := SwitchWidth - 2*FGrooveIndent;
-      if ((aMax > 12) and (SwitchHeight >= 48)) 
-        then GlyphSize := 8
-        else if ((aMax > 6) and (SwitchHeight >= 42)) then GlyphSize := 4;
-      if GlyphSize > 0 then
+      aHelp := GlyphSize + SwitchWidth and 1;
+      if aHelp > 0 then
         begin 
-          GlyphOnePoint.X := (2*SwitchPoint.X + SwitchWidth - GlyphSize) div 2;
+          GlyphOnePoint.X := SwitchPoint.X + (SwitchWidth - aHelp) div 2;
           GlyphZeroPoint.X := GlyphOnePoint.X;
           GlyphOnePoint.Y := (SwitchPoint.Y + SwitchHeight - FGrooveIndent
-                              + aChecked + Knob.Height - GlyphSize) div 2;
-          GlyphZeroPoint.Y := (SwitchPoint.Y + FGrooveIndent + aUnchecked - GlyphSize) div 2; 
+                              + aChecked + Knob.Height - aHelp) div 2;
+          GlyphZeroPoint.Y := (SwitchPoint.Y + FGrooveIndent + aUnchecked - aHelp) div 2;
         end;  
     end;
   KnobPosUnchecked := aUnchecked;
@@ -577,15 +579,13 @@ end;
 
 procedure TCustomECSwitch.DoClick;
 begin
-  if AllowGrayed then   
-    begin
-      case FState of 
-        cbUnchecked: State := cbGrayed;
-        cbGrayed: State := cbChecked;
-        cbChecked: State := cbUnchecked;
-      end;
+  if AllowGrayed then
+    case FState of
+      cbUnchecked: State := cbGrayed;
+      cbGrayed: State := cbChecked;
+      cbChecked: State := cbUnchecked;
     end else
-    Checked := not Checked;  
+    Checked := not Checked;
 end;                
 
 procedure TCustomECSwitch.DoEnter;
@@ -691,17 +691,17 @@ begin
             begin
               if AllowGrayed then 
                 begin
-                  aHelp := Math.Min(KnobPosUnchecked, KnobPosChecked);
+                  aHelp := Math.min(KnobPosUnchecked, KnobPosChecked);
                   aPosition := (aHelp + 2*(KnobPosGrayed - aHelp) div 3);
-                  if aPosition > Knob.Left then aState := cbUnchecked
-                    else 
+                  if aPosition <= Knob.Left then
                     begin
-                      aHelp := Math.Max(KnobPosUnchecked, KnobPosChecked);
+                      aHelp := Math.max(KnobPosUnchecked, KnobPosChecked);
                       aPosition := (KnobPosGrayed + (aHelp - KnobPosGrayed) div 3);
                       if aPosition > Knob.Left
                         then aState := cbGrayed
                         else aState := cbChecked;
-                    end;
+                    end else
+                    aState := cbUnchecked;
                   if IsRightToLeft then
                     case aState of
                       cbUnchecked: aState := cbChecked;
@@ -719,14 +719,14 @@ begin
               if AllowGrayed then
                 begin
                   aPosition := (KnobPosGrayed + (KnobPosUnchecked - KnobPosGrayed) div 3);
-                  if aPosition < Knob.Top then State := cbUnchecked
-                    else 
+                  if aPosition >= Knob.Top then
                     begin
                       aPosition := (KnobPosChecked + 2*(KnobPosGrayed - KnobPosChecked) div 3);
                       if aPosition < Knob.Top
                         then State := cbGrayed
                         else State := cbChecked;
-                    end;  
+                    end else
+                    State := cbUnchecked;
                 end else
                 Checked := ((KnobPosUnchecked + KnobPosChecked) > 2*Knob.Top); 
             end;
@@ -757,6 +757,7 @@ end;
 procedure TCustomECSwitch.Paint;
 var aColor, aColor2: TColor; 
     bEnabled: Boolean;
+    aOdd: SmallInt;
     aRect: TRect;
     x, y: Integer;
 begin
@@ -774,10 +775,13 @@ begin
     eosPanel: Canvas.DrawPanelBackGround(aRect, BevelInner, BevelOuter, BevelSpace, 
                 BevelWidth, Color3DDark, Color3DLight, aColor);
     eosThemedPanel: Canvas.DrawThemedPanelBkgnd(aRect);
+    eosFinePanel: Canvas.DrawFinePanelBkgnd(aRect, BevelOuter, BevelWidth, Color3DDark,
+                    Color3DLight, aColor, True);
   end;
   { Paint Groove }
   InflateRect(aRect, -GrooveIndent, -GrooveIndent);
   Canvas.Pen.Style := psSolid;
+  Canvas.Pen.Width := 1;
   Canvas.Frame3D(aRect, GetColorResolvingDefault(Color3DDark, clBtnShadow),
                  GetColorResolvingDefault(Color3DLight, clBtnHilight), 1);
   if not KnobCaptured or AllowGrayed 
@@ -791,15 +795,18 @@ begin
       aColor2 := GetColorResolvingDefault(GrooveUncheckedClr, cl3DDkShadow);
       if Orientation = eooHorizontal
         then aColor := GetMergedColor(aColor, aColor2, 
-          (Knob.Left - KnobPosUnchecked)/(KnobPosChecked - KnobPosUnchecked))
+               (Knob.Left - KnobPosUnchecked)/(KnobPosChecked - KnobPosUnchecked))
         else aColor := GetMergedColor(aColor, aColor2,
-          (KnobPosUnChecked - Knob.Top)/(KnobPosUnchecked - KnobPosChecked));
+               (KnobPosUnChecked - Knob.Top)/(KnobPosUnchecked - KnobPosChecked));
     end;
   if bEnabled
     then Canvas.Brush.Color := aColor
     else Canvas.Brush.Color := GetMonochromaticColor(aColor);
   if State <> cbGrayed then Canvas.FillRect(aRect);
   { Paint Glyphs }  { impossible to draw directly from resources, class vars used instead }
+  if Orientation = eooHorizontal
+    then aOdd := SwitchHeight and 1
+    else aOdd := SwitchWidth and 1;
   if (GlyphSize > 0) and (GlyphStyle <> egsNone) then
     with Canvas do
       begin
@@ -808,24 +815,27 @@ begin
             x := GlyphZeroPoint.X;
             y := GlyphZeroPoint.Y; 
             case GlyphStyle of
-              egsOneZero, egsCircles: 
-                if GlyphSize = 8 
-                  then Draw(x, y, GlyphZero8)
-                  else Draw(x, y, GlyphZero4);
+              egsOneZero, egsCircles: Draw(x, y, ArGlyphs[TResourceGlyph(GlyphSize div 4 + 2), aOdd]);
               egsPlusMinus:
-                begin
-                  if GlyphSize = 8 then 
-                    begin
-                      Brush.Color := caClrGlyph[bEnabled];
-                      FillRect(x, y + 3, x + GlyphSize, y + 5);
-                    end else 
+                case GlyphSize of
+                  cSmallGlyph:
                     begin
                       Pen.Color := caClrGlyph[bEnabled];
-                      if (Orientation = eooHorizontal) and ((SwitchHeight and 1) = 0) then dec(y)
-                        else if (Orientation=eooVertical) and ((SwitchWidth and 1) = 0) then dec(x);
-                      Line(x, y + 2, x + GlyphSize + 1, y + 2);
+                      Pen.EndCap := pecFlat;
+                      Pen.Width := 2 - aOdd;
+                      Line(x - 1 + aOdd, y + 2, x + cSmallGlyph + 1, y + 2);
                     end;
-                end;              
+                  cMediumGlyph:
+                    begin
+                      Brush.Color := caClrGlyph[bEnabled];
+                      FillRect(x, y + 3, x + cMediumGlyph + aOdd, y + 5 + aOdd);
+                    end;
+                  cLargeGlyph:
+                    begin
+                      Brush.Color := caClrGlyph[bEnabled];
+                      FillRect(x, y + 4, x + cLargeGlyph + aOdd, y + 8 + aOdd);
+                    end;
+                end;
             end;
           end;
         if KnobCaptured or (State <> cbUnchecked) then
@@ -834,46 +844,57 @@ begin
             y := GlyphOnePoint.Y; 
             case GlyphStyle of
               egsOneZero: 
-                begin
-                  if GlyphSize = 8 then
-                    begin
-                      Brush.Color := caClrGlyph[bEnabled];
-                      FillRect(x + 3, y, x + 5, y + GlyphSize);
-                    end else 
+                case GlyphSize of
+                  cSmallGlyph:
                     begin
                       Pen.Color := clWhite;
-                      if (Orientation=eooHorizontal) or ((SwitchWidth and 1) = 1) 
-                        then inc(x, 2)
-                        else inc(x);
-                      Line(x, y, x, y + GlyphSize);
+                      Pen.EndCap := pecFlat;
+                      Pen.Width := 2 - aOdd;
+                      inc(x, 2);
+                      Line(x, y - 1 + aOdd, x, y + cSmallGlyph + 1);
                     end;
-                end;
-              egsCircles: 
-                if GlyphSize=8
-                  then Draw(x, y, GlyphFullCircle8) 
-                  else Draw(x, y, GlyphDot4);
-              egsPlusMinus: 
-                begin
-                  if GlyphSize = 8 then
+                  cMediumGlyph:
                     begin
                       Brush.Color := caClrGlyph[bEnabled];
-                      FillRect(x, y + 3, x + GlyphSize, y + 5);
-                      FillRect(x + 3, y, x + 5, y + GlyphSize);
-                    end else
+                      FillRect(x + 3, y, x + 5 + aOdd, y + cMediumGlyph + aOdd);
+                    end;
+                  cLargeGlyph:
+                    begin
+                      Brush.Color := caClrGlyph[bEnabled];
+                      FillRect(x + 4, y, x + 8 + aOdd, y + cLargeGlyph + aOdd);
+                    end;
+                end;
+              egsCircles, egsCircle: Draw(x, y, ArGlyphs[TResourceGlyph(GlyphSize div 4 - 1), aOdd]);
+              egsPlusMinus:
+                case GlyphSize of
+                  cSmallGlyph:
                     begin
                       Pen.Color := caClrGlyph[bEnabled];
-                      if (Orientation = eooHorizontal) and ((SwitchHeight and 1) = 0) then dec(y)
-                        else if (Orientation=eooVertical) and ((SwitchWidth and 1) = 0) then dec(x);
-                      Line(x, y + 2, x + GlyphSize + 1, y + 2);
+                      Pen.EndCap := pecFlat;
+                      Pen.Width := 2 - aOdd;
+                      Line(x - 1 + aOdd, y + 2, x + cSmallGlyph + 1, y + 2);
                       inc(x, 2);
-                      Line(x, y, x, y + GlyphSize + 1);
+                      Line(x, y - 1 + aOdd, x, y + cSmallGlyph + 1);
+                    end;
+                  cMediumGlyph:
+                    begin
+                      Brush.Color := caClrGlyph[bEnabled];
+                      FillRect(x, y + 3, x + cMediumGlyph + aOdd, y + 5 + aOdd);
+                      FillRect(x + 3, y, x + 5 + aOdd, y + cMediumGlyph + aOdd);
+                    end;
+                  cLargeGlyph:
+                    begin
+                      Brush.Color := caClrGlyph[bEnabled];
+                      FillRect(x, y + 4, x + cLargeGlyph + aOdd, y + 8 + aOdd);
+                      FillRect(x + 4, y, x + 8 + aOdd, y + cLargeGlyph + aOdd);
                     end;
                 end;
               egsDot:       
-                if GlyphSize = 8
-                  then Draw(x + 2, y + 2, GlyphDot4)
-                  else Draw(x, y, GlyphDot4); 
-            end;  
+                case GlyphSize of
+                  cSmallGlyph: Draw(x, y, ArGlyphs[rgCircle4, aOdd]);
+                  otherwise Draw(x + 2, y + 2, ArGlyphs[TResourceGlyph(GlyphSize div 4 - 2), aOdd]);
+                end;
+            end;
           end;
       end;
   { Paint Knob }
@@ -979,11 +1000,10 @@ end;
 procedure TCustomECSwitch.SetKnobBackground;
 var aColor: TColor;
 begin
-  if Style = eosPanel 
+  if Style in [eosPanel, eosFinePanel]
     then aColor := GetColorResolvingDefault(SwitchColor, Parent.Brush.Color)
     else aColor := clBtnFace;
-  aColor := ColorToRGB(aColor);
-  FKnob.BackgroundColor := aColor;
+  FKnob.BackgroundColor := ColorToRGB(aColor);
 end;        
 
 procedure TCustomECSwitch.StyleChanged(AValue: TObjectStyle);
@@ -1081,12 +1101,11 @@ begin
       { Execute only when Action.Checked is changed }
       if not CheckFromAction then
         begin
-          if assigned(OnClick) then
-            if not (assigned(Action) and 
-            CompareMethods(TMethod(Action.OnExecute), TMethod(OnClick))) 
-            then OnClick(self); 
+          if assigned(OnClick) and not (assigned(Action) and
+               CompareMethods(TMethod(Action.OnExecute), TMethod(OnClick)))
+            then OnClick(self);
           if assigned(Action) and (Action is TCustomAction) and
-            (TCustomAction(Action).Checked <> (AValue = cbChecked)) 
+               (TCustomAction(Action).Checked <> (AValue = cbChecked))
             then ActionLink.Execute(self);
         end;
     end; 
@@ -1097,7 +1116,7 @@ procedure TCustomECSwitch.SetSwitchColor(AValue: TColor);
 begin
   if FSwitchColor = AValue then exit;
   FSwitchColor := AValue;
-  if Style = eosPanel then
+  if Style in [eosPanel, eosFinePanel] then
     begin
       SetKnobBackground;
       Redraw;
@@ -1119,11 +1138,6 @@ begin
   ResizeKnob;
   RecalcInvalidate;
 end;   
-
-procedure Register;
-begin
-  RegisterComponents('EC-C', [TECSwitch]);
-end;
 
 end.
 

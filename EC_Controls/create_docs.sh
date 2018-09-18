@@ -1,3 +1,5 @@
+#!/bin/bash
+
 fpdoc --format=html --package=eccontrols --descr-dir=docs \
   --input=ectypes.pas --input=ecscale.pas \
   --input=ecslider.pas --input=ecprogressbar.pas \

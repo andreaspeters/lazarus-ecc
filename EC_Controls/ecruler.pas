@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,8 +34,8 @@ unit ECRuler;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, ExtCtrls, ECScale, ECTypes, Forms, Math, LCLIntf, 
-  LMessages, {$IFDEF DBGRULER} LCLProc, {$ENDIF} LCLType, LResources, Themes, Types;
+  Classes, SysUtils, Controls, Graphics, ECScale, ECTypes, Forms, Math, LCLIntf,
+  LMessages, {$IFDEF DBGRULER} LCLProc, {$ENDIF} LCLType, Themes, Types;
 
 type 
   {$PACKENUM 2}
@@ -230,8 +230,6 @@ type
     property OnResize;
   end;
 
-procedure Register;
-
 implementation
 
 { TECRulerScale }
@@ -355,10 +353,12 @@ begin
   Background.TransparentClear;
   case Style of
     eosButton: Background.Canvas.DrawButtonBackground(ClientRect, True);
-    eosPanel: Background.Canvas.DrawPanelBackGround(ClientRect, BevelInner, BevelOuter,
+    eosPanel: Background.Canvas.DrawPanelBackground(ClientRect, BevelInner, BevelOuter,
                 BevelSpace, BevelWidth, Color3DDark, Color3DLight, 
                 GetColorResolvingDefault(Color, Parent.Brush.Color));
     eosThemedPanel: Background.Canvas.DrawThemedPanelBkgnd(ClientRect);
+    eosFinePanel: Background.Canvas.DrawFinePanelBkgnd(ClientRect, BevelOuter, BevelWidth,
+                    Color3DDark, Color3DLight, GetColorResolvingDefault(Color, Parent.Brush.Color), False);
   end;
   DrawScaleAndCaption(Background.Canvas);
   SetPointerPenStyle;
@@ -510,10 +510,13 @@ begin
 end;
 
 function TCustomECRuler.MouseCoordToPosition(AMouseCoord: Integer): Double;
+var aScalePxLength: Integer;
 begin
-  Result := (AMouseCoord - ScalePxStart)*ScaleLength/(ScalePxLength - 1);
+  aScalePxLength := ScalePxLength;
+  if aScalePxLength <= 1 then aScalePxLength := 2;
+  Result := (AMouseCoord - ScalePxStart)*ScaleLength/(aScalePxLength - 1);
   if Reversed then Result := Max - Result;
-end;   
+end;
 
 procedure TCustomECRuler.MouseMove(Shift: TShiftState; X, Y: Integer);
 begin
@@ -529,7 +532,6 @@ begin
           Hint := FScale.GetStringPosition(Position);
           Application.ActivateHint(Mouse.CursorPos);
         end;
-
     end;
 end;
 
@@ -708,7 +710,7 @@ end;
 
 function TCustomECRuler.GetPosition: Double;
 begin
-  Result := MouseCoordToPosition(MouseCoord)
+   Result := MouseCoordToPosition(MouseCoord)
 end;
 
 procedure TCustomECRuler.SetCaptionAlign(AValue: SmallInt);
@@ -825,12 +827,6 @@ begin
   FTransparent := AValue;
   if not AValue then RedrawMode := ermRedrawBkgnd;
   InvalidateNonUpdated;  
-end;
-
-procedure Register;
-begin
-  {$I ecruler.lrs}
-  RegisterComponents('EC-C', [TECRuler]);
 end;
 
 end.

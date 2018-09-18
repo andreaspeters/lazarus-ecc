@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -35,12 +35,13 @@ interface
 
 uses
   Classes, SysUtils, Controls, ECScale, ECTypes, Forms, Graphics, ImgList, Math, LCLIntf,
-  {$IFDEF DBGSLIDER} LCLProc, {$ENDIF} LCLType, LMessages, LResources, Themes, Types;
+  {$IFDEF DBGSLIDER} LCLProc, {$ENDIF} LCLType, LMessages, Themes, Types;
 
 type
   {$PACKENUM 2}
   TProgressMark = (epmNone, epmTickSide, epmOpposite, epmBoth);
-  TProgressStyle = (epsSimple, epsAesthetic, epsGradient, epsReversedGrad, epsOrthogonal);
+  TProgressStyle = (epsSimple, epsAesthetic, epsGradient, epsReversedGrad, epsOrthogonal,
+                    epsOrthoTwin, epsGradLines, epsRipple);
   TProgressVisibility = (epvNone, epvProgress, epvFull);
   TTickMarks = (etmBottomRight, etmTopLeft, etmBoth);
   { Event }
@@ -52,7 +53,7 @@ type
     FCaptionPos: TObjectPos;
     FGrooveColor: TColor;
     FGrooveStyle: TObjectStyle;
-    FImageIndex: SmallInt;  { Image }
+    FImageIndex: TImageIndex;  { Image }
     FImagePos: TObjectPos;
     FImages: TCustomImageList;
     FIndent: SmallInt;
@@ -79,12 +80,11 @@ type
     procedure SetGrooveStyle(const AValue: TObjectStyle);
     procedure SetGrooveTransparent(const AValue: Boolean);
     procedure SetGrooveWidth(const AValue: SmallInt);
-    procedure SetImageIndex(const AValue: SmallInt);
+    procedure SetImageIndex(const AValue: TImageIndex);
     procedure SetImagePos(AValue: TObjectPos);
     procedure SetImages(const AValue: TCustomImageList);
     procedure SetIndent(const AValue: SmallInt);
     procedure SetLogarithmicPosition(AValue: Double);
-    procedure SetPositionToHint(const AValue: Boolean);
     procedure SetProgressColor(const AValue: TColor);
     procedure SetProgressColor2(const AValue: TColor);
     procedure SetProgressFromMiddle(const AValue: Boolean);
@@ -98,7 +98,7 @@ type
     procedure SetScaleTickPos(const AValue: TTickMarks);
     procedure SetScaleValuePos(const AValue: TTickMarks);
   protected const
-    cDefProgParameter = 8;
+    cDefProgParameter = 4;
   protected
     FGrooveBevelWidth: SmallInt;  { GrooveBMP }
     FGrooveInnerLength: SmallInt;  { FGrooveMax-FGrooveMin }
@@ -132,7 +132,8 @@ type
                                      {%H-}WithThemeSpace: Boolean); override;
     procedure Calculate;
     procedure CMBiDiModeChanged(var {%H-}Message: TLMessage); message CM_BIDIMODECHANGED;
-    procedure CMColorChanged(var {%H-}Message: TLMessage); message CM_COLORCHANGED;					 
+    procedure CMColorChanged(var {%H-}Message: TLMessage); message CM_COLORCHANGED;
+    procedure CMHintShow(var Message: TLMessage); message CM_HINTSHOW;
     procedure CMParentColorChanged(var Message: TLMessage); message CM_PARENTCOLORCHANGED;
     procedure CorrectGrooveHorizontalLength(var {%H-}x1, {%H-}x2: Integer); virtual;
     procedure CorrectGrooveLength(var z1, z2: Integer; AVertical: Boolean); virtual; abstract;
@@ -171,7 +172,7 @@ type
     property GrooveStyle: TObjectStyle read FGrooveStyle write SetGrooveStyle default eosPanel;
     property GrooveTransparent: Boolean read FGrooveTransparent write SetGrooveTransparent default True;
     property GrooveWidth: SmallInt read FGrooveWidth write SetGrooveWidth;
-    property ImageIndex: SmallInt read FImageIndex write SetImageIndex default -1;
+    property ImageIndex: TImageIndex read FImageIndex write SetImageIndex default -1;
     property ImagePos: TObjectPos read FImagePos write SetImagePos default eopTop;
     property Images: TCustomImageList read FImages write SetImages;
     property Indent: SmallInt read FIndent write SetIndent default 5;
@@ -179,7 +180,7 @@ type
     property Max: Double read GetMax write SetMax stored False;
     property Min: Double read GetMin write SetMin stored False;
     property Position: Double read FPosition write SetPosition;
-    property PositionToHint: Boolean read FPositionToHint write SetPositionToHint default False;
+    property PositionToHint: Boolean read FPositionToHint write FPositionToHint default False;
     property ProgressColor: TColor read FProgressColor write SetProgressColor default clDefault;
     property ProgressColor2: TColor read FProgressColor2 write SetProgressColor2 default clDefault;
     property ProgressFromMiddle: Boolean read FProgressFromMiddle write SetProgressFromMiddle default False;
@@ -372,8 +373,6 @@ type
     property OnUTF8KeyPress;
   end;
 
-procedure Register;
-
 implementation
 
 { TBaseECSlider }
@@ -471,10 +470,10 @@ begin
               if (aSize>0) and (aCaptionSize>0)
                 then aSize:=aSize+Indent+aCaptionSize
                 else aSize:=aSize+aCaptionSize;
-              aSize:=Math.Max(aSize, aImageSize);
+              aSize:=Math.max(aSize, aImageSize);
             end else
             begin  { Caption & Image T/B }  
-              aCaptionSize:=Math.Max(aCaptionSize, aImageSize);
+              aCaptionSize:=Math.max(aCaptionSize, aImageSize);
               if (aSize>0) and (aCaptionSize>0)
                 then aSize:=aSize+Indent+aCaptionSize
                 else aSize:=aSize+aCaptionSize;  
@@ -486,9 +485,9 @@ begin
               if aCaptionSize*aImageSize>0
                 then aCaptionSize:=aCaptionSize+Indent+aImageSize
                 else aCaptionSize:=aCaptionSize+aImageSize;
-              aSize:=Math.Max(aSize, aCaptionSize);
+              aSize:=Math.max(aSize, aCaptionSize);
             end else  { Caption L/R, Image L/R } 
-            aSize:=Math.Max(Math.Max(aSize, aImageSize), aCaptionSize);
+            aSize:=Math.max(Math.max(aSize, aImageSize), aCaptionSize);
         end;
     end else 
     begin  { Vertical }
@@ -683,33 +682,30 @@ begin
       case RealCaptionPos of
         eopTop: 
           begin
+            aMax:=eC.cy;
             case RealImagePos of
               eopRight, eopLeft:
                 begin
-                  aMax:=Math.max(eC.cy, hI); 
+                  if hI>aMax then aMax:=hI;
                   FImagePoint.Y:=y1+(aMax-hI) div 2;
                 end;
-              eopTop, eopBottom:
-                begin
-                  aMax:=eC.cy;
-                  FImagePoint.Y:=(Height-hI) div 2;
-                end;
+              eopTop, eopBottom: FImagePoint.Y:=(Height-hI) div 2;
             end;
             FCaptionPoint.Y:=y1+(aMax-eC.cy) div 2;
             if aMax>0 then y1:=y1+aMax+FIndent;
           end;
         eopBottom: 
           begin
+            aMax:=eC.cy;
             case RealImagePos of
               eopRight, eopLeft:
                 begin
-                  aMax:=Math.max(eC.cy, hI); 
+                  if hI>aMax then aMax:=hI;
                   dec(y2, aMax);
                   FImagePoint.Y:=y2+(aMax-hI) div 2;
                 end;
               eopTop, eopBottom:
                 begin
-                  aMax:=eC.cy; 
                   FImagePoint.Y:=(Height-hI) div 2;
                   dec(y2, aMax);
                 end;
@@ -723,13 +719,24 @@ begin
               eopTop, eopBottom:
                 begin
                   aSize:=wI; 
-                  aMax:=Math.Max(eC.cx, aSize);
+                  aMax:=Math.max(eC.cx, aSize);
                   FCaptionPoint.X:=x1+(aMax-eC.cx) div 2;
                   FImagePoint.X:=x1+(aMax-aSize) div 2;
                   if aMax>0 then inc(x1, aMax+Indent);
                   if (hI=0) or (eC.cy=0) 
                     then aSize:=hI+eC.cy
                     else aSize:=hI+FScale.ValueIndent+eC.cy;
+                  if RealImagePos=eopTop then
+                    begin
+                      FCaptionPoint.Y:=(Height+aSize) div 2 -eC.cy;
+                      FImagePoint.Y:=FCaptionPoint.Y-aSize+eC.cy;
+                    end else
+                    begin  { eopBottom }
+                      FCaptionPoint.Y:=(Height-aSize) div 2;
+                      if eC.cy>0
+                        then FImagePoint.Y:=FCaptionPoint.Y+FScale.ValueIndent+eC.cy
+                        else FImagePoint.Y:=FCaptionPoint.Y;
+                    end;
                 end;
               eopRight, eopLeft:
                 begin
@@ -742,26 +749,12 @@ begin
                   if eC.cx>0 then inc(x1, eC.cx+Indent);
                   FImagePoint.Y:=(Height-hI) div 2;
                   FCaptionPoint.Y:=(Height-eC.cy) div 2;
-                end;
-            end;
-            case RealImagePos of
-              eopTop: 
-                begin
-                  FCaptionPoint.Y:=(Height+aSize) div 2 -eC.cy;
-                  FImagePoint.Y:=FCaptionPoint.Y-aSize+eC.cy;
-                end;
-              eopBottom: 
-                begin
-                  FCaptionPoint.Y:=(Height-aSize) div 2;
-                  if eC.cy>0 
-                    then FImagePoint.Y:=FCaptionPoint.Y+FScale.ValueIndent+eC.cy
-                    else FImagePoint.Y:=FCaptionPoint.Y;
-                end;
-              eopRight: 
-                begin
-                  dec(x2, wI);
-                  FImagePoint.X:=x2;
-                  if wI>0 then dec(x2, Indent);
+                  if RealImagePos=eopRight then
+                    begin
+                      dec(x2, wI);
+                      FImagePoint.X:=x2;
+                      if wI>0 then dec(x2, Indent);
+                    end;
                 end;
             end;
           end;
@@ -778,6 +771,17 @@ begin
                   if (hI=0) or (eC.cy=0) 
                     then aSize:=hI+eC.cy
                     else aSize:=hI+FScale.ValueIndent+eC.cy;
+                  if RealImagePos=eopTop then
+                    begin
+                      FCaptionPoint.Y:=(Height+aSize) div 2 -eC.cy;
+                      FImagePoint.Y:=FCaptionPoint.Y-aSize+eC.cy;
+                    end else
+                    begin  { eopBottom }
+                      FCaptionPoint.Y:=(Height-aSize) div 2;
+                      if eC.cy>0
+                        then FImagePoint.Y:=FCaptionPoint.Y+FScale.ValueIndent+eC.cy
+                        else FImagePoint.Y:=FCaptionPoint.Y;
+                    end;
                 end;
               eopRight: 
                 begin
@@ -791,28 +795,14 @@ begin
                   if wI>0 then inc(x1, wI+Indent);
                 end;   
             end;
-            case RealImagePos of
-              eopTop: 
-                begin
-                  FCaptionPoint.Y:=(Height+aSize) div 2 -eC.cy;
-                  FImagePoint.Y:=FCaptionPoint.Y-aSize+eC.cy;
+            if RealImagePos in [eopLeft, eopRight] then
+              begin
+                dec(x2, eC.cx);
+                FCaptionPoint.X:=x2;
+                if eC.cx>0 then dec(x2, Indent);
+                FImagePoint.Y:=(Height-hI) div 2;
+                FCaptionPoint.Y:=(Height-eC.cy) div 2;
               end;
-              eopBottom: 
-                begin
-                  FCaptionPoint.Y:=(Height-aSize) div 2;
-                  if eC.cy>0     
-                    then FImagePoint.Y:=FCaptionPoint.Y+FScale.ValueIndent+eC.cy
-                    else FImagePoint.Y:=FCaptionPoint.Y;
-                end;
-              eopLeft, eopRight: 
-                begin
-                  dec(x2, eC.cx);
-                  FCaptionPoint.X:=x2;
-                  if eC.cx>0 then dec(x2, Indent);
-                  FImagePoint.Y:=(Height-hI) div 2;
-                  FCaptionPoint.Y:=(Height-eC.cy) div 2;
-                end;
-            end;
           end;
       end;
       CorrectGrooveLength(x1, x2, False);
@@ -859,6 +849,13 @@ begin
   Redraw;
 end;
 
+procedure TBaseECSlider.CMHintShow(var Message: TLMessage);
+begin
+  inherited;
+  if (TCMHintShow(Message).HintInfo^.HintControl=self) and PositionToHint
+    then TCMHintShow(Message).HintInfo^.HintStr:=FScale.GetStringPosition(Position);
+end;
+
 procedure TBaseECSlider.CMParentColorChanged(var Message: TLMessage);
 begin
   inherited CMParentColorChanged(Message);
@@ -896,6 +893,8 @@ begin
                 BevelWidth, Color3DDark, Color3DLight, 
                 GetColorResolvingDefault(Color, Parent.Brush.Color));
     eosThemedPanel: Background.Canvas.DrawThemedPanelBkgnd(ARect);
+    eosFinePanel: Background.Canvas.DrawFinePanelBkgnd(aRect, BevelOuter, BevelWidth,
+                    Color3DDark, Color3DLight, GetColorResolvingDefault(Color, Parent.Brush.Color), False);
   end;
   with Background.Canvas do
     begin
@@ -969,6 +968,9 @@ begin
             aDetail:=ThemeServices.GetElementDetails(ttPane);
             ThemeServices.DrawElement(Handle, aDetail, FGrooveRect, nil);
           end;
+        eosFinePanel:
+          DrawFinePanelBkgnd(FGrooveRect, bvLowered, GrooveBevelWidth, Color3DDark,
+            Color3DLight, GetColorResolvingDefault(Color, Parent.Brush.Color), False);
       end;
       aProgressMark:=ProgressMark;
       if (aProgressMark>epmNone) and ProgressFromMiddle then
@@ -1021,52 +1023,98 @@ end;
 
 procedure TBaseECSlider.DrawGrooveBMP;
 var aOrientation: TGradientDirection;
-    aPP: Integer;
     aRect: TRect;
-    aColor1, aColor2, aColorM1, aColorM2: TColor;
     
-  procedure DrawAestheticProgress;
-  var i, aMin, aMax, aStep: Integer;   
+  procedure DrawAestheticProgress(AFrom, ATo: TColor);
+  var i, aPP, aStep: SmallInt;
   begin
     with GrooveBMP.Canvas do
       begin
+        aPP:=ProgressParameter;
         if aPP>1 
           then aStep:=1 
-          else aStep:=2;  { Correction; aRect must be wider then 1 }
+          else aStep:=2;  { Correction; param. ARect of GradientFill must be wider then 1 }
         if aOrientation=gdVertical then
           begin
-            aMin:=aRect.Left;
-            aMax:=aRect.Right;
-          end else 
-          begin
-            aMin:=aRect.Top;
-            aMax:=aRect.Bottom;
-          end;
-        for i:=aMin div aPP to aMax div aPP do
-          begin
-            if aOrientation=gdVertical then
+            for i:=aRect.Left div aPP to aRect.Right div aPP do
               begin
-                if (i and 1)=0
+                if odd(i)
                   then GradientFill(Rect(i*aPP, aRect.Top, (i+aStep)*aPP, aRect.Bottom), 
-                                    aColorM1, aColorM2, aOrientation)
+                                    AFrom, ATo, aOrientation)
                   else GradientFill(Rect(i*aPP, aRect.Top, (i+aStep)*aPP, aRect.Bottom),
-                                    aColorM2, aColorM1, aOrientation);
-              end else
+                                    ATo, AFrom, aOrientation);
+              end
+          end else
+          begin
+            for i:=aRect.Top div aPP to aRect.Bottom div aPP do
               begin
-                if (i and 1)=0
+                if odd(i)
                   then GradientFill(Rect(aRect.Left, i*aPP, aRect.Right, (i+aStep)*aPP), 
-                                    aColorM1, aColorM2, aOrientation)
+                                    AFrom, ATo, aOrientation)
                   else GradientFill(Rect(aRect.Left, i*aPP, aRect.Right, (i+aStep)*aPP),
-                                    aColorM2, aColorM1, aOrientation); 
+                                    ATo, AFrom, aOrientation);
               end;
           end;          
       end;
   end;
 
+  procedure DrawOrthoTwinProgress(AFrom, ATo: TColor);
+  var aHalfWidth: SmallInt;
+  begin
+    with GrooveBMP.Canvas do
+      begin
+        if aOrientation=gdVertical then
+          begin
+            aHalfWidth:=(aRect.Right-aRect.Left) div 2;
+            GradientFill(Rect(aRect.Left, aRect.Top, aRect.Left+aHalfWidth, aRect.Bottom),
+                         ATo, AFrom, gdHorizontal);
+            GradientFill(Rect(aRect.Left+aHalfWidth, aRect.Top, aRect.Right, aRect.Bottom),
+                         AFrom, ATo, gdHorizontal);
+          end else
+          begin
+            aHalfWidth:=(aRect.Bottom-aRect.Top) div 2;
+            GradientFill(Rect(aRect.Left, aRect.Top, aRect.Right, aRect.Top+aHalfWidth),
+                         ATo, AFrom, gdVertical);
+            GradientFill(Rect(aRect.Left, aRect.Top+aHalfWidth, aRect.Right, aRect.Bottom),
+                         AFrom, ATo, gdVertical);
+          end;
+      end;
+  end;
+
+  procedure DrawRippleProgress(AFrom, ATo: TColor);
+  var i, aPP: SmallInt;
+  begin
+    with GrooveBMP.Canvas do
+      begin
+        aPP:=ProgressParameter;
+        if aOrientation=gdVertical then
+          begin
+            i:=aRect.Top;
+            repeat
+              GradientFill(Rect(aRect.Left, i, aRect.Right, i+aPP), ATo, AFrom, aOrientation);
+              inc(i, aPP);
+              GradientFill(Rect(aRect.Left, i, aRect.Right, i+aPP), AFrom, ATo, aOrientation);
+              inc(i, aPP);
+            until i>aRect.Bottom;
+          end else
+          begin
+            i:=aRect.Left;
+            repeat
+              GradientFill(Rect(i, aRect.Top, i+aPP, aRect.Bottom), AFrom, ATo, aOrientation);
+              inc(i, aPP);
+              GradientFill(Rect(i, aRect.Top, i+aPP, aRect.Bottom), ATo, AFrom, aOrientation);
+              inc(i, aPP);
+            until i>aRect.Right;
+          end;
+      end;
+  end;
+
+var aColor1, aColor2, aColorM: TColor;
+    x: SmallInt;
 begin
   {$IFDEF DBGSLIDER} DebugLn('TBaseECSlider.DrawGrooveBMP'); {$ENDIF}
-  GrooveBMP.SetSize(FGrooveRect.Right-FGrooveRect.Left-2*GrooveBevelWidth,
-                 FGrooveRect.Bottom-FGrooveRect.Top-2*GrooveBevelWidth);
+  x:=2*GrooveBevelWidth;
+  GrooveBMP.SetSize(FGrooveRect.Right-FGrooveRect.Left-x, FGrooveRect.Bottom-FGrooveRect.Top-x);
   if assigned(FOnDrawProgressBMP) then
     begin
       FOnDrawProgressBMP(self, GrooveBMP);  
@@ -1094,13 +1142,10 @@ begin
                 Brush.Color:=aColor1;
                 FillRect(aRect);
               end;
-            epsAesthetic:
-              begin
-                aPP:=ProgressParameter;
-                aColorM1:=aColor1;
-                aColorM2:=GetMergedColor(aColor1, aColor2, 0.5-power(0.4, aPP));
-                DrawAestheticProgress;
-              end;     
+            epsAesthetic: DrawAestheticProgress(aColor1, aColor2);
+            epsOrthoTwin: DrawOrthoTwinProgress(aColor1, aColor2);
+            epsGradLines: DrawAestheticProgress(aColor1, aColor2);
+            epsRipple: DrawRippleProgress(aColor1, aColor2);
             otherwise
               if not RealReversed xor (ProgressStyle=epsReversedGrad) 
                 then GradientFill(aRect, aColor2, aColor1, aOrientation)
@@ -1119,6 +1164,7 @@ begin
                 then aRect:=Rect(0, 0, GrooveBMP.Width, GrooveBMP.Height-FGrooveMiddle-1)
                 else aRect:=Rect(0, 0, GrooveBMP.Width-FGrooveMiddle-1, GrooveBMP.Height);
             end;
+          aColorM:=GetMergedColor(aColor1, aColor2, 0.7);
           case ProgressStyle of
             epsSimple: 
               begin
@@ -1127,19 +1173,24 @@ begin
                   else Brush.Color:=aColor1;
                 FillRect(aRect);
               end;  
-            epsAesthetic: 
+            epsAesthetic: DrawAestheticProgress(aColorM, aColor2);
+            epsGradient, epsOrthogonal: GradientFill(aRect, aColorM, aColor2, aOrientation);
+            epsReversedGrad: GradientFill(aRect, aColor2, aColorM, aOrientation);
+            epsOrthoTwin: DrawOrthoTwinProgress(aColor2, aColorM);
+            epsGradLines: DrawAestheticProgress(aColor2, aColorM);
+            epsRipple:
               begin
-                aPP:=ProgressParameter;
-                aColorM1:=GetMergedColor(aColor2, aColor1, 0.5-power(0.3, aPP));  
-                aColorM2:=aColor2;
-                DrawAestheticProgress;
+                x:=2*ProgressParameter;
+                if aOrientation=gdVertical
+                  then dec(aRect.Top, x- aRect.Bottom mod x +1)
+                  else dec(aRect.Left, x- aRect.Right mod x +1);
+                DrawRippleProgress(aColor2, aColorM);
               end;
-            epsGradient, epsOrthogonal: GradientFill(aRect, aColor1, aColor2, aOrientation);
-            epsReversedGrad: GradientFill(aRect, aColor2, aColor1, aOrientation);
           end;
           if Orientation=eooVertical
             then aRect:=Rect(0, aRect.Bottom, aRect.Right, GrooveBMP.Height)
             else aRect:=Rect(aRect.Right, 0, GrooveBMP.Width, aRect.Bottom);
+          aColorM:=GetMergedColor(aColor2, aColor1, 0.7);
           case ProgressStyle of
             epsSimple: 
               begin
@@ -1148,14 +1199,11 @@ begin
                   else Brush.Color:=aColor2;
                 FillRect(aRect);
               end;    
-            epsAesthetic: 
-              begin
-                aColorM1:=aColor1;
-                aColorM2:=GetMergedColor(aColor1, aColor2, 0.5-power(0.3, aPP));
-                DrawAestheticProgress;
-              end; 
-            epsGradient, epsReversedGrad, epsOrthogonal: 
-              GradientFill(aRect, aColor2, aColor1, aOrientation);             
+            epsAesthetic: DrawAestheticProgress(aColor1, aColorM);
+            epsGradient, epsReversedGrad, epsOrthogonal: GradientFill(aRect, aColorM, aColor1, aOrientation);
+            epsOrthoTwin: DrawOrthoTwinProgress(aColor1, aColorM);
+            epsGradLines: DrawAestheticProgress(aColor1, aColorM);
+            epsRipple: DrawRippleProgress(aColor1, aColorM);
           end;
         end;
     end;
@@ -1543,7 +1591,7 @@ begin
   RecalcRedraw;
 end;
 
-procedure TBaseECSlider.SetImageIndex(const AValue: SmallInt);
+procedure TBaseECSlider.SetImageIndex(const AValue: TImageIndex);
 begin
   if FImageIndex=AValue then exit;
   FImageIndex:=AValue;
@@ -1605,16 +1653,8 @@ begin
   if Position<Min then Position:=Min;
 end;
 
-procedure TBaseECSlider.SetPositionToHint(const AValue: Boolean);
-begin
-  if FPositionToHint=AValue then exit;
-  FPositionToHint:=AValue;
-  if AValue then Hint:=FScale.GetStringPosition(Position); 
-end;
-
 procedure TBaseECSlider.SetProgressColor(const AValue: TColor);
-begin
-  if FProgressColor=AValue then exit;
+begin  if FProgressColor=AValue then exit;
   FProgressColor:=AValue;
   DrawGrooveBMP;
   if FProgressVisible>epvNone then InvalidateNonUpdated;
@@ -1666,7 +1706,7 @@ begin
   if AValue<1 then AValue:=1;
   if FProgressParameter = AValue then exit;
   FProgressParameter := AValue;
-  if ProgressStyle=epsAesthetic then
+  if ProgressStyle in [epsAesthetic, epsGradLines, epsRipple] then
     begin
       DrawGrooveBMP;
       InvalidateNonUpdated;
@@ -1825,11 +1865,7 @@ end;
 
 procedure TCustomECSlider.CMColorChanged(var Message: TLMessage);
 begin
-  if assigned(FKnob) then
-    begin
-      SetKnobBackground;
-      if Knob.Style=eosPanel then Knob.DrawKnobs;
-    end;   
+  if assigned(FKnob) then SetKnobBackground;
   inherited CMColorChanged(Message);
 end;
 
@@ -1881,22 +1917,32 @@ function TCustomECSlider.DoMouseWheelDown(Shift: TShiftState; MousePos: TPoint):
 var d: Double;
 begin
   Result:=inherited DoMouseWheelDown(Shift, MousePos);
-  d:=Increment;
-  if not (ssCtrl in Shift) then d:=d*Mouse.WheelScrollLines;
-  if not RealReversed 
-    then Position:=FPosition+d
-    else Position:=FPosition-d;
+  if not Result then
+    begin
+      if not (ssModifier in Shift)
+        then d:=PageSize
+        else d:=Increment;
+      if not RealReversed
+        then Position:=FPosition+d
+        else Position:=FPosition-d;
+      Result:=True;
+    end;
 end;
 
 function TCustomECSlider.DoMouseWheelUp(Shift: TShiftState; MousePos: TPoint): Boolean;
 var d: Double;
 begin
   Result:=inherited DoMouseWheelUp(Shift, MousePos);
-  d:=Increment;
-  if not (ssCtrl in Shift) then d:=d*Mouse.WheelScrollLines;
-  if not RealReversed 
-    then Position:=FPosition-d
-    else Position:=FPosition+d;
+  if not Result then
+    begin
+      if not (ssModifier in Shift)
+        then d:=PageSize
+        else d:=Increment;
+      if not RealReversed
+        then Position:=FPosition-d
+        else Position:=FPosition+d;
+      Result:=True;
+    end;
 end;
 
 procedure TCustomECSlider.EndUpdate(Recalculate: Boolean);
@@ -1970,23 +2016,17 @@ end;
 
 procedure TCustomECSlider.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 var aMousePos, aHelp: Double;
-
-  procedure SetMousePos(ACoord: Integer);
-  begin
-    aMousePos:=GetPosFromCoord(ACoord);
-    if not RealReversed
-      then aMousePos:=Min+aMousePos
-      else aMousePos:=Max-aMousePos;
-  end;
-
 begin
   {$IFDEF DBGSLIDER} DebugLn('MouseDown '+inttostr(X)+' '+inttostr(Y)); {$ENDIF}
   inherited MouseDown(Button, Shift, X, Y);
   if Button in [mbLeft, mbMiddle] then
     begin
       if Orientation=eooHorizontal
-        then SetMousePos(X)
-        else SetMousePos(Y);
+        then aMousePos:=GetPosFromCoord(X)
+        else aMousePos:=GetPosFromCoord(Y);
+      if not RealReversed
+        then aMousePos:=Min+aMousePos
+        else aMousePos:=Max-aMousePos;
       if Button=mbLeft then
         begin  { Left click }
           if Knob.MouseEntered then
@@ -2221,7 +2261,7 @@ end;
 procedure TCustomECSlider.SetKnobBackground;
 var aColor: TColor;
 begin
-  if Style=eosPanel 
+  if Style in [eosPanel, eosFinePanel]
     then aColor:=GetColorResolvingDefault(Color, Parent.Brush.Color)
     else aColor:=clBtnFace;
   Knob.BackgroundColor:=ColorToRGB(aColor);
@@ -2243,7 +2283,6 @@ begin
       else if AValue>Max then AValue:=Max;
   if FPosition=AValue then exit;
   FPosition:=AValue;       
-  if PositionToHint then Hint:=FScale.GetStringPosition(AValue);
   if UpdateCount=0 then
     begin
       PlaceKnob(True);
@@ -2260,12 +2299,6 @@ begin
   FRelScaleLength:=aProp100;
   if Orientation=eooHorizontal then RecalcRedraw;    
 end;  
-
-procedure Register;
-begin
-  {$I ecslider.lrs}
-  RegisterComponents('EC-C', [TECSlider]);
-end;
 
 end.
 

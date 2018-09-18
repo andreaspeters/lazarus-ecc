@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -35,12 +35,17 @@ interface
 
 uses
   Classes, SysUtils, Controls, Forms, Graphics, ImgList, LCLIntf,
-  LCLProc, LCLType, LMessages, LResources, Math, Themes, Types, ECTypes;
+  LCLProc, LCLType, LMessages, Math, Themes, Types, ECTypes;
 
 type 
   {$PACKENUM 2}
-  TGCOption = (egoAllowAllUp, egoCaptionBy, egoCentered, 
-               egoColumnThenRow, egoNativeGlyphs, egoSplitted);
+  TGCOption = (egoAllowAllUp,        { all radio items can be unselected }
+               egoCaptionBy,         { main caption is by the items (left or right, depends on BiDiMode }
+               egoCentered,          { item captions and glyphs are centered }
+               egoColumnThenRow,     { multi-row layout }
+               egoHighlightPanels,   { eosPanel and eosFinePanel change color when highlighted, pushed etc. }
+               egoNativeGlyphs,      { items have native glyphs; i.e. themed radios and checkboxes }
+               egoSplitted);         { beveled splitters between items }
   TGCOptions = set of TGCOption;
     
   { TGroupCtrlItem }   
@@ -363,8 +368,6 @@ type
     property OnUTF8KeyPress;   
   end;
   
-procedure Register;
-
 implementation
 
 { TGroupCtrlItem }
@@ -796,7 +799,7 @@ begin
   aCount:=Items.Count;
   aRowHeight:=FRowHeight;
   aBorder:=GetBorderWidth;
-  aText1Top:=round(0.5*(aRowHeight-Bitmaps[caItemState[AEnabled]].Canvas.TextHeight('É,9')));   
+  aText1Top:=round(0.5*(aRowHeight-Bitmaps[caItemState[AEnabled]].Canvas.TextHeight('É,9j')));   
   aRect:=Rect(0, 0, Bitmaps[caItemState[AEnabled]].Width, Bitmaps[caItemState[AEnabled]].Height);
   bGlyphs:= egoNativeGlyphs in Options;
   bHasImages:= assigned(Images);
@@ -808,20 +811,33 @@ begin
   if bGlyphs then aGlyphSize:=ThemeServices.GetDetailSize(GetElementDetails(caItemState[AEnabled]));
   if bHasImages then aImageSize:=Size(Images.Width, Images.Height);  { set Images size if needed }  
   aColor:=ColorToRGB(GetColorResolvingDefault(Color, Parent.Brush.Color));  
-  if (aColor and $FF) > 0
+  if (aColor and $FF)>0
     then dec(aColor)
-    else inc(aColor); 
+    else inc(aColor);
+  for aIState in ValidStates do
+    begin
+      Bitmaps[aIState].TransparentColor:=aColor;
+      Bitmaps[aIState].TransparentClear;
+    end;
   for aIState in ValidStates do
     begin 
       { Draw Background }
-      Bitmaps[aIState].TransparentColor:=aColor;
-      Bitmaps[aIState].TransparentClear;
+      aColor:=ColorToRGB(GetColorResolvingDefault(BlockColor, Parent.Brush.Color));
+      if egoHighlightPanels in Options then
+        case aIState of
+          eisDisabled: aColor:=GetMonochromaticColor(aColor);
+          eisHighlighted: aColor:=ModifyBrightness(GetMergedColor(aColor, clHighlight, 0.85), 1.07);
+          eisPushed: aColor:=ModifyBrightness(aColor, 0.93);
+          eisPushedHihlighted: aColor:=ModifyBrightness(GetMergedColor(aColor, clHighlight, 0.85), 0.96);
+          eisPushedDisabled: aColor:=GetMonochromaticColor(ModifyBrightness(aColor, 0.93));
+        end;
       case Style of
         eosButton: Bitmaps[aIState].Canvas.DrawButtonBackground(aRect, aIState);
-        eosPanel: Bitmaps[aIState].Canvas.DrawPanelBackGround(aRect, BevelInner, BevelOuter,
-                    BevelSpace, BevelWidth, Color3DDark, Color3DLight, 
-                    GetColorResolvingDefault(BlockColor, Parent.Brush.Color));
+        eosPanel: Bitmaps[aIState].Canvas.DrawPanelBackground(aRect, BevelInner, BevelOuter,
+                    BevelSpace, BevelWidth, Color3DDark, Color3DLight, aColor);
         eosThemedPanel: Bitmaps[aIState].Canvas.DrawThemedPanelBkgnd(aRect);
+        eosFinePanel: Bitmaps[aIState].Canvas.DrawFinePanelBkgnd(aRect, BevelOuter, BevelWidth,
+                        Color3DDark, Color3DLight, aColor, True);
       end;
       { Draw Spliters }
       if egoSplitted in Options then  
@@ -1597,12 +1613,6 @@ procedure TCustomECCheckGroup.SetChecked(Index: SmallInt; AValue: Boolean);
 begin
   Items[Index].Checked:=AValue;
 end;
-
-procedure Register;
-begin
-  {$I ecgroupctrls.lrs}
-  RegisterComponents('EC-C', [TECRadioGroup, TECCheckGroup]);
-end;     
 
 end.
 

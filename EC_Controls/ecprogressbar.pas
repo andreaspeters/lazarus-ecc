@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2017 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,7 +34,7 @@ unit ECProgressBar;
 interface
 
 uses
-  Classes, SysUtils, Controls, Forms, Graphics, LCLIntf, LCLProc, LResources, LMessages,
+  Classes, SysUtils, Controls, Forms, Graphics, LCLIntf, LCLProc, LMessages,
   Math, ECSlider, ECSpinCtrls, ECScale, ECTypes, Types;
 
 type  
@@ -287,7 +287,9 @@ type
   { TECSpinBtnsPos }
   TECSpinBtnsPos = class(TCustomSpinBtns)
   protected
+    CustomResize: TObjectMethod;
     procedure RecalcRedraw; override;
+    procedure Resize; override;
   public
     constructor Create(AOwner: TComponent); override;
   published
@@ -350,7 +352,9 @@ type
     FIndentBtns: SmallInt;
     FOnVisibleChanged: TOnVisibleChanged;
     FSpinBtns: TECSpinBtnsPos;
+    function GetController: TECSpinController;
     function GetWidthInclBtn: Integer;
+    procedure SetController(AValue: TECSpinController);
     procedure SetIndentBtns(AValue: SmallInt);
     procedure SetWidthInclBtn(AValue: Integer);
   protected const
@@ -370,6 +374,7 @@ type
     procedure VisibleChanged; override;
   public
     constructor Create(TheOwner: TComponent); override;
+    destructor Destroy; override;
   published
     property Align;
     property Anchors;
@@ -388,6 +393,7 @@ type
     property Color3DLight;
     property Color3DDark;
     property Constraints;
+    property Controller: TECSpinController read GetController write SetController;
     property DragCursor;
     property DragMode;
     property Enabled;
@@ -456,8 +462,6 @@ type
     property OnStartDrag;
     property OnVisibleChanged: TOnVisibleChanged read FOnVisibleChanged write FOnVisibleChanged;
   end;
-
-procedure Register;
 
 implementation
 
@@ -547,13 +551,12 @@ begin
 end; 
 
 procedure TCustomECProgressBar.CalcProgressInvRect;
-var aHelp: Integer;
     
-  procedure CalcProgressInvRectLimit;
+  function CalcProgressInvRectLimit: Integer;
   begin
     if not RealReversed           
-      then aHelp:=FGrooveMin+round(GetRelPxPos)
-      else aHelp:=FGrooveMax-round(GetRelPxPos)-1;        
+      then Result:=FGrooveMin+round(GetRelPxPos)
+      else Result:=FGrooveMax-round(GetRelPxPos)-1;
   end;    
     
 begin
@@ -561,9 +564,8 @@ begin
     begin
       if (ProgressTextStyle=eptNone) and (ProgressVisible=epvProgress) then
         begin
-          CalcProgressInvRectLimit;
-          FInvalidRect.Left:=aHelp;
-          FInvalidRect.Right:=aHelp;
+          FInvalidRect.Left:=CalcProgressInvRectLimit;
+          FInvalidRect.Right:=FInvalidRect.Left;
         end else 
         begin
           FInvalidRect.Left:=FGrooveMin;
@@ -573,9 +575,8 @@ begin
     begin
       if (ProgressTextStyle=eptNone) and (ProgressVisible=epvProgress) then  
         begin
-          CalcProgressInvRectLimit;
-          FInvalidRect.Top:=aHelp;
-          FInvalidRect.Bottom:=aHelp;
+          FInvalidRect.Top:=CalcProgressInvRectLimit;
+          FInvalidRect.Bottom:=FInvalidRect.Top;
         end else  
         begin
           FInvalidRect.Top:=FGrooveMin;
@@ -592,8 +593,7 @@ begin
       if AVertical 
         then aHalfSize:=Background.Canvas.TextHeight('0,9') div 2
         else aHalfSize:=(Math.max(Background.Canvas.TextWidth(Scale.GetStringMin),
-                                 Background.Canvas.TextWidth(Scale.GetStringMax))-1) div 2;
-      
+                                  Background.Canvas.TextWidth(Scale.GetStringMax))-1) div 2;
       dec(aHalfSize, GrooveBevelWidth);  
       inc(z1, aHalfSize);
       dec(z2, aHalfSize);  
@@ -898,7 +898,8 @@ begin
   if (ProgressTextStyle=eptNone) and (ProgressSign or (ProgressVisible=epvProgress)) then
     if Orientation=eooHorizontal then
       begin  { Horizontal }
-        {$IFDEF DBGPROGBAR} WriteLn('aR.L ', aRect.Left, ' aR.R ', aRect.Right, ' aCP ', aCurrentPosition, ' aR.C ', (aRect.Left+aRect.Right) div 2); {$ENDIF}
+        {$IFDEF DBGPROGBAR} DebugLn('aR.L ', intToStr(aRect.Left), ' aR.R ', intToStr(aRect.Right),
+          ' aCP ', intToStr(aCurrentPosition), ' aR.C ', intToStr((aRect.Left+aRect.Right) div 2)); {$ENDIF}
         if ((aRect.Left+aRect.Right) div 2)<aCurrentPosition then
           begin  { Moves Right }
             {$IFDEF DBGPROGBAR} DebugLn('MoveRight'); {$ENDIF}
@@ -920,9 +921,10 @@ begin
 end;                   
               
 procedure TCustomECPositionBar.CalcProgressInvRect;
-var aMin, aMax, i: Integer;
+var aMin, aMax: Integer;
     
   procedure CalcProgressInvRectLimit;
+  var  i: SmallInt;
   begin
     if not RealReversed then 
         begin
@@ -985,25 +987,31 @@ function TCustomECPositionBar.DoMouseWheelDown(Shift: TShiftState; MousePos: TPo
 var d: Double;
 begin
   Result:=inherited DoMouseWheelDown(Shift, MousePos);
-  if not (ssCtrl in Shift)
-    then d:=Mouse.WheelScrollLines*MouseDragPixels
-    else d:=Mouse.WheelScrollLines*MouseDragPixels/MouseDragPixelsFine;
-  if not RealReversed
-    then Position:=Position+d
-    else Position:=Position-d; 
+  if not Result then
+    begin
+      d:=MouseDragPixels;
+      if ssModifier in Shift then d:=d/MouseDragPixelsFine;
+      if not RealReversed
+        then Position:=Position+d
+        else Position:=Position-d;
+      Result:=True;
+    end;
 end;
 
 function TCustomECPositionBar.DoMouseWheelUp(Shift: TShiftState; MousePos: TPoint): Boolean;
 var d: Double;
 begin
   Result:=inherited DoMouseWheelUp(Shift, MousePos);
-  if not (ssCtrl in Shift)
-    then d:=Mouse.WheelScrollLines*MouseDragPixels
-    else d:=Mouse.WheelScrollLines*MouseDragPixels/MouseDragPixelsFine;
-  if not RealReversed
-    then Position:=Position-d
-    else Position:=Position+d;
-end;      
+  if not Result then
+    begin
+      d:=MouseDragPixels;
+      if ssModifier in Shift then d:=d/MouseDragPixelsFine;
+      if not RealReversed
+        then Position:=Position-d
+        else Position:=Position+d;
+      Result:=True;
+    end;
+end;
 
 procedure TCustomECPositionBar.DrawGroove;
 var aColor, aInvColor: TColor;
@@ -1092,23 +1100,17 @@ end;
 
 procedure TCustomECPositionBar.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 var aMousePos: Double;
-
-  procedure SetMousePos(ACoord: Integer);
-  begin
-    aMousePos:=GetPosFromCoord(ACoord);
-    if not RealReversed
-      then aMousePos:=Min+aMousePos
-      else aMousePos:=Max-aMousePos;
-  end;
-                   
 begin
   inherited MouseDown(Button, Shift, X, Y);
   case Button of 
     mbLeft:
       begin
         if Orientation=eooHorizontal
-          then SetMousePos(X)
-          else SetMousePos(Y);
+          then aMousePos:=GetPosFromCoord(X)
+          else aMousePos:=GetPosFromCoord(Y);
+        if not RealReversed
+          then aMousePos:=Min+aMousePos
+          else aMousePos:=Max-aMousePos;
         if FDragAreaEntered then
           begin  { Left click on Drag Area}
             if Orientation=eooHorizontal then 
@@ -1126,7 +1128,7 @@ begin
       end;
     mbMiddle: 
       if not ProgressFromMiddle
-        then Position:=0.5*(Max-Min)
+        then Position:=0.5*(Max+Min)
         else Position:=ProgressMiddlePos;
   end;
 end;
@@ -1149,7 +1151,7 @@ begin
                 then aPosition:=aPosition+FGrooveRect.Left
                 else aPosition:=FGrooveRect.Right-aPosition;
               bPrevDragAreaEntered:=FDragAreaEntered;
-              FDragAreaEntered:=(Y>=FGrooveRect.Top) and (Y<=FGrooveRect.Bottom)
+              FDragAreaEntered:= (Y>=FGrooveRect.Top) and (Y<=FGrooveRect.Bottom)
                 and (X>=(aPosition-cTolerance)) and (X<=(aPosition+cTolerance));
             end else
             begin  { Vertical }
@@ -1232,6 +1234,12 @@ begin
     end;
 end;
 
+procedure TECSpinBtnsPos.Resize;
+begin
+  inherited Resize;
+  if assigned(CustomResize) then CustomResize;
+end;
+
 constructor TECSpinBtnsPos.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
@@ -1256,7 +1264,14 @@ begin
       AnchorParallel(akTop, 0, self);
       AnchorParallel(akBottom, 0, self);
       Middle:=0.5*(Scale.Min+Scale.Max);
+      CustomResize:=@SetSpinBtnsPosition;
     end;
+end;
+
+destructor TECSpinPosition.Destroy;
+begin
+  FreeAndNil(FSpinBtns);
+  inherited Destroy;
 end;
 
 procedure TECSpinPosition.ChangePosition;
@@ -1310,10 +1325,13 @@ end;
 
 procedure TECSpinPosition.SetParent(NewParent: TWinControl);
 begin
-  FSpinBtns.Anchors:=[];
+  if assigned(FSpinBtns) then FSpinBtns.Anchors:=[];
   inherited SetParent(NewParent);
-  FSpinBtns.Parent:=Parent;
-  FSpinBtns.Anchors:=[akTop, akBottom];
+  if assigned(FSpinBtns) then
+    begin
+      FSpinBtns.Parent:=Parent;
+      FSpinBtns.Anchors:=[akTop, akBottom];
+    end;
 end;
 
 procedure TECSpinPosition.SetPosition(AValue: Double);
@@ -1340,9 +1358,23 @@ end;
 
 { TECSpinPosition.Getters & Setters }
 
+function TECSpinPosition.GetController: TECSpinController;
+begin
+  Result:=Buttons.FController;
+end;
+
 function TECSpinPosition.GetWidthInclBtn: Integer;
 begin
   Result:=Width+IndentBtns+FSpinBtns.Width;
+end;
+
+procedure TECSpinPosition.SetController(AValue: TECSpinController);
+begin
+  {$IFDEF DBGPROGBAR} DebugLn('TECSpinPosition.SetController'); {$ENDIF}
+  if Buttons.FController=AValue then exit;
+  if assigned(Buttons.FController) then Buttons.FController.UnRegisterClient(self);
+  Buttons.FController:=AValue;
+  if assigned(AValue) then AValue.RegisterClient(self);
 end;
 
 procedure TECSpinPosition.SetIndentBtns(AValue: SmallInt);
@@ -1355,12 +1387,6 @@ end;
 procedure TECSpinPosition.SetWidthInclBtn(AValue: Integer);
 begin
   Width:=AValue-IndentBtns-FSpinBtns.Width;
-end;
-
-procedure Register;
-begin
-  {$I ecprogressbar.lrs}
-  RegisterComponents('EC-C', [TECProgressBar, TECPositionBar, TECSpinPosition]);
 end;
 
 end.

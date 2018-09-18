@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2017 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,15 +34,14 @@ unit ECLink;
 interface
 
 uses
-  Classes, SysUtils, Controls, Forms, Graphics, LCLIntf, LCLType,
-  LMessages, LResources, Themes, types;
+  Classes, SysUtils, Controls, Forms, Graphics, LCLIntf, LCLType, LMessages, Themes, Types;
 
 type
   {$PACKENUM 2}
-  TLinkType = (eltClick,  //expected implementation in OnClick event OR assigned Action
-               eltFile,   //opens file in associated application; Link is expected to be valid path to file
-               eltMail,   //adds "mailto:" to Link; Link is expected to be valid email adress
-               eltWWW);   //opens URL with defult browser; URL should begin with http://...
+  TLinkType = (eltClick,  { expected implementation in OnClick event OR assigned Action }
+               eltFile,   { opens file in associated application; Link is expected to be valid path to file }
+               eltMail,   { adds "mailto:" to Link; Link is expected to be valid email adress }
+               eltWWW);   { opens URL with default browser; URL should begin with http://... }
 
   { TCustomECLink }
   TCustomECLink = class(TGraphicControl)
@@ -53,6 +52,7 @@ type
     FHoveredUnderlined: Boolean;
     FLayout: TTextLayout;
     FLink: string;
+    FLinkToHint: Boolean;
     FLinkType: TLinkType;
     FShowAccelChar: Boolean;
     FTransparent: Boolean;
@@ -68,7 +68,8 @@ type
     procedure AutosizeInvalidate;
     procedure CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer;
                                      {%H-}WithThemeSpace: Boolean); override;
-    function DialogChar(var Message: TLMKey): boolean; override;
+    procedure CMHintShow(var Message: TLMessage); message CM_HINTSHOW;
+    function DialogChar(var Message: TLMKey): Boolean; override;
     procedure MouseEnter; override;
     procedure MouseLeave; override;
     procedure Paint; override;
@@ -83,6 +84,7 @@ type
     property HoveredUnderlined: Boolean read FHoveredUnderlined write FHoveredUnderlined default True;
     property Layout: TTextLayout read FLayout write SetLayout default tlTop;
     property Link: string read FLink write FLink stored IsLinkStored;
+    property LinkToHint: Boolean read FLinkToHint write FLinkToHint default False;
     property LinkType: TLinkType read FLinkType write FLinkType default eltClick;
     property ShowAccelChar: Boolean read FShowAccelChar write SetShowAccelChar default True;
     property Transparent: Boolean read FTransparent write SetTransparent default True;
@@ -110,6 +112,7 @@ type
     property HoveredUnderlined;
     property Layout;
     property Link;
+    property LinkToHint;
     property LinkType;
     property ParentBiDiMode;
     property ParentColor;
@@ -138,8 +141,6 @@ type
     property OnResize;
     property OnStartDrag;
   end;
-
-procedure Register;
 
 implementation
 
@@ -188,7 +189,14 @@ begin
   FVisited:=True;
 end;
 
-function TCustomECLink.DialogChar(var Message: TLMKey): boolean;
+procedure TCustomECLink.CMHintShow(var Message: TLMessage);
+begin
+  inherited;
+  if (TCMHintShow(Message).HintInfo^.HintControl=self) and LinkToHint and (LinkType<>eltClick)
+    then TCMHintShow(Message).HintInfo^.HintStr:=Link;
+end;
+
+function TCustomECLink.DialogChar(var Message: TLMKey): Boolean;
 begin
   Result:=False;
   if ShowAccelChar then
@@ -224,11 +232,9 @@ var aColor: TColor;
     aDetails: TThemedElementDetails;
     aFlags: Cardinal;
     aStyles: TFontStyles;
-const caElementDetails: array [Boolean] of TThemedButton
-        = (tbPushButtonDisabled, tbPushButtonNormal);
-      caAlignment: array [Boolean, TAlignment] of Cardinal
-        = ((DT_LEFT, DT_RIGHT, DT_CENTER),
-           (DT_RIGHT or DT_RTLREADING, DT_LEFT or DT_RTLREADING, DT_CENTER or DT_RTLREADING));
+const caElementDetails: array [Boolean] of TThemedButton = (tbPushButtonDisabled, tbPushButtonNormal);
+      caAlignment: array [Boolean, TAlignment] of Cardinal = ((DT_LEFT, DT_RIGHT, DT_CENTER),
+        (DT_RIGHT or DT_RTLREADING, DT_LEFT or DT_RTLREADING, DT_CENTER or DT_RTLREADING));
 begin
   inherited Paint;
   if not Transparent and (Color<>clDefault) then
@@ -240,29 +246,20 @@ begin
   aStyles:=Font.Style;
   if MouseEntered then
     begin
-      if HoveredUnderlined then
-        begin
-          aStyles:=aStyles+[fsUnderline];
-        end;
+      if HoveredUnderlined then aStyles:=aStyles+[fsUnderline];
       if ColorHovered=clDefault
         then aColor:=clBlue
         else aColor:=ColorHovered;
     end else
-    begin
-      if Visited then
-        begin
-          if ColorVisited<>clDefault then aColor:=ColorVisited;
-        end;
-    end;
+    if Visited and (ColorVisited<>clDefault) then aColor:=ColorVisited;
   Canvas.Font.Color:=aColor;
   Canvas.Font.Style:=aStyles;
   aDetails:=ThemeServices.GetElementDetails(caElementDetails[IsEnabled]);
-  aFlags:=DT_SINGLELINE;
+  aFlags:=DT_SINGLELINE or caAlignment[IsRightToLeft, Alignment];
   case Layout of
     tlCenter: aFlags:=aFlags or DT_VCENTER;
     tlBottom: aFlags:=aFlags or DT_BOTTOM;
   end;
-  aFlags:=aFlags or caAlignment[IsRightToLeft, Alignment];
   if not ShowAccelChar then aFlags:=aFlags or DT_NOPREFIX;
   ThemeServices.DrawText(Canvas, aDetails, Caption, ClientRect, aFlags, 0);
 end;
@@ -298,7 +295,7 @@ procedure TCustomECLink.SetColorVisited(AValue: TColor);
 begin
   if FColorVisited=AValue then exit;
   FColorVisited:=AValue;
-  if FVisited then Invalidate;;
+  if FVisited then Invalidate;
 end;
 
 procedure TCustomECLink.SetLayout(AValue: TTextLayout);
@@ -327,12 +324,6 @@ begin
   if FVisited=AValue then exit;
   FVisited:=AValue;
   Invalidate;
-end;
-
-procedure Register;
-begin
-  {$I eclink.lrs}
-  RegisterComponents('EC-C', [TECLink]);
 end;
 
 end.

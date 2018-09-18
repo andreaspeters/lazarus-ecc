@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -35,7 +35,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, StdCtrls, CustomTimer, Math, Graphics, ImgList, ECTypes,
-  LCLIntf, LMessages, {$IFDEF DBGSPINS} LCLProc, {$ENDIF} LCLType, LResources, Themes;
+  LCLIntf, LMessages, {$IFDEF DBGSPINS} LCLProc, {$ENDIF} LCLType, Themes;
 
 type
   {$PACKENUM 1}
@@ -52,6 +52,8 @@ type
                esoEditingChangesValue,
                { Modifiers + Home/End for Max/Min }
                esoHomeEndAlt, esoHomeEndCtrl,
+               { ECSpinEdit is used as a grid in-cell editor }
+               esoInCellEditor,
                { smart spinning months and years }
                esoSmartDate,
                { Modifiers + Space clicks Middle, otherwise it opens Menu }
@@ -60,7 +62,8 @@ type
                esoUpDownOnly, esoUpDownAlt, esoUpDownCtrl, esoUpDownShift);  
   TSEOptions = set of TSEOption; 
   TValueFormat = (evfRound, evfExponent, evfExponential, evfMantissa, evfHexadecimal,
-                  evfMarkHexadec, evfOctal, evfBinary, evfDate, evfTime, evfText, evfCombined);
+                  evfMarkHexadec, evfOctal, evfMarkOctal, evfBinary, evfDate, evfTime, evfText,
+                  evfCombined);
   { Event }
   TOnDrawGlyph = procedure(Sender: TObject; AKind: TBtnKind; AState: TItemState) of object;
 
@@ -68,9 +71,9 @@ const
   cDefActAltEnter = emeNoAction;
   cDefActCtrlEnter = emeMenuClick; 
   cDefActShiftEnter = emeNoAction;
-  cDefCTDelay = 650; {miliseconds}
-  cDefCTRepeat = 75; {miliseconds}
-  cDefSSBWidth = 15; {pixels}
+  cDefCTDelay = 650;  {miliseconds}
+  cDefCTRepeat = 75;  {miliseconds}
+  cDefSSBWidth = 15;  {pixels}
   cDefSEOptions = [esoEditingChangesValue, esoHomeEndCtrl, esoSpaceClicksMiddle, esoSmartDate,
                    esoUpDownOnly, esoUpDownAlt, esoUpDownCtrl, esoUpDownShift];
   cMouseModifier = [ssCtrl, ssMeta];
@@ -159,11 +162,12 @@ type
     function IsClientButtons(AClient: Pointer; out ABtns: TCustomSpinBtns): Boolean;
     procedure SetupButtons(AButtons: TCustomSpinBtns);
     procedure SetupSpinEdit(ASpinEdit: TECSpinEdit);
-    procedure RegisterClient(AClient: TControl);
-    procedure UnRegisterClient(AClient: TControl);
+    procedure SetupSpinPosition(ASpinPosition: TControl);
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
+    procedure RegisterClient(AClient: TControl);
+    procedure UnRegisterClient(AClient: TControl);
   published
     property ActionAltEnter: TModifierEnter read FActionAltEnter write SetActionAltEnter default cDefActAltEnter;
     property ActionCtrlEnter: TModifierEnter read FActionCtrlEnter write SetActionCtrlEnter default cDefActCtrlEnter;
@@ -193,26 +197,26 @@ type
     FBtnOrder: Word;
     FCaption: string;
     FGlyphColor: TColor;
-    FImageIndex: SmallInt;
+    FImageIndex: TImageIndex;
     FLeft: Integer;
     FVisible: Boolean;
     FWidth: SmallInt;
     procedure SetBtnOrder(AValue: Word);
     procedure SetCaption(const AValue: string);
     procedure SetGlyphColor(AValue: TColor);
-    procedure SetImageIndex(AValue: SmallInt);
+    procedure SetImageIndex(AValue: TImageIndex);
     procedure SetVisible(AValue: Boolean);
     procedure SetWidth(AValue: SmallInt);
   protected
     Click: TObjectMethod; 
     FEnabled: Boolean;
     FKind: TBtnKind;
-    Parent: TCustomSpinBtns;
     procedure CreateBitmaps;
     procedure FreeBitmaps;
     procedure Resize;
   public
     BtnBitmaps: array[low(TItemState)..eisPushed] of TBitmap;
+    Parent: TCustomSpinBtns;
     constructor Create(AParent: TCustomSpinBtns);
     destructor Destroy; override;
     property Enabled: Boolean read FEnabled;
@@ -221,7 +225,7 @@ type
     property BtnOrder: Word read FBtnOrder write SetBtnOrder;
     property Caption: string read FCaption write SetCaption;
     property GlyphColor: TColor read FGlyphColor write SetGlyphColor default clDefault;
-    property ImageIndex: SmallInt read FImageIndex write SetImageIndex default -1;
+    property ImageIndex: TImageIndex read FImageIndex write SetImageIndex default -1;
     property Left: Integer read FLeft;
     property Visible: Boolean read FVisible write SetVisible default True;
     property Width: SmallInt read FWidth write SetWidth default cDefSSBWidth;
@@ -282,8 +286,8 @@ type
     CursorSwap: TCursor;
     FController: TECSpinController;
     InitValue: Double;  { initial Value for BtnDrag click & drag }
-    InitX: Integer;   { initial X coord for BtnDrag click & drag }
-    InitY: Integer;   { initial Y coord for BtnDrag click & drag }
+    InitX: Integer;  { initial X coord for BtnDrag click & drag }
+    InitY: Integer;  { initial Y coord for BtnDrag click & drag }
     NeedCalcHoveredBtnInPaint: Boolean;
     PrevCTRLDown: Boolean;  { wheter CTRL was pressed in previous MouseMove }
     PrevHeight: Integer;
@@ -297,7 +301,7 @@ type
     function CalcDiscreteMode(AValue: Double): Double; inline;
     function CalcHoveredButton(X: Integer): Boolean;
     procedure CalcInternalGeometry;
-    procedure CalculatePreferredSize(var PreferredWidth, PreferredHeight: integer;
+    procedure CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer;
                                      {%H-}WithThemeSpace: Boolean); override;
     procedure CMBiDiModeChanged(var Message: TLMessage); message CM_BIDIMODECHANGED;
     procedure CMColorChanged(var {%H-}Message: TLMessage); message CM_COLORCHANGED;
@@ -403,6 +407,7 @@ type
     property BtnMenu;
     property BtnMiddle;
     property BtnMin;
+    property BorderSpacing;
     {property Color;}  {does nothing ATM}
     property Controller: TECSpinController read FController write SetController;
     property DiscreteChange;
@@ -462,12 +467,14 @@ type
     procedure SetMinInEdit(AValue: Double);
     procedure SetMin(AValue: Double); override;
   protected
+    CustomResize: TObjectMethod;
     procedure DoBtnBigDecClick; override;
     procedure DoBtnBigIncClick; override;
     procedure DoBtnDecClick; override;
     procedure DoBtnIncClick; override;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     procedure RecalcRedraw; override;
+    procedure Resize; override;
     procedure SetValue(AValue: Double; RaiseCustomChange, ExceedLimit: Boolean);
   public
     constructor Create(AOwner: TComponent); override; 
@@ -565,11 +572,14 @@ type
     procedure SetValueFormat(AValue: TValueFormat);
     procedure SetWidthInclBtns(AValue: Integer);
   protected
+    Flags: TEditingDoneFlags;
     TextEdited: Boolean;
     procedure Change; override;
-    function ChildClassAllowed(ChildClass: TClass): boolean; override;     
+    function ChildClassAllowed(ChildClass: TClass): Boolean; override;
     procedure CMBiDiModeChanged(var Message: TLMessage); message CM_BIDIMODECHANGED;
-    function CreateControlBorderSpacing: TControlBorderSpacing; override;      
+    function CreateControlBorderSpacing: TControlBorderSpacing; override;
+    procedure DoEnter; override;
+    procedure DoExit; override;
     procedure DoOnChangeBounds; override;
     function GetBigDecreasedValue: Double;
     function GetBigIncreasedValue: Double;
@@ -578,11 +588,13 @@ type
     procedure InitializeWnd; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure KeyPress(var Key: Char); override;
+    procedure KeyUp(var Key: Word; Shift: TShiftState); override;
     procedure RewriteText;
     procedure SetEnabled(Value: Boolean); override;
     procedure SetParent(NewParent: TWinControl); override;
     procedure SetSpinBtnsPosition;
-    procedure VisibleChanged; override;
+    procedure SetVisible(Value: Boolean); override;
+    procedure WMKillFocus(var Message: TLMKillFocus); message LM_KILLFOCUS;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -661,9 +673,9 @@ type
     property OnVisibleChanged: TOnVisibleChanged read FOnVisibleChanged write FOnVisibleChanged;
   end;
 
-procedure Register;
-
 implementation
+
+uses ECProgressBar;
 
 { TCustomECTimer }
 
@@ -737,34 +749,43 @@ end;
 
 destructor TECSpinController.Destroy;
 var i: Integer;
+    aBtns: TCustomSpinBtns;
 begin
   {$IFDEF DBGSPINS} DebugLn('TECSpinController.Destroy'); {$ENDIF}
   for i := 0 to ClientList.Count - 1 do
-    if TControl(ClientList[i]) is TCustomSpinBtns
-      then (TControl(ClientList[i]) as TCustomSpinBtns).FController := nil
-      else if TControl(ClientList[i]) is TECSpinBtns then (TControl(ClientList[i]) as TECSpinBtns).FController := nil;
+    if IsClientButtons(ClientList[i], aBtns) then aBtns.FController := nil;
   FreeAndNil(ClientList);
   inherited Destroy;
 end;
 
 function TECSpinController.IsClientButtons(AClient: Pointer; out ABtns: TCustomSpinBtns): Boolean;
 begin
-  if TControl(AClient) is TCustomSpinBtns then ABtns := TControl(AClient) as TCustomSpinBtns;
-  if TControl(AClient) is TECSpinEdit then ABtns := (TControl(AClient) as TECSpinEdit).Buttons;
+  ABtns := nil;
+  if TControl(AClient) is TCustomSpinBtns
+    then ABtns := TCustomSpinBtns(TControl(AClient))
+    else if TControl(AClient) is TECSpinEdit
+           then ABtns := TECSpinEdit(TControl(AClient)).Buttons
+           else if TControl(AClient) is TECSpinPosition
+                  then ABtns := TECSpinPosition(TControl(AClient)).Buttons;
   Result := (ABtns is TCustomSpinBtns);
 end;
 
 procedure TECSpinController.RegisterClient(AClient: TControl);
 begin
-  if (AClient is TECSpinEdit) or (AClient is TCustomSpinBtns) then
+  if (AClient is TECSpinEdit) or (AClient is TCustomSpinBtns) or (AClient is TECSpinPosition) then
     begin
       ClientList.Add(AClient);
       if AClient is TECSpinEdit then
         begin
-          SetupButtons((AClient as TECSpinEdit).Buttons);
-          SetupSpinEdit(AClient as TECSpinEdit);
+          SetupButtons(TECSpinEdit(AClient).Buttons);
+          SetupSpinEdit(TECSpinEdit(AClient));
         end else
-        if AClient is TCustomSpinBtns then SetupButtons(AClient as TCustomSpinBtns);
+        if AClient is TECSpinPosition then
+          begin
+            SetupButtons(TECSpinPosition(AClient).Buttons);
+            SetupSpinPosition(AClient);
+          end;
+        if AClient is TCustomSpinBtns then SetupButtons(TCustomSpinBtns(AClient));
     end;
 end;
 
@@ -802,6 +823,11 @@ begin
     end;
 end;
 
+procedure TECSpinController.SetupSpinPosition(ASpinPosition: TControl);
+begin
+  with TECSpinPosition(ASpinPosition) do
+    IndentBtns := self.Indent;
+end;
 
 procedure TECSpinController.UnRegisterClient(AClient: TControl);
 var i: Integer;
@@ -822,8 +848,8 @@ begin
   if FActionAltEnter = AValue then exit;
   FActionAltEnter := AValue;
   for i := 0 to ClientList.Count -1 do
-    if assigned(ClientList[i]) and (TControl(ClientList[i]) is TECSpinEdit) then
-      (TControl(ClientList[i]) as TECSpinEdit).ActionAltEnter := AValue;
+    if assigned(ClientList[i]) and (TControl(ClientList[i]) is TECSpinEdit)
+      then TECSpinEdit(TControl(ClientList[i])).ActionAltEnter := AValue;
 end;
 
 procedure TECSpinController.SetActionCtrlEnter(AValue: TModifierEnter);
@@ -832,8 +858,8 @@ begin
   if FActionCtrlEnter = AValue then exit;
   FActionCtrlEnter := AValue;
   for i := 0 to ClientList.Count -1 do
-    if assigned(ClientList[i]) and (TControl(ClientList[i]) is TECSpinEdit) then
-      (TControl(ClientList[i]) as TECSpinEdit).ActionCtrlEnter := AValue;
+    if assigned(ClientList[i]) and (TControl(ClientList[i]) is TECSpinEdit)
+      then TECSpinEdit(TControl(ClientList[i])).ActionCtrlEnter := AValue;
 end;
 
 procedure TECSpinController.SetActionShiftEnter(AValue: TModifierEnter);
@@ -842,8 +868,8 @@ begin
   if FActionShiftEnter = AValue then exit;
   FActionShiftEnter := AValue;
   for i := 0 to ClientList.Count -1 do
-    if assigned(ClientList[i]) and (TControl(ClientList[i]) is TECSpinEdit) then
-      (TControl(ClientList[i]) as TECSpinEdit).ActionShiftEnter := AValue;
+    if assigned(ClientList[i]) and (TControl(ClientList[i]) is TECSpinEdit)
+      then TECSpinEdit(TControl(ClientList[i])).ActionShiftEnter := AValue;
 end;   
 
 procedure TECSpinController.SetBtnBigDecWidth(AValue: Integer);
@@ -951,9 +977,14 @@ var i: Integer;
 begin
   if FIndent = AValue then exit;
   FIndent := AValue;
-  for i := 0 to ClientList.Count -1 do
-    if assigned(ClientList[i]) and (TControl(ClientList[i]) is TECSpinEdit) then
-      (TControl(ClientList[i]) as TECSpinEdit).Indent := AValue;
+  for i := 0 to ClientList.Count - 1 do
+    if assigned(ClientList[i]) then
+      begin
+        if TControl(ClientList[i]) is TECSpinEdit
+          then TECSpinEdit(TControl(ClientList[i])).Indent := AValue
+          else if TControl(ClientList[i]) is TECSpinPosition
+                then TECSpinPosition(TControl(ClientList[i])).IndentBtns := AValue;
+      end;
 end;
 
 procedure TECSpinController.SetOptions(AValue: TSEOptions);
@@ -962,8 +993,8 @@ begin
   if FOptions = AValue then exit;
   FOptions := AValue;
   for i := 0 to ClientList.Count - 1 do
-    if assigned(ClientList[i]) and (TControl(ClientList[i]) is TECSpinEdit) then
-      (TControl(ClientList[i]) as TECSpinEdit).Options := AValue;
+    if assigned(ClientList[i]) and (TControl(ClientList[i]) is TECSpinEdit)
+      then TECSpinEdit(TControl(ClientList[i])).Options := AValue;
 end;
 
 procedure TECSpinController.SetReversed(AValue: Boolean);
@@ -1097,7 +1128,7 @@ begin
   Parent.Redraw;
 end;
 
-procedure TSingleSpinBtn.SetImageIndex(AValue: SmallInt);
+procedure TSingleSpinBtn.SetImageIndex(AValue: TImageIndex);
 begin
   if FImageIndex = AValue then exit;
   FImageIndex := AValue;
@@ -1323,7 +1354,7 @@ begin
 end;
 
 procedure TCustomSpinBtns.CalculatePreferredSize(var PreferredWidth,
-            PreferredHeight: integer; WithThemeSpace: Boolean);
+            PreferredHeight: Integer; WithThemeSpace: Boolean);
 begin
   {$IFDEF DBGSPINS} DebugLn('TCustomSpinBtns.CalculatePreferredSize'); {$ENDIF}
   PreferredHeight := 0;
@@ -1613,10 +1644,7 @@ begin
                     aRect := Rect(0, 0, Width, Height);
                     if aGlyphDesign >= egdGrid then InflateRect(aRect, -3, -4);
                     for aState := low(TItemState) to eisPushed do 
-                      begin     
-                        BtnBitmaps[aState].Canvas.SetRealGlyphColor(GlyphColor, aState);
-                        BtnBitmaps[aState].Canvas.DrawGlyph(aRect, aGlyphDesign, aState)
-                      end;          
+                      BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, aGlyphDesign, aState)
                    end;
               end;
           end;                        
@@ -2083,9 +2111,7 @@ procedure TCustomSpinBtns.SetSpacing(AValue: SmallInt);
 begin
   if FSpacing = AValue then exit;
   FSpacing := AValue;
-  CalcInternalGeometry;
-  AdjustWidth;
-  if UpdateCount = 0 then Invalidate;
+  RecalcRedraw;
 end;
 
 procedure TCustomSpinBtns.SetStyle(AValue: TButtonStyle);
@@ -2147,6 +2173,13 @@ end;
 
 { TECSpinBtns }
 
+destructor TECSpinBtns.Destroy;
+begin
+  {$IFDEF DBGSPINS} DebugLn('TECSpinBtns.Destroy'); {$ENDIF}
+  if assigned(FController) then FController.UnRegisterClient(self);
+  inherited Destroy;
+end;
+
 procedure TECSpinBtns.SetController(AValue: TECSpinController);
 begin
   {$IFDEF DBGSPINS} DebugLn('TECSpinBtns.SetController'); {$ENDIF}
@@ -2154,13 +2187,6 @@ begin
   if assigned(FController) then FController.UnRegisterClient(self);
   FController := AValue;
   if assigned(AValue) then AValue.RegisterClient(self);
-end;
-
-destructor TECSpinBtns.Destroy;
-begin
-  {$IFDEF DBGSPINS} DebugLn('TECSpinBtns.Destroy'); {$ENDIF}
-  if assigned(FController) then FController.UnRegisterClient(self);
-  inherited Destroy;
 end;
 
 { TECSpinBtnsPlus }
@@ -2178,28 +2204,28 @@ end;
 
 procedure TECSpinBtnsPlus.DoBtnBigDecClick;
 begin   
-  Value := (Owner as TECSpinEdit).GetBigDecreasedValue;
+  Value := TECSpinEdit(Owner).GetBigDecreasedValue;
 end;
 
 procedure TECSpinBtnsPlus.DoBtnBigIncClick;
 begin
-  Value := (Owner as TECSpinEdit).GetBigIncreasedValue;
+  Value := TECSpinEdit(Owner).GetBigIncreasedValue;
 end;
 
 procedure TECSpinBtnsPlus.DoBtnDecClick;
 begin
-  Value := (Owner as TECSpinEdit).GetDecreasedValue;
+  Value := TECSpinEdit(Owner).GetDecreasedValue;
 end;
 
 procedure TECSpinBtnsPlus.DoBtnIncClick;
 begin
-  Value := (Owner as TECSpinEdit).GetIncreasedValue;
+  Value := TECSpinEdit(Owner).GetIncreasedValue;
 end;    
 
 procedure TECSpinBtnsPlus.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseDown(Button, Shift, X, Y);
-  with Owner as TWinControl do SetFocus;
+  TWinControl(Owner).SetFocus;
 end;            
 
 procedure TECSpinBtnsPlus.RecalcRedraw;
@@ -2208,11 +2234,17 @@ begin
     begin
       CalcInternalGeometry;
       AdjustWidth;
-      (Owner as TECSpinEdit).SetSpinBtnsPosition;
+      //TECSpinEdit(Owner).SetSpinBtnsPosition;
       RedrawMode := ermRedrawBkgnd;
       Invalidate;
     end;   
-end;            
+end;
+
+procedure TECSpinBtnsPlus.Resize;
+begin
+  inherited Resize;
+  if assigned(CustomResize) then CustomResize;
+end;
 
 procedure TECSpinBtnsPlus.SetMaxInEdit(AValue: Double);
 begin
@@ -2322,11 +2354,12 @@ begin
   inherited Create(AOwner);
   ControlStyle := ControlStyle - [csSetCaption];
   with FSpinBtns do
-    begin                         
+    begin
       CustomChange := @RewriteText;
       Name := 'ECSpinEditButtons';
       AnchorParallel(akTop, 0, self);
       AnchorParallel(akBottom, 0, self);
+      CustomResize := @SetSpinBtnsPosition;
     end;         
   FActionAltEnter := cDefActAltEnter;
   FActionCtrlEnter := cDefActCtrlEnter;
@@ -2361,7 +2394,7 @@ begin
     'EditChangeVal ', 'EditingNOTChange ') +floattostr(Value)); {$ENDIF}
 end;      
 
-function TECSpinEdit.ChildClassAllowed(ChildClass: TClass): boolean;
+function TECSpinEdit.ChildClassAllowed(ChildClass: TClass): Boolean;
 begin
   Result := (ChildClass = TECSpinBtnsPlus);
 end;      
@@ -2377,7 +2410,22 @@ function TECSpinEdit.CreateControlBorderSpacing: TControlBorderSpacing;
 begin
   {$IFDEF DBGSPINS}  DebugLn('CreateControlBorderSpacing'); {$ENDIF}
   Result := TECSpinEditSpacing.Create(self);
-end; 
+end;
+
+procedure TECSpinEdit.DoEnter;
+begin
+  inherited DoEnter;
+  if (esoInCellEditor in Options) and (Buttons.HoveredBtn >= 0) then CaretPos:=Point(length(Text), 1);
+end;
+
+procedure TECSpinEdit.DoExit;
+begin
+  if esoInCellEditor in Options then
+    if edfAllowDoExitInCell in Flags
+      then exclude(Flags, edfAllowDoExitInCell)
+      else exit;  { Exit! }
+  inherited DoExit;
+end;
 
 procedure TECSpinEdit.DoOnChangeBounds;
 begin
@@ -2390,12 +2438,17 @@ procedure TECSpinEdit.EditingDone;
 var aValue: Double;
 begin
   {$IFDEF DBGSPINS} DebugLn('TECSpinEdit.EditingDone'); {$ENDIF}
-  if not ReadOnly then
+  if (edfForceEditingDone in Flags) or (Buttons.HoveredBtn = -1) then
     begin
-      if TryGetValueFromString(Text, aValue) then SetValue(aValue);
-      RewriteText;
+      if not ReadOnly then
+        begin
+          if TryGetValueFromString(Text, aValue) then SetValue(aValue);
+          RewriteText;
+        end;
+      if edfForceEditingDone in Flags then include(Flags, edfAllowDoExitInCell);
+      exclude(Flags, edfForceEditingDone);
+      inherited EditingDone;
     end;
-  inherited EditingDone;
 end;
 
 procedure TECSpinEdit.EndUpdate;
@@ -2505,9 +2558,10 @@ begin
     evfExponent: Result := floattostrF(power(FMantissaExp, AValue), ffFixed, 1, ARound);
     evfExponential: Result := floattostrF(AValue, ffExponent, ARound, ARound);
     evfMantissa: Result := floattostrF(power(AValue, FMantissaExp), ffFixed, 1, ARound);
-    evfHexadecimal: Result := HexStr(round(AValue), ARound);
-    evfMarkHexadec: Result := '$' + HexStr(round(AValue), ARound);
+    evfHexadecimal: Result := hexStr(round(AValue), ARound);
+    evfMarkHexadec: Result := '$' + hexStr(round(AValue), ARound);
     evfOctal: Result := octStr(round(AValue), ARound);
+    evfMarkOctal: Result := '&' + octStr(round(AValue), ARound);
     evfBinary: Result := binStr(round(AValue), ARound);
     evfDate: 
       begin
@@ -2578,6 +2632,7 @@ begin
   {$IFDEF DBGSPINS} DebugLn('TECSpinEdit.KeyDown'); {$ENDIF}
   if FSpinBtns.Enabled then
     begin
+      if esoInCellEditor in Options then include(Flags, edfForceEditingDone);
       case Key of
         VK_RETURN:  {Enter + Ctrl opens Menu}
           if ((ActionAltEnter = emeMenuClick) and (ssAlt in Shift)) or
@@ -2593,7 +2648,8 @@ begin
               begin
                 FSpinBtns.BtnMiddleClick;
                 bKeyUsed := True;
-              end;
+              end else
+              if esoInCellEditor in Options then Flags := Flags + [edfEnterWasInKeyDown, edfForceEditingDone];
         VK_SPACE:  {(CTRL +) Space clicks Menu or Middle} 
           if (ssModifier in Shift) or ReadOnly then
             begin  
@@ -2690,12 +2746,30 @@ begin
           then Key := #0;
       evfHexadecimal, evfMarkHexadec:
         if not (Key in ['$', '0'..'9', 'a'..'f', 'A'..'F']) then Key := #0;
-      evfOctal: if (Key < '0') and (Key > '7') then Key := #0;
+      evfOctal, evfMarkOctal: if not (Key in ['&', '0'..'7']) then Key := #0;
       evfBinary: if (Key <> '0') and (Key <> '1') then Key := #0;
       evfDate: if not (Key in ['0'..'9', DefaultFormatSettings.DateSeparator]) then Key := #0;
       evfTime: if not (Key in ['0'..'9', DefaultFormatSettings.TimeSeparator, '.']) then Key := #0;
     end;      
-end;                          
+end;
+
+procedure TECSpinEdit.KeyUp(var Key: Word; Shift: TShiftState);
+var b: Boolean;
+begin
+  if (esoInCellEditor in Options) and not (edfEnterWasInKeyDown in Flags) then Key := 0;
+  b := (Key = VK_RETURN);
+  if b then
+    begin
+      b := not (((ActionCtrlEnter <> emeNoAction) and (ssModifier in Shift)) or
+                ((ActionAltEnter <> emeNoAction) and (ssAlt in Shift)) or
+                ((ActionShiftEnter <> emeNoAction) and (ssShift in Shift)));
+      if not b then Key := 0;
+    end;
+  if b and not (esoInCellEditor in Options)
+    then include(Flags, edfForceEditingDone)
+    else exclude(Flags, edfForceEditingDone);
+  inherited KeyUp(Key, Shift);
+end;
 
 procedure TECSpinEdit.RewriteText;
 begin
@@ -2738,6 +2812,14 @@ begin
     then FSpinBtns.Left := Left + Width + Indent
     else FSpinBtns.Left := Left - Indent - FSpinBtns.FWidth;
 end;
+
+procedure TECSpinEdit.SetVisible(Value: Boolean);
+begin
+  inherited SetVisible(Value);
+  FSpinBtns.Visible := Value;
+  if Value and (esoInCellEditor in Options) then exclude(Flags, edfEnterWasInKeyDown);
+  if assigned(OnVisibleChanged) then OnVisibleChanged(self, Value);
+end;
          
 procedure TECSpinEdit.SwitchOption(AOption: TSEOption; AOn: Boolean);
 var aOptions: TSEOptions;
@@ -2777,7 +2859,7 @@ begin
         Result := TryStrToInt64(AString, i);
         if Result then AValue := i;
       end;
-    evfOctal: 
+    evfOctal, evfMarkOctal:
       begin
         if (AString <> '') and (AString[1] <> '&') then AString := '&' + AString;
         Result := TryStrToInt64(AString, i);
@@ -2824,12 +2906,13 @@ begin
   end;  {case}
 end;
 
-procedure TECSpinEdit.VisibleChanged;
+procedure TECSpinEdit.WMKillFocus(var Message: TLMKillFocus);
 begin
-  inherited VisibleChanged;
-  FSpinBtns.Visible := Visible;
-  if assigned(OnVisibleChanged) then OnVisibleChanged(self, Visible);
-end;                  
+  if esoInCellEditor in Options then
+    if not (edfForceEditingDone in Flags) and (Buttons.HoveredBtn > -1) then exit;  { Exit! }
+  include(Flags, edfForceEditingDone);
+  inherited WMKillFocus(Message);
+end;
 
 { TECSpinEdit.Getters + Setters }
 
@@ -2905,12 +2988,6 @@ end;
 procedure TECSpinEdit.SetWidthInclBtns(AValue: Integer);
 begin
   Width := AValue - Indent - FSpinBtns.Width;
-end;
-
-procedure Register;
-begin
-  {$I ecspinctrls.lrs}
-  RegisterComponents('EC-C', [TECSpinBtns, TECSpinEdit, TECSpinController, TECTimer]);
 end;
 
 end.

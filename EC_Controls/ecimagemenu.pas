@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,8 +34,8 @@ unit ECImageMenu;
 interface
 
 uses                                                                  
-  Classes, SysUtils, Controls, StdCtrls, Graphics, Forms,  ImgList, Math,
-  LCLIntf, LCLProc, LCLType, LMessages, LResources, Themes, Types, ECTypes;
+  Classes, SysUtils, Controls, StdCtrls, Graphics, Forms, ImgList, Math,
+  LCLIntf, LCLProc, LCLType, LMessages, Themes, Types, ECTypes;
 
 type    
   { TImageMenuItem }   
@@ -197,8 +197,6 @@ type
     property Visible;            
   end;   
   
-procedure Register;
-
 implementation
 
 { TImageMenuItem }  
@@ -497,14 +495,22 @@ end;
 function TCustomECImageMenu.DoMouseWheelDown(Shift: TShiftState; MousePos: TPoint): Boolean;
 begin
   Result := inherited DoMouseWheelDown(Shift, MousePos);
-  if ItemIndex < (Items.Count - 1) then ItemIndex := ItemIndex + 1;
+  if not Result then
+    begin
+      if ItemIndex < (Items.Count - 1) then ItemIndex := ItemIndex + 1;
+      Result := True;
+    end;
 end;
 
 function TCustomECImageMenu.DoMouseWheelUp(Shift: TShiftState; MousePos: TPoint): Boolean;
 begin
   Result := inherited DoMouseWheelUp(Shift, MousePos);
-  if ItemIndex > 0 then ItemIndex := ItemIndex - 1;
-end;  
+  if not Result then
+    begin
+      if ItemIndex > 0 then ItemIndex := ItemIndex - 1;
+      Result := True;
+    end;
+end;
 
 procedure TCustomECImageMenu.DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState);
 var aDetails: TThemedElementDetails;
@@ -750,12 +756,6 @@ begin
   FSpacing := AValue;
   RecalcInvalidate;
 end;         
-
-procedure Register;
-begin
-  {$I ecimagemenu.lrs}
-  RegisterComponents('EC-C', [TECImageMenu]);
-end;  
 
 end.
 

@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,8 +34,7 @@ unit ECScale;
 interface
 
 uses
-  Classes, SysUtils, Controls, ECTypes, Graphics, 
-  {$IFDEF DBGSCALE} LCLProc, {$ENDIF} LCLType, Math, Themes;
+  Classes, SysUtils, Controls, ECTypes, Graphics, {$IFDEF DBGSCALE} LCLProc, {$ENDIF} LCLType, Math, Themes;
 
 type
   {$PACKENUM 2}
@@ -50,7 +49,8 @@ type
   TValueDisplay = (evdNormal, evdTopLeft, evdBottomRight, evdTopLeftInside,
                    evdBttmRightInside, evdCompactTopLeft, evdCompactBttmRight);
   TScaleValueFormat = (esvfAutoRound, esvfFixedRound, esvfSmartRound, esvfExponential, esvfHexadecimal,
-                       esvfMarkHexadec, esvfOctal, esvfBinary, esvfDate, esvfTime, esvfText);
+                       esvfMarkHexadec, esvfOctal, esvfMarkOctal, esvfBinary, esvfDate, esvfTime,
+                       esvfText);
 									                       
 const
   cDefTickAlign = etaOuter;
@@ -830,9 +830,8 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
         if aValueVisible>evvBounds then
           begin
             i:=MaxL-MinL;
-            if i>0
-              then lHelp:=i/high(ValueArray)
-              else lHelp:=0;
+            lHelp:=0;
+            if (i>0) and (high(ValueArray)>0) then lHelp:=i/high(ValueArray);
             for i:=0 to high(ValueArray) do
               begin
                 strVal:=GetStringValue(i);
@@ -1028,6 +1027,7 @@ begin
     esvfHexadecimal: Result:=hexStr(round(AValue), ARound);
     esvfMarkHexadec: Result:='$'+hexStr(round(AValue), ARound);
     esvfOctal: Result:=octStr(round(AValue), ARound);
+    esvfMarkOctal: Result:='&'+octStr(round(AValue), ARound);
     esvfBinary: Result:=binStr(round(AValue), ARound);
     esvfDate: Result:=datetostr(AValue, DTFormat);
     esvfTime: Result:=timetostr(AValue, DTFormat);

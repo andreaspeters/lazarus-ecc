@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2015 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2018 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,15 +34,14 @@ unit ECEditBtns;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, Math, Themes, Types,
-  StdCtrls, ActnList, Dialogs, Forms, ImgList, Menus, LCLIntf, LCLProc, LCLType,
-  LMessages, LResources, PropEdits, ECSpinCtrls, ECTypes;
+  Classes, SysUtils, Controls, Graphics, Math, Themes, Types, StdCtrls, ActnList,
+  Dialogs, Forms, ImgList, LCLIntf, LCLProc, LCLType, LMessages, ECSpinCtrls, ECTypes;
 
 type       
   {$PACKENUM 2}
   TButtonMode = (ebmSpeedBtn, ebmToggleBox, ebmDelayBtn);
   TDropDownGlyph = (edgNone, edgMiddle, edgDown);
-  TEBOption = (eboClickAltEnter, eboClickCtrlEnter, eboClickShiftEnter);
+  TEBOption = (eboClickAltEnter, eboClickCtrlEnter, eboClickShiftEnter, eboInCellEditor);
   TEBOptions = set of TEBOption;   
   TItemOrder = (eioFixed, eioHistory, eioSorted);
   { Event }
@@ -81,8 +80,8 @@ type
     FGlyphDesignChecked: TGlyphDesign;
     FGlyphDesign: TGlyphDesign;
     FGroupIndex: Integer;
-    FImageIndex: SmallInt;
-    FImageIndexChecked: SmallInt;
+    FImageIndex: TImageIndex;
+    FImageIndexChecked: TImageIndex;
     FImages: TCustomImageList;
     FLayout: TObjectPos;
     FMargin: SmallInt;
@@ -107,8 +106,8 @@ type
     procedure SetGlyphDesign(AValue: TGlyphDesign);
     procedure SetGlyphDesignChecked(AValue: TGlyphDesign);
     procedure SetGroupIndex(AValue: Integer);
-    procedure SetImageIndex(AValue: SmallInt);
-    procedure SetImageIndexChecked(AValue: SmallInt);
+    procedure SetImageIndex(AValue: TImageIndex);
+    procedure SetImageIndexChecked(AValue: TImageIndex);
     procedure SetImages(AValue: TCustomImageList);
     procedure SetLayout(AValue: TObjectPos);
     procedure SetMargin(AValue: SmallInt);
@@ -151,7 +150,7 @@ type
     procedure MouseEnter; override;
     procedure MouseLeave; override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
-    procedure Paint;  override;
+    procedure Paint; override;
     procedure Redraw;
     procedure Resize; override;
     procedure ResizeInvalidate;
@@ -183,8 +182,8 @@ type
     property GlyphDesign: TGlyphDesign read FGlyphDesign write SetGlyphDesign;  { set default in descendants }
     property GlyphDesignChecked: TGlyphDesign read FGlyphDesignChecked write SetGlyphDesignChecked default egdNone;
     property GroupIndex: Integer read FGroupIndex write SetGroupIndex default 0;
-    property ImageIndex: SmallInt read FImageIndex write SetImageIndex default -1;
-    property ImageIndexChecked: SmallInt read FImageIndexChecked write SetImageIndexChecked default -1;
+    property ImageIndex: TImageIndex read FImageIndex write SetImageIndex default -1;
+    property ImageIndexChecked: TImageIndex read FImageIndexChecked write SetImageIndexChecked default -1;
     property Images: TCustomImageList read FImages write SetImages;
     property Layout: TObjectPos read FLayout write SetLayout default eopLeft;
     property Margin: SmallInt read FMargin write SetMargin default -1;
@@ -286,6 +285,8 @@ type
   TECSpeedBtnPlus = class(TCustomECSpeedBtnPlus)
   published
     property Caption;
+    property Delay;
+    property DropDownGlyph;
     property Flat;
     property GlyphColor;
     property GlyphDesign;
@@ -300,6 +301,7 @@ type
     property OnChangeBounds;
     property OnClick;
     property OnContextPopup;
+    property OnHoldDown;
     property OnMouseDown;
     property OnMouseEnter;
     property OnMouseLeave;
@@ -313,8 +315,8 @@ type
   public
     function GetSpace(Kind: TAnchorKind): Integer; override;
     procedure GetSpaceAround(var SpaceAround: TRect); override;
-  end;    
-  
+  end;
+
   { TBaseECEditBtn }
   TBaseECEditBtn = class(TCustomEdit)
   private
@@ -325,19 +327,25 @@ type
     procedure SetIndent(AValue: SmallInt);
     procedure SetWidthInclBtn(AValue: Integer);
   protected
+    Flags: TEditingDoneFlags;
     FAnyButton: TCustomECSpeedBtnPlus;
     function ChildClassAllowed(ChildClass: TClass): boolean; override;
     procedure CMBiDiModeChanged(var Message: TLMessage); message CM_BIDIMODECHANGED;
     function CreateControlBorderSpacing: TControlBorderSpacing; override;
+    procedure DoEnter; override;
+    procedure DoExit; override;
     procedure DoOnChangeBounds; override;
     procedure InitializeWnd; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    procedure KeyUp(var Key: Word; Shift: TShiftState); override;
     procedure SetButtonPosition;
     procedure SetEnabled(Value: Boolean); override;
     procedure SetParent(NewParent: TWinControl); override;
     procedure SetVisible(Value: Boolean); override;
+    procedure WMKillFocus(var Message: TLMKillFocus); message LM_KILLFOCUS;
   public
     constructor Create(AOwner: TComponent); override;
+    procedure EditingDone; override;
     procedure SetRealBoundRect(ARect: TRect);
     procedure SetRealBounds(ALeft, ATop, AWidth, AHeight: Integer);
     procedure SwitchOption(AOption: TEBOption; AOn: Boolean);
@@ -414,8 +422,8 @@ type
   end;
 
 const 
-  cDefColorLayout = eclRGBColor;
-  cDefCustomColor = clBlack;
+  cDefColorLayout = eclSystemBGR;
+  cDefPrefix = '$';
     
 type     
   { TECSpeedBtnColor }
@@ -457,8 +465,13 @@ type
     procedure SetColorLayout(AValue: TColorLayout);
     procedure SetCustomColor(AValue: TColor);
     procedure SetPrefix(const AValue: string);
+  protected const
+    cDefCustomColor = clBlack;
   protected
+    FAlpha: Boolean;
+    FUpdatingText: Boolean;
     procedure DoButtonClick;
+    procedure RealSetText(const AValue: TCaption); override;
     procedure Redraw;
   public
     constructor Create(AOwner: TComponent); override;
@@ -546,24 +559,33 @@ type
     procedure SetMaxCount(AValue: Integer);
     procedure SetOptions(AValue: TEBOptions);
     procedure SetWidthInclBtn(AValue: Integer);
-  protected 
+  protected
+    Flags: TEditingDoneFlags;
     FAnyButton: TCustomECSpeedBtnPlus;
-    function ChildClassAllowed(ChildClass: TClass): boolean; override;
+    function ChildClassAllowed(ChildClass: TClass): Boolean; override;
     procedure CMBiDiModeChanged(var Message: TLMessage); message CM_BIDIMODECHANGED;
     function CreateControlBorderSpacing: TControlBorderSpacing; override;
+    procedure DoExit; override;
     procedure DoOnChangeBounds; override;
     procedure InitializeWnd; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    procedure KeyUp(var Key: Word; Shift: TShiftState); override;
+    procedure LimitToMaxCount;
+    procedure Select; override;
     procedure SetButtonPosition;
     procedure SetEnabled(Value: Boolean); override;
+    procedure SetItemIndex(const Val: integer); override;
+    procedure SetItems(const Value: TStrings); override;
     procedure SetParent(NewParent: TWinControl); override;
     procedure SetSorted(Val: boolean); override;
     procedure SetVisible(Value: Boolean); override;
+    procedure WMKillFocus(var Message: TLMKillFocus); message LM_KILLFOCUS;
   public
     constructor Create(TheOwner: TComponent); override;
     procedure Add(const AItem: string);
     procedure AddItemHistory(const AItem: string; ACaseSensitive: Boolean);
     procedure AddItemLimit(const AItem: string; ACaseSensitive: Boolean);
+    procedure EditingDone; override;
     procedure SetRealBoundRect(ARect: TRect);
     procedure SetRealBounds(ALeft, ATop, AWidth, AHeight: Integer);     
     property Indent: SmallInt read FIndent write SetIndent default 0;
@@ -620,7 +642,6 @@ type
     property ParentFont;
     property ParentShowHint;
     property PopupMenu;
-    property ReadOnly;
     property ShowHint;
     property Style;
     property TabOrder;
@@ -669,25 +690,34 @@ type
     procedure SetCustomColor(AValue: TColor);
     procedure SetPrefix(const AValue: string);
   protected const
-    cDefColorOrder = eioHistory;    
+    cDefColorOrder = eioHistory;
+    cDefCustomColor = clNone;
   protected
-    FNeedMeasure: Boolean;
+    FAlpha: Boolean;
+    FIsEnabled: Boolean;
+    FLastAddedColorStr: string;
     FSelectedFromList: Boolean;
     FTextExtent: TSize;
     FUpdatingCustomColor: Boolean;
     procedure DoButtonClick;
     procedure DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState); override;
+    procedure EnabledChanged; override;
+    procedure InitializeWnd; override;
+    procedure Measure;
+    procedure RealSetText(const AValue: TCaption); override;
     procedure Select; override;  { only when ItemIndex changes by mouse }
     procedure SetItemIndex(const Val: Integer); override;  { only when ItemIndex changes by code }
     procedure SetItemHeight(const AValue: Integer); override;
     procedure SetItems(const Value: TStrings); override;
+    procedure SetSorted(Val: Boolean); override;
   public
     constructor Create(AOwner: TComponent); override;
-    procedure AddColor(const AColor: string); overload;
+    procedure AddColor(const AColorStr: string); overload;
     procedure AddColor(AColor: TColor); overload;
     procedure EditingDone; override;
+    function GetColorIndex(AColor: TColor): Integer;
+    procedure ResetPrefixesAndLayout(AOldLayout: TColorLayout);
     procedure SetColorText(const AColor: string);
-    procedure Validate;
   published           				 
     property Button: TECSpeedBtnColor read FButton write FButton;
     property ColorLayout: TColorLayout read FColorLayout write SetColorLayout default cDefColorLayout;
@@ -707,7 +737,6 @@ type
     property AutoSize;
     property BidiMode;
     property BorderSpacing;
-    property CharCase;
     property Color;
     property Constraints;
     property DragCursor;
@@ -725,6 +754,7 @@ type
     property ParentShowHint;
     property PopupMenu;
     property ShowHint;
+    property Style default csOwnerDrawFixed;
     property TabOrder;
     property TabStop;
     property Visible;  
@@ -756,22 +786,42 @@ type
     property OnVisibleChanged;
   end;
   
-procedure Register;
-
 implementation
+
+const cNonAlphaColors = [eclSystemBGR, eclRGBColor, eclBGRColor,
+        eclCMYColor, eclYMCColor, eclHSBColor, eclBSHColor];
+
+function DoColorBtnClick(AOwner: TComponent; AAlpha: Boolean; var AColor: TColor): Boolean;
+var aAlphaChannel: Integer;
+    aColorDialog: TColorDialog;
+begin
+  if AAlpha then
+    begin
+      aAlphaChannel := Integer($FF000000);
+      if AColor <> clNone then aAlphaChannel := AColor and aAlphaChannel;
+    end;
+  aColorDialog := TColorDialog.Create(AOwner);
+  aColorDialog.Color := AColor and $FFFFFF;
+  Result := aColorDialog.Execute;
+  if Result then
+    begin
+      AColor :=aColorDialog.Color;
+      if AAlpha then AColor := aAlphaChannel + AColor;
+    end;
+  aColorDialog.Free;
+end;
 
 { TECSpeedBtnActionLink }
 
 procedure TECSpeedBtnActionLink.AssignClient(AClient: TObject);
 begin
   inherited AssignClient(AClient);
-  FClientSpeedBtn := AClient as TCustomECSpeedBtn;
+  FClientSpeedBtn := TCustomECSpeedBtn(AClient);
 end;
 
 function TECSpeedBtnActionLink.IsCheckedLinked: Boolean;
 begin
-  Result := inherited IsCheckedLinked and
-            (FClientSpeedBtn.Checked = (Action as TCustomAction).Checked);   
+  Result := inherited IsCheckedLinked and (FClientSpeedBtn.Checked = TCustomAction(Action).Checked);
 end;
 
 procedure TECSpeedBtnActionLink.SetChecked(Value: Boolean);
@@ -866,14 +916,12 @@ begin
   case Mode of
     ebmToggleBox: if not assigned(Action) then Checked := not Checked;
     ebmDelayBtn: if Delay > 0 then
-                   begin
-                     if not Checked then Checked := True
-                       else
-                       begin
-                         ECTimer.Enabled := False;
-                         ECTimer.Enabled := True;
-                       end;
-                   end;
+                   if Checked then
+                     begin
+                       ECTimer.Enabled := False;
+                       ECTimer.Enabled := True;
+                     end else
+                     Checked := True;
   end;
   inherited Click;
 end;   
@@ -998,14 +1046,15 @@ begin
           BtnBitmaps[aState].TransparentColor := GetColorResolvingDefault(Color, Parent.Brush.Color);
           BtnBitmaps[aState].TransparentClear;
         end;
-      if (Mode = ebmSpeedBtn) and Flat then aValidStates := aValidStates - [eisDisabled, eisEnabled];
+      if (Mode = ebmSpeedBtn) and Flat then
+        begin
+          if eisEnabled in aValidStates then BtnBitmaps[eisHighlighted].Canvas.DrawButtonBackground(aRect, eisEnabled);
+          aValidStates := aValidStates - [eisDisabled, eisEnabled, eisHighlighted];
+        end;
       for aState in aValidStates do
         BtnBitmaps[aState].Canvas.DrawButtonBackground(aRect, aState);
       aValidStates := ValidStates;
-      if assigned(OnDrawGlyph) then 
-        for aState in aValidStates do
-          OnDrawGlyph(self, aState)
-        else
+      if not assigned(OnDrawGlyph) then
         begin
           aCaption := Caption;
           if (aCaption <> '') and ShowCaption then
@@ -1032,10 +1081,7 @@ begin
               aRect := Rect(aGlyphPoint.X, aGlyphPoint.Y, aGlyphPoint.X + aGlyphSize.cx,
                 aGlyphPoint.Y + aGlyphSize.cy);
               for aState in aValidStates do
-                begin
-                  BtnBitmaps[aState].Canvas.SetRealGlyphColor(GlyphColor, aState);
-                  BtnBitmaps[aState].Canvas.DrawGlyph(aRect, egdArrowDown, aState);
-                end;
+                BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, egdArrowDown, aState);
             end;
           if assigned(Images) then
 	          begin
@@ -1169,27 +1215,20 @@ begin
                 begin
                   if aGlyphDesign > egdNone then
                     for aState in aValidStates do
-                      begin
-                        BtnBitmaps[aState].Canvas.SetRealGlyphColor(GlyphColor, aState);
-                        BtnBitmaps[aState].Canvas.DrawGlyph(aRect, aGlyphDesign,aState);
-                      end;
+                      BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, aGlyphDesign, aState);
                 end else
                 begin
                   if aGlyphDesign > egdNone then    
                     for aState in aValidStates*[eisDisabled, eisHighlighted, eisEnabled] do
-                      begin
-                        BtnBitmaps[aState].Canvas.SetRealGlyphColor(GlyphColor, aState);
-                        BtnBitmaps[aState].Canvas.DrawGlyph(aRect, aGlyphDesign, aState) 
-                      end;   
+                      BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, aGlyphDesign, aState);
                   if aGlyphDsgnChckd > egdNone then         
                     for aState in aValidStates*[eisPushed, eisPushedHihlighted, eisPushedDisabled] do
-                      begin
-                        BtnBitmaps[aState].Canvas.SetRealGlyphColor(GlyphColor, aState);
-                        BtnBitmaps[aState].Canvas.DrawGlyph(aRect, aGlyphDsgnChckd, aState) 
-                      end;
+                      BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, aGlyphDsgnChckd, aState);
                 end;
             end;
-        end;
+        end else
+        for aState in aValidStates do
+          OnDrawGlyph(self, aState);
     end;
   NeedRedraw := False;
 end;
@@ -1249,7 +1288,7 @@ end;
 procedure TCustomECSpeedBtn.MouseEnter;
 begin
   inherited MouseEnter;
-  Invalidate;  
+  Invalidate;
 end;
 
 procedure TCustomECSpeedBtn.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
@@ -1271,7 +1310,7 @@ begin
   {$IFDEF DBGCTRLS} DebugLn('TCustomECSpeedBtn.Paint'); {$ENDIF}
   inherited Paint;
   bEnabled := IsEnabled;
-  if (bEnabled xor (eisEnabled in ValidStates)) or (ValidStates=[]) then
+  if (bEnabled xor not (eisDisabled in ValidStates)) or (ValidStates = []) then
     begin
       NeedRedraw := True;
       CreateValidBitmaps(bEnabled);
@@ -1286,13 +1325,13 @@ begin
             then aState := eisPushed
             else aState := eisPushedHihlighted;
         end else 
-        if MouseEntered then aState := eisHighlighted;    
+        if MouseEntered then aState := eisHighlighted;
     end else
     begin
       if Checked 
         then aState := eisPushedDisabled
         else aState := eisDisabled;
-    end;    
+    end;
   Canvas.Draw(0, 0, BtnBitmaps[aState]);
   BtnDrawnPushed := (aState in [eisPushed, eisPushedHihlighted]);
 end;
@@ -1336,8 +1375,7 @@ end;
 procedure TCustomECSpeedBtn.SetAction(Value: TBasicAction);
 begin
   inherited SetAction(Value);
-  if assigned(Value) and (Value is TCustomAction) and
-    (Value as TCustomAction).AutoCheck then Delay := -1;
+  if assigned(Value) and (Value is TCustomAction) and TCustomAction(Value).AutoCheck then Delay := -1;
 end;            
 
 procedure TCustomECSpeedBtn.SetAutoSize(Value: Boolean);
@@ -1529,7 +1567,7 @@ begin
     end;
 end;   
 
-procedure TCustomECSpeedBtn.SetImageIndex(AValue: SmallInt);
+procedure TCustomECSpeedBtn.SetImageIndex(AValue: TImageIndex);
 begin
   if FImageIndex = AValue then exit;
   FImageIndex := AValue;
@@ -1537,7 +1575,7 @@ begin
   ResizeInvalidate;
 end;
 
-procedure TCustomECSpeedBtn.SetImageIndexChecked(AValue: SmallInt);
+procedure TCustomECSpeedBtn.SetImageIndexChecked(AValue: TImageIndex);
 begin
   if FImageIndexChecked = AValue then exit;
   FImageIndexChecked := AValue;
@@ -1587,7 +1625,8 @@ begin
       if Delay > 0 then
         begin
           if not assigned(ECTimer) then CreateTimer;
-          ECTimer.Interval := Delay;
+          ECTimer.Delay := Delay;
+          ECTimer.Repeating := Repeating;
         end;
     end else
     FreeAndNil(ECTimer);
@@ -1653,8 +1692,8 @@ procedure TCustomECSpeedBtnPlus.MouseDown(Button: TMouseButton; Shift: TShiftSta
 begin
   inherited MouseDown(Button, Shift, X, Y);
   if assigned(CustomMouseDown) then CustomMouseDown(Button, Shift);
-  if assigned(Owner) and (Owner is TWinControl) and (Owner as TWinControl).CanFocus 
-    then (Owner as TWinControl).SetFocus;   
+  if assigned(Owner) and (Owner is TWinControl) and TWinControl(Owner).CanFocus
+    then TWinControl(Owner).SetFocus;
 end;    
 
 procedure TCustomECSpeedBtnPlus.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
@@ -1725,10 +1764,35 @@ begin
   Result := TECEditBtnSpacing.Create(self);
 end;
 
+procedure TBaseECEditBtn.DoEnter;
+begin
+  inherited DoEnter;
+  if (eboInCellEditor in Options) and FAnyButton.MouseEntered then CaretPos:=Point(length(Text), 1);
+end;
+
+procedure TBaseECEditBtn.DoExit;
+begin
+  if eboInCellEditor in Options then
+    if not (edfAllowDoExitInCell in Flags)
+      then exit  { Exit! }
+      else exclude(Flags, edfAllowDoExitInCell);
+  inherited DoExit;
+end;
+
 procedure TBaseECEditBtn.DoOnChangeBounds;
 begin
   inherited DoOnChangeBounds;
   SetButtonPosition;
+end;
+
+procedure TBaseECEditBtn.EditingDone;
+begin
+  if (edfForceEditingDone in Flags) or not FAnyButton.MouseEntered then
+    begin
+      if edfForceEditingDone in Flags then include(Flags, edfAllowDoExitInCell);
+      exclude(Flags, edfForceEditingDone);
+      inherited EditingDone;
+    end;
 end;
 
 procedure TBaseECEditBtn.InitializeWnd;
@@ -1739,16 +1803,36 @@ end;
       
 procedure TBaseECEditBtn.KeyDown(var Key: Word; Shift: TShiftState);
 begin
+  if eboInCellEditor in Options then include(Flags, edfForceEditingDone);
   case Key of
     VK_RETURN: 
       if ((ssModifier in Shift) and (eboClickCtrlEnter in FOptions)) or 
         ((ssAlt in Shift) and (eboClickAltEnter in FOptions)) or
         ((ssShift in Shift) and (eboClickShiftEnter in FOptions)) 
-        then FAnyButton.Click;
+        then FAnyButton.Click
+        else if eboInCellEditor in Options then Flags := Flags + [edfEnterWasInKeyDown, edfForceEditingDone];
     VK_SPACE: 
       if (ssModifier in Shift) or ReadOnly then FAnyButton.Click;
   end;
   inherited KeyDown(Key, Shift);
+end;
+
+procedure TBaseECEditBtn.KeyUp(var Key: Word; Shift: TShiftState);
+var b: Boolean;
+begin
+  if (eboInCellEditor in Options) and not (edfEnterWasInKeyDown in Flags) then Key := 0;
+  b := (Key = VK_RETURN);
+  if b then
+    begin
+      b := not (((ssModifier in Shift) and (eboClickCtrlEnter in Options)) or
+                ((ssAlt in Shift) and (eboClickAltEnter in Options)) or
+                ((ssShift in Shift) and (eboClickShiftEnter in Options)));
+      if not b then Key := 0;
+    end;
+  if b and not (eboInCellEditor in Options)
+    then include(Flags, edfForceEditingDone)
+    else exclude(Flags, edfForceEditingDone);
+  inherited KeyUp(Key, Shift);
 end;
 
 procedure TBaseECEditBtn.SetButtonPosition;
@@ -1790,8 +1874,9 @@ procedure TBaseECEditBtn.SetVisible(Value: Boolean);
 begin
   inherited SetVisible(Value);
   FAnyButton.Visible := Value;
+  if Value and (eboInCellEditor in Options) then exclude(Flags, edfEnterWasInKeyDown);
   if assigned(OnVisibleChanged) then OnVisibleChanged(self, Value);
-end;     
+end;
 
 procedure TBaseECEditBtn.SwitchOption(AOption: TEBOption; AOn: Boolean);
 var aOptions: TEBOptions;
@@ -1801,7 +1886,15 @@ begin
     then Include(aOptions, AOption)
     else Exclude(aOptions, AOption);
   Options := aOptions;
-end;       
+end;
+
+procedure TBaseECEditBtn.WMKillFocus(var Message: TLMKillFocus);
+begin
+  if eboInCellEditor in Options then
+    if not (edfForceEditingDone in Flags) and FAnyButton.MouseEntered then exit;  { Exit! }
+  include(Flags, edfForceEditingDone);
+  inherited WMKillFocus(Message);
+end;
 
 { Setters }
 
@@ -1855,36 +1948,53 @@ begin
   inherited Create(AOwner);
   ReadOnly := True;
   FCustomColor := cDefCustomColor;
-  FPrefix := '$';
+  FPrefix := cDefPrefix;
   Redraw;
 end;
 
 procedure TECColorBtn.DoButtonClick;
-var aAlpha: Integer;
-    aColorDialog: TColorDialog;
+var aCustomColor: TColor;
 begin
-  aAlpha := CustomColor and $FF000000;
-  aColorDialog := TColorDialog.Create(self);
-  aColorDialog.Color := CustomColor and $FFFFFF;
-  if aColorDialog.Execute then CustomColor := aAlpha + aColorDialog.Color;
-  aColorDialog.Free;
+  aCustomColor := CustomColor;
+  if DoColorBtnClick(self, FAlpha, aCustomColor) then CustomColor := aCustomColor;
   SetFocus;
 end;        
 
 procedure TECColorBtn.EditingDone;
 var aColor: TColor;
-begin   
+begin
+  if not ReadOnly then
+    if TryStrToColorLayouted(Text, ColorLayout, aColor) then CustomColor := aColor;
   inherited EditingDone;
-  if TryStrToColorLayouted(Text, ColorLayout, aColor) then CustomColor := aColor; 
+end;
+
+procedure TECColorBtn.RealSetText(const AValue: TCaption);
+var aColor: TColor;
+    b: Boolean;
+begin
+  b := False;
+  if not FUpdatingText then
+    if TryStrToColorLayouted(AValue, ColorLayout, aColor) then
+      begin
+        b := (aColor <> FCustomColor);
+        if b then
+          begin
+            FCustomColor := aColor;
+            FButton.GlyphColor := aColor;
+          end;
+      end else
+      exit;  { Exit! }
+  inherited RealSetText(AValue);
+  if b and assigned(OnCustomColorChanged) then OnCustomColorChanged(self);
 end;
 
 procedure TECColorBtn.Redraw;
-var aPrefix: string;
+var aColor: string;
 begin
-  if ColorLayout <> eclSystemBGR 
-    then aPrefix := Prefix
-    else aPrefix := '';
-  Text := aPrefix + ColorToStrLayouted(CustomColor, ColorLayout);
+  aColor := ColorToStrLayouted(CustomColor, ColorLayout, Prefix);
+  FUpdatingText := True;
+  Text := aColor;
+  FUpdatingText := False;
 end;
 
 { Setters }
@@ -1902,6 +2012,7 @@ procedure TECColorBtn.SetColorLayout(AValue: TColorLayout);
 begin
   if FColorLayout = AValue then exit;
   FColorLayout := AValue;
+  FAlpha := (AValue in cNonAlphaColors);
   Redraw;
 end;
 
@@ -1945,10 +2056,12 @@ begin
   with FAnyButton do
     begin
       AnchorParallel(akTop, 0, self);
-      AnchorParallel(akBottom, 0, self);   
+      AnchorParallel(akBottom, 0, self);
       CustomResize := @SetButtonPosition;
     end;
   FOptions := cDefEBOptions;
+  TStringList(Items).Duplicates := dupIgnore;
+  AccessibleRole := larComboBox;
 end;
 
 procedure TBaseECComboBtn.Add(const AItem: string);
@@ -1973,47 +2086,28 @@ var i, aCount: Integer;
     aDuplicates: TDuplicates;
 begin
   aDuplicates := TStringList(Items).Duplicates;
-  Items.BeginUpdate;
-  if (aDuplicates <> dupAccept) and not TStringList(Items).Sorted then    
+  if aDuplicates <> dupAccept then
     begin
       if not ACaseSensitive then
         begin
           for i := Items.Count -1 downto 0 do
-            if AnsiCompareText(Items[i], AItem) = 0 then 
-              case aDuplicates of
-                dupIgnore: Items.Delete(i);
-                dupError: 
-                  begin
-                    Items.EndUpdate;
-                    exit;  { Exit! }
-                  end;
-              end;
+            if AnsiCompareText(Items[i], AItem) = 0 then exit;  { Exit! }
         end else
         begin
           for i := Items.Count -1 downto 0 do
-            if Items[i] = AItem then 
-              case aDuplicates of
-                dupIgnore: Items.Delete(i);
-                dupError: 
-                  begin
-                    Items.EndUpdate;
-                    exit;  { Exit! }
-                  end;
-              end;               
+            if Items[i] = AItem then exit;  { Exit! }
         end;
     end;
-  if not TStringList(Items).Sorted 
-    then Items.Insert(Items.Count, AItem)  { add new item to the end }
-    else Items.Add(AItem);                 { or somewhere ...}
-  { remove overflow item from the beginning; it works on sorted list too, so beware }
-  aCount := MaxCount;
-  if aCount <= 0 then aCount := high(Integer);    
-  for i := 1 to Items.Count - aCount do
-    Items.Delete(0);
+  Items.BeginUpdate;
+  aCount := MaxCount - 1;  { remove overflow item(s)+1 from the beginning }
+  if aCount >= 0 then      { and it works on sorted list too, so beware }
+    for i := 1 to Items.Count - aCount do
+      Items.Delete(0);
+  Items.Add(AItem);  { add new item to the end; Insert not allowed on sorted list }
   Items.EndUpdate;
 end;
 
-function TBaseECComboBtn.ChildClassAllowed(ChildClass: TClass): boolean;
+function TBaseECComboBtn.ChildClassAllowed(ChildClass: TClass): Boolean;
 begin
   Result := (ChildClass = TCustomECSpeedBtnPlus);
 end;
@@ -2029,10 +2123,29 @@ begin
   Result := TECComboBtnSpacing.Create(self);
 end;
 
+procedure TBaseECComboBtn.DoExit;
+begin
+  if eboInCellEditor in Options then
+    if not (edfAllowDoExitInCell in Flags)
+      then exit  { Exit! }
+      else exclude(Flags, edfAllowDoExitInCell);
+  inherited DoExit;
+end;
+
 procedure TBaseECComboBtn.DoOnChangeBounds;
 begin
   inherited DoOnChangeBounds;
   SetButtonPosition;
+end;
+
+procedure TBaseECComboBtn.EditingDone;
+begin
+  if (edfForceEditingDone in Flags) or not FAnyButton.MouseEntered then
+    begin
+      if edfForceEditingDone in Flags then include(Flags, edfAllowDoExitInCell);
+      exclude(Flags, edfForceEditingDone);
+      inherited EditingDone;
+    end;
 end;
 
 procedure TBaseECComboBtn.InitializeWnd;
@@ -2043,18 +2156,65 @@ end;
 
 procedure TBaseECComboBtn.KeyDown(var Key: Word; Shift: TShiftState);
 begin
+  if eboInCellEditor in Options then include(Flags, edfForceEditingDone);
   case Key of 
     VK_RETURN:
       begin
         if ((ssModifier in Shift) and (eboClickCtrlEnter in Options)) or
           ((ssAlt in Shift) and (eboClickAltEnter in Options)) or
           ((ssShift in Shift) and (eboClickShiftEnter in Options)) 
-          then FAnyButton.Click;
+          then FAnyButton.Click
+          else if eboInCellEditor in Options then Flags := Flags + [edfEnterWasInKeyDown, edfForceEditingDone];
       end;
-    VK_SPACE:
-      if (ssModifier in Shift) or ReadOnly then FAnyButton.Click;
+    VK_SPACE: if (ssModifier in Shift) or ReadOnly then FAnyButton.Click;
   end;
   inherited KeyDown(Key, Shift);
+end;
+
+procedure TBaseECComboBtn.KeyUp(var Key: Word; Shift: TShiftState);
+var b: Boolean;
+begin
+  if (eboInCellEditor in Options) and not (edfEnterWasInKeyDown in Flags) then Key := 0;
+  b := (Key = VK_RETURN);
+  if b then
+    begin
+      b := not (((ssModifier in Shift) and (eboClickCtrlEnter in Options)) or
+                ((ssAlt in Shift) and (eboClickAltEnter in Options)) or
+                ((ssShift in Shift) and (eboClickShiftEnter in Options)));
+      if not b then Key := 0;
+    end;
+  if b and not (eboInCellEditor in Options)
+    then include(Flags, edfForceEditingDone)
+    else exclude(Flags, edfForceEditingDone);
+  inherited KeyUp(Key, Shift);
+end;
+
+procedure TBaseECComboBtn.LimitToMaxCount;
+var i, aMaxCount: Integer;
+begin
+  aMaxCount := MaxCount;
+  if (aMaxCount > 0) and (aMaxCount < Items.Count) then
+    begin
+      Items.BeginUpdate;
+      if ItemOrder = eioFixed
+        then
+          for i := 0 to Items.Count - aMaxCount - 1 do
+            Items.Delete(i)
+        else
+          for i := Items.Count - 1 downto aMaxCount do
+            Items.Delete(i);
+      Items.EndUpdate;
+    end;
+end;
+
+procedure TBaseECComboBtn.Select;
+begin
+  if (ItemIndex > 0) and (ItemOrder = eioHistory) then
+    begin
+      Items.Move(ItemIndex, 0);
+      ItemIndex := 0;
+    end;
+  inherited Select;
 end;
 
 procedure TBaseECComboBtn.SetButtonPosition;
@@ -2102,8 +2262,17 @@ procedure TBaseECComboBtn.SetVisible(Value: Boolean);
 begin
   inherited SetVisible(Value);
   FAnyButton.Visible := Value;
+  if Value and (eboInCellEditor in Options) then exclude(Flags, edfEnterWasInKeyDown);
   if assigned(OnVisibleChanged) then OnVisibleChanged(self, Value);
-end;        
+end;
+
+procedure TBaseECComboBtn.WMKillFocus(var Message: TLMKillFocus);
+begin
+  if eboInCellEditor in Options then
+    if not (edfForceEditingDone in Flags) and FAnyButton.MouseEntered then exit;  { Exit! }
+  include(Flags, edfForceEditingDone);
+  inherited WMKillFocus(Message);
+end;
 
 { TBaseECComboBtn.Setters }
 
@@ -2119,25 +2288,40 @@ begin
   SetButtonPosition;
 end;
 
+procedure TBaseECComboBtn.SetItemIndex(const Val: integer);
+var aValue: Integer;
+begin
+  aValue := Val;
+  if not (csLoading in ComponentState) and (ItemOrder = eioHistory) then
+    begin
+      if (aValue > 0) and (aValue < Items.Count) then
+        begin
+          Items.Move(aValue, 0);
+          aValue := 0;
+        end;
+    end;
+  inherited SetItemIndex(aValue);
+end;
+
 procedure TBaseECComboBtn.SetItemOrder(AValue: TItemOrder);
 begin
   if FItemOrder = AValue then exit;
   FItemOrder := AValue;
   Sorted := (AValue = eioSorted);
-end;         
+end;
+
+procedure TBaseECComboBtn.SetItems(const Value: TStrings);
+begin
+  inherited SetItems(Value);
+  LimitToMaxCount;
+end;
 
 procedure TBaseECComboBtn.SetMaxCount(AValue: Integer);
-var i: Integer;
 begin
-  if FMaxCount=AValue then exit;
-  FMaxCount:=AValue;
-  if (AValue > 0) and (AValue < Items.Count) then 
-    begin
-      Items.BeginUpdate;
-      for i := Items.Count - 1 downto AValue do 
-        Items.Delete(i);
-      Items.EndUpdate;
-    end;
+  if AValue < 0 then AValue := 0;
+  if FMaxCount = AValue then exit;
+  FMaxCount := AValue;
+  LimitToMaxCount;
 end;     
 
 procedure TBaseECComboBtn.SetOptions(AValue: TEBOptions);
@@ -2171,77 +2355,69 @@ begin
   with FButton do
     begin  
       CustomClick := @DoButtonClick;
+      GlyphColor := clBtnFace;  { ~clNone }
       Name := 'ECCCSpeedBtn';
       Width := 27;
-    end;  
+    end;
+  FLastAddedColorStr := 'clNone';
   inherited Create(AOwner);
-  TStringList(Items).Duplicates := dupIgnore;
-  ReadOnly := True;
-  FItemOrder := cDefColorOrder;
   FCustomColor := cDefCustomColor;
-  FPrefix := '$';
+  FItemOrder := cDefColorOrder;
+  FIsEnabled := True;
+  FPrefix := cDefPrefix;
   Style := csOwnerDrawFixed;
-  FNeedMeasure := True;
 end;         
 
-procedure TECColorCombo.AddColor(const AColor: string);
-var anyColor: TColor;
+procedure TECColorCombo.AddColor(const AColorStr: string);
+var aColor: TColor;
 begin
-  if TryStrToColorLayouted(AColor, ColorLayout, anyColor) then AddColor(anyColor);       
+  if TryStrToColorLayouted(AColorStr, ColorLayout, aColor) then AddColor(aColor);
 end;        
 
 procedure TECColorCombo.AddColor(AColor: TColor);
-var aPrefix: string;
+var aColorStr: string;
 begin
-  if ColorLayout <> eclSystemBGR
-    then aPrefix := Prefix
-    else aPrefix := '';      
+  aColorStr := ColorToStrLayouted(AColor, ColorLayout, Prefix);
+  if not ReadOnly then FLastAddedColorStr := aColorStr;
   case ItemOrder of
-    eioFixed: AddItemLimit(aPrefix + ColorToStrLayouted(AColor, ColorLayout), False);
-    eioHistory: 
+    eioFixed:
       begin
-        AddItemHistory(aPrefix + ColorToStrLayouted(AColor, ColorLayout), False);
+        AddItemLimit(aColorStr, False);
+        ItemIndex := Items.Count - 1;
+      end;
+    eioHistory:
+      begin
+        AddItemHistory(aColorStr, False);
         ItemIndex := 0;  
       end;
-    eioSorted: Items.Add(aPrefix + ColorToStrLayouted(AColor, ColorLayout)); 
-  end;      
+    eioSorted:
+      begin
+        AddItemLimit(aColorStr, False);
+        ItemIndex := Items.IndexOf(aColorStr);
+      end;
+  end;
 end;
 
 procedure TECColorCombo.DoButtonClick;
-var aAlpha: Integer;
-    aColorDialog: TColorDialog;
+var aCustomColor: TColor;
 begin
-  aAlpha := CustomColor and $FF000000;
-  aColorDialog := TColorDialog.Create(self);
-  aColorDialog.Color := CustomColor and $FFFFFF;
-  if aColorDialog.Execute then
-    begin
-      FSelectedFromList := False;
-      CustomColor := aAlpha + aColorDialog.Color;
-    end;
-  aColorDialog.Free;
-  SetFocus;         
+  aCustomColor := CustomColor;
+  if DoColorBtnClick(self, FAlpha, aCustomColor) then CustomColor := aCustomColor;
+  SetFocus;
 end;         
 
 procedure TECColorCombo.DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState);
 var aColor: TColor;
     bFocusedEditableMainItemNoDD: Boolean;  { combo has edit-like line edit in csDropDownList (Win) and is closed (not DroppedDown }
-begin  { do not call inherited ! }  
+begin  { do not call inherited ! }
   {$IFDEF DBGCTRLS} DebugLn('DrawItem ', ColorToString(Canvas.Brush.Color)); {$ENDIF}
-  {$IF DEFINED(LCLWin32) or DEFINED(LCLWin64)}
+  {$IF DEFINED(LCLWin32) OR DEFINED(LCLWin64)}
   bFocusedEditableMainItemNoDD := (Focused and (ARect.Left > 0) and not DroppedDown);
   {$ELSE}
   bFocusedEditableMainItemNoDD := False;
   {$ENDIF}
   if not (odSelected in State) then Canvas.Brush.Color := clWindow;
   if (ARect.Left = 0) or bFocusedEditableMainItemNoDD then Canvas.FillRect(ARect);
-  if FNeedMeasure then 
-    begin
-      if ColorLayout in [eclRGBColor, eclBGRColor, eclCMYColor, eclYMCColor]
-        then FTextExtent := Canvas.TextExtent(Prefix + 'F9CDEB')
-        else FTextExtent := Canvas.TextExtent(Prefix + 'F9CDEBA8');
-      FNeedMeasure := False;    
-    end;
   Canvas.Brush.Style := bsClear;
   if (not (odSelected in State) or (ARect.Left > 0)) and not bFocusedEditableMainItemNoDD
     then Canvas.Font.Color := GetColorResolvingDefault(Font.Color, clWindowText)
@@ -2256,180 +2432,175 @@ begin  { do not call inherited ! }
   if TryStrToColorLayouted(Items[Index], ColorLayout, aColor) then 
     with Canvas do
       begin
-        Canvas.Pen.Color := clWindowText;
-        Brush.Color := aColor;
+        Pen.Color := GetColorResolvingEnabled(clWindowText, FIsEnabled);
+        Brush.Color := GetColorResolvingEnabled(aColor, FIsEnabled);
         Brush.Style := bsSolid;
         Rectangle(ARect.Left + FTextExtent.cx + 2, ARect.Top + 1,
                   ARect.Right - 3, ARect.Bottom - 1);
-     //   if (Index = 0) and (Items.Count <= 1) then CustomColor := aColor;       
       end;
 end;
 
 procedure TECColorCombo.EditingDone;
 begin
-  {$IFDEF DBGCTRLS} DebugLn('TECColorCombo.EditingDone');  {$ENDIF}
-  if (ItemOrder = eioHistory) and (ItemIndex > 0) then
-    begin
-      Items.Move(ItemIndex, 0);
-      ItemIndex := 0;
-    end;
   inherited EditingDone;
+  if not ReadOnly then SetColorText(Text);
+end;
+
+procedure TECColorCombo.EnabledChanged;
+begin
+  inherited EnabledChanged;
+  FIsEnabled := IsEnabled;
+end;
+
+function TECColorCombo.GetColorIndex(AColor: TColor): Integer;
+var i: Integer;
+    aColorDD: TColor;
+begin
+  Result := -1;
+  AColor := ColorToRGB(AColor);
+  for i := 0 to Items.Count-1 do
+    begin
+      if TryStrToColorLayouted(Items[i], ColorLayout, aColorDD) then
+        if ColorToRGB(aColorDD) = AColor then
+          begin
+            Result := i;
+            break;
+          end;
+    end;
+end;
+
+procedure TECColorCombo.InitializeWnd;
+begin
+  inherited InitializeWnd;
+  Measure;
+end;
+
+procedure TECColorCombo.Measure;
+begin
+  if HandleAllocated then
+    case ColorLayout of
+      eclSystemBGR: FTextExtent := Canvas.TextExtent('clMoneyGreen');
+      eclRGBColor, eclBGRColor, eclCMYColor, eclYMCColor, eclHSBColor, eclBSHColor:
+        FTextExtent := Canvas.TextExtent(Prefix + 'F9CDEB')
+      otherwise FTextExtent := Canvas.TextExtent(Prefix + 'F9CDEBA8');
+    end;
+end;
+
+procedure TECColorCombo.RealSetText(const AValue: TCaption);
+begin
+  SetColorText(AValue);
+  if not Readonly then inherited RealSetText(FLastAddedColorStr);
+end;
+
+procedure TECColorCombo.ResetPrefixesAndLayout(AOldLayout: TColorLayout);
+var i: Integer;
+    aColor: TColor;
+begin
+  for i := 0 to Items.Count - 1 do
+    if TryStrToColorLayouted(Items[i], AOldLayout, aColor) then
+      Items[i] := ColorToStrLayouted(aColor, ColorLayout, Prefix);
 end;
 
 procedure TECColorCombo.Select;  { only when ItemIndex changes by mouse }
 var aColor: TColor;
 begin
-  {$IFDEF DBGCTRLS} DebugLn('Select ', inttostr(ItemIndex));  {$ENDIF}
   inherited Select;
   if TryStrToColorLayouted(Items[ItemIndex], ColorLayout, aColor) then
     begin
       FSelectedFromList := True;
       CustomColor := aColor;
+      FSelectedFromList := False;
     end;
 end;
 
 procedure TECColorCombo.SetColorText(const AColor: string);
+var aCustomColor: TColor;
 begin
-  Text := AColor;
-  Validate;
+  if TryStrToColorLayouted(AColor, ColorLayout, aCustomColor) then CustomColor := aCustomColor;
 end;
 
 procedure TECColorCombo.SetItemIndex(const Val: Integer);  { only when ItemIndex changes by code }
 var aColor: TColor;
-    aLoading: Boolean;
     aValue: Integer;
-    aText: string;
 begin
-  {$IFDEF DBGCTRLS} DebugLn('TECColorCombo.SetItemIndex ' + inttostr(Val)); {$ENDIF}
-  aValue := Val;
-  aLoading := (csLoading in ComponentState);
-  if not aLoading and (ItemOrder = eioHistory) then
+  {$IFDEF DBGCTRLS} DebugLn('TECColorCombo.SetItemIndex ' + intToStr(Val)); {$ENDIF}
+  inherited SetItemIndex(Val);
+  aValue := ItemIndex;  { Val may be changed in inherited }
+  if not (csLoading in ComponentState) then
     begin
-      if (aValue > 0) and (aValue < Items.Count) then
+      if aValue >= 0 then
         begin
-          Items.Move(aValue, 0);
-          aValue:=0;
-        end;
-    end;
-  inherited SetItemIndex(aValue);
-  if not aLoading then
-    begin
-      if aValue >= 0
-        then aText := Items[aValue]
-        else aText := Text;
-      if TryStrToColorLayouted(aText, ColorLayout, aColor) then
-        if not FUpdatingCustomColor
-          then CustomColor := aColor
-          else FCustomColor := aColor;
+          if TryStrToColorLayouted(Items[aValue] , ColorLayout, aColor) then
+            if not FUpdatingCustomColor
+              then CustomColor := aColor
+              else FCustomColor := aColor;
+        end else
+        CustomColor := clNone;
     end;
 end;
 
 procedure TECColorCombo.SetItems(const Value: TStrings);
-begin
-  inherited SetItems(Value);
-  Validate;
-end;
-
-procedure TECColorCombo.Validate;
 var aColor: TColor;
 begin
+  aColor := CustomColor;
+  inherited SetItems(Value);
+  if Value.Count > 0
+    then ItemIndex := GetColorIndex(aColor)
+    else CustomColor := clNone;
+end;
+
+procedure TECColorCombo.SetSorted(Val: Boolean);
+var aColor: TColor;
+begin
+  inherited SetSorted(Val);
   if TryStrToColorLayouted(Text, ColorLayout, aColor) then CustomColor := aColor;
-end;   
+end;
 
 { TECColorCombo.Setters }
 
 procedure TECColorCombo.SetColorLayout(AValue: TColorLayout);
-var aColor: TColor;
-    i: Integer;
-    aOldLayout: TColorLayout;
-    aPrefix: string;					
+var aOldLayout: TColorLayout;
 begin                        
   if FColorLayout = AValue then exit;
   aOldLayout := FColorLayout;
   FColorLayout := AValue;
-  FNeedMeasure := True;
-  if not (AValue = eclSystemBGR) 
-    then aPrefix := Prefix
-    else aPrefix := '';
-  for i := 0 to Items.Count - 1 do
-    if TryStrToColorLayouted(Items[i], aOldLayout, aColor) then
-      Items[i] := aPrefix + ColorToStrLayouted(aColor, AValue);
+  FAlpha := (AValue in cNonAlphaColors);
+  Measure;
+  ResetPrefixesAndLayout(aOldLayout);
 end;
 
 procedure TECColorCombo.SetCustomColor(AValue: TColor);
-var aColorString: string;
-    aIndex: Integer;
 begin
   {$IFDEF DBGCTRLS} DebugLn('SetCustomColor ', ColorToString(AValue)); {$ENDIF}
   if FCustomColor = AValue then exit;
   FCustomColor := AValue;
-  FButton.GlyphColor := AValue and $FFFFFF;
+  if AValue = clNone then
+    begin
+      FButton.GlyphColor := clBtnFace;
+      ItemIndex := -1;
+    end else
+    FButton.GlyphColor := AValue and $FFFFFF;
   if not (csLoading in ComponentState) then
     begin
       FUpdatingCustomColor := True;
-      if not FSelectedFromList then
-        begin
-          aColorString := ColorToStrLayouted(AValue, ColorLayout);
-          if ColorLayout <> eclSystemBGR then aColorString := Prefix + aColorString;
-          aIndex := Items.IndexOf(aColorString);
-          case ItemOrder of
-            eioFixed:
-              begin
-                if aIndex = -1 then
-                  begin
-                    aIndex := Items.Add(aColorString);
-                    ItemIndex := aIndex;
-                  end else
-                  ItemIndex := aIndex;
-              end;
-            eioHistory:
-              begin
-                if aIndex = -1
-                  then Items.Insert(0, aColorString)
-		              else Items.Move(aIndex, 0);
-                ItemIndex := 0;
-              end;
-            eioSorted:
-              begin
-                if aIndex = -1 then
-                  begin
-                    Items.Add(aColorString);
-                    TStringList(Items).Sort;
-                    ItemIndex := TStringList(Items).IndexOf(aColorString);
-                  end else
-                  ItemIndex := aIndex;
-              end;
-          end;
-          FSelectedFromList:=False;
-        end;
+      if not FSelectedFromList and (AValue <> clNone) then AddColor(AValue);
       if assigned(OnCustomColorChanged) then OnCustomColorChanged(self);
-      FUpdatingCustomColor:=False;
+      FUpdatingCustomColor := False;
     end;
 end;
 
 procedure TECColorCombo.SetItemHeight(const AValue: Integer);
 begin
   inherited SetItemHeight(AValue);
-  FNeedMeasure := True;
+  Measure;
 end;
 
 procedure TECColorCombo.SetPrefix(const AValue: string);
-var i: Integer;          
 begin
   if FPrefix = AValue then exit;
   FPrefix := AValue;                          
-  FNeedMeasure := True;
-  if ColorLayout <> eclSystemBGR then
-    for i := 0 to Items.Count - 1 do
-      Items[i] := AValue + TrimColorString(Items[i]);
-end;            
-
-procedure Register;
-begin
-  {$I eceditbtns.lrs}
-  RegisterComponents('EC-C', [TECSpeedBtn, TECEditBtn, TECColorBtn, TECComboBtn, TECColorCombo]);
-  RegisterPropertyEditor(TypeInfo(TCaption), TECSpeedBtn, 'Caption', TStringMultilinePropertyEditor);
-  RegisterPropertyEditor(TypeInfo(TCaption), TECSpeedBtnPlus, 'Caption', TStringMultilinePropertyEditor);
+  Measure;
+  ResetPrefixesAndLayout(ColorLayout);
 end;
 
 end.

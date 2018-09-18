@@ -4,7 +4,7 @@
  This file is part of the Eye Candy Controls (EC-C)
   This is *include* file, belongs to ectypes.pas
 
-  Copyright (C) 2013 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -29,8 +29,7 @@
 
 **************************************************************************************************}
 
-procedure TCanvasHelper.DrawGlyph(ARect: TRect; AGlyphDesign: TGlyphDesign;
-  AState: TItemState);
+procedure TCanvasHelper.DrawGlyph(ARect: TRect; AGlyphColor: TColor; AGlyphDesign: TGlyphDesign; AState: TItemState);
 var aEvenH, aEvenW, x, y, x2, y2: SmallInt;
     
   procedure DrawArrowDown(ATop: SmallInt; ASize: SmallInt = 4);
@@ -274,19 +273,33 @@ var aEvenH, aEvenW, x, y, x2, y2: SmallInt;
     ThemeServices.DrawElement(Handle, aDetails, ARect);
   end;
 
+  function GetGlyphColor(AColor: TColor): TColor;
+  begin
+    Result := AColor;
+    if AState in [eisHighlighted, eisPushedHihlighted]
+      then Result := GetMergedColor(clWhite, Result, 0.27)
+      else if AState in [eisDisabled, eisPushedDisabled] then
+             Result := GetMergedMonoColor(Pixels[Width div 2, Height div 2], Result, 0.67);
+  end;
+
 const cRadioOff: array[TItemState] of TThemedButton = (tbRadioButtonUncheckedDisabled,
-        tbRadioButtonUncheckedHot, tbRadioButtonUncheckedNormal, tbRadioButtonUncheckedPressed,
+        tbRadioButtonUncheckedHot, tbRadioButtonUncheckedNormal, tbRadioButtonUncheckedNormal,
         tbRadioButtonUncheckedHot, tbRadioButtonUncheckedDisabled);
       cRadioOn: array[TItemState] of TThemedButton = (tbRadioButtonCheckedDisabled,
-        tbRadioButtonCheckedHot, tbRadioButtonCheckedNormal, tbRadioButtonCheckedPressed,
+        tbRadioButtonCheckedHot, tbRadioButtonCheckedNormal, tbRadioButtonCheckedNormal,
         tbRadioButtonCheckedHot, tbRadioButtonCheckedDisabled);
       cCheckOff: array[TItemState] of TThemedButton = (tbCheckBoxUncheckedDisabled,
-        tbCheckBoxUncheckedHot, tbCheckBoxUncheckedNormal, tbCheckBoxUncheckedPressed,
+        tbCheckBoxUncheckedHot, tbCheckBoxUncheckedNormal, tbCheckBoxUncheckedNormal,
         tbCheckBoxUncheckedHot, tbCheckBoxUncheckedDisabled);
       cCheckOn: array[TItemState] of TThemedButton = (tbCheckBoxCheckedDisabled,
-        tbCheckBoxCheckedHot, tbCheckBoxCheckedNormal, tbCheckBoxCheckedPressed,
+        tbCheckBoxCheckedHot, tbCheckBoxCheckedNormal, tbCheckBoxCheckedNormal,
         tbCheckBoxCheckedHot, tbCheckBoxCheckedDisabled);
 begin
+  AGlyphColor := GetGlyphColor(GetColorResolvingDefault(AGlyphColor, clBtnText));
+  Brush.Color := AGlyphColor;
+  if AGlyphDesign in [egdRectBeveled..egdWinRoundClr]
+    then Pen.Color := GetGlyphColor(clBtnText)
+    else Pen.Color := AGlyphColor;
   Pen.Style:=psSolid;
   Pen.Width:=1;
   case AGlyphDesign of
@@ -294,7 +307,7 @@ begin
       begin
         x := ARect.Left + 1;
         x2 := ARect.Right - 1;
-        y2 := (ARect.Bottom+ARect.Top) div 2 + (x2 - x) div 4;
+        y2 := (ARect.Bottom + ARect.Top) div 2 + (x2 - x) div 4;
         while x<x2 do
           begin
             Line(x, y2, x2, y2);
@@ -307,7 +320,7 @@ begin
       begin
         y := ARect.Top + 1;
         y2 := ARect.Bottom - 1;
-        x2 := (ARect.Right+ARect.Left) div 2 - (y2 - y) div 4;
+        x2 := (ARect.Right + ARect.Left) div 2 - (y2 - y) div 4;
         while y<y2 do
           begin
             Line(x2, y, x2, y2);
@@ -333,7 +346,7 @@ begin
       begin
         y := ARect.Top + 1;
         y2 := ARect.Bottom - 1;
-        x2 := (ARect.Right+ARect.Left) div 2 + (y2 - y) div 4;
+        x2 := (ARect.Right + ARect.Left) div 2 + (y2 - y) div 4;
         while y<y2 do
           begin
             Line(x2, y, x2, y2);
@@ -347,14 +360,9 @@ begin
         Frame3D(ARect, 1, bvLowered);
         FillRect(ARect);
       end;
-    egdRectFramed:
-      begin
-        Pen.Color := clBtnText;
-        Rectangle(ARect);
-      end;
+    egdRectFramed: Rectangle(ARect);
     egdWinRectClr:
       begin
-        Pen.Color := clBtnText;
         Frame(ARect);
         y := ARect.Top + 1;
         Line(ARect.Left + 1, y, ARect.Left + 3, y);
@@ -365,21 +373,13 @@ begin
       end;
     egdWinRoundClr:
       begin
-        Pen.Color := clBtnText;
-        InflateRect(ARect, -1, -1);
+        InflateRect(ARect, 0, -1);
         Frame(ARect);
-        x := ARect.Left - 1;
-        Line(x, ARect.Top, x, ARect.Bottom);
-        x := ARect.Right;
-        Line(x, ARect.Top, x, ARect.Bottom);
-        y := ARect.Top - 1;
-        Line(ARect.Left, y, ARect.Right, y);
-        y := ARect.Bottom;
-        Line(ARect.Left, y, ARect.Right, y);
-        FillRect(ARect.Left + 2, ARect.Top + 5, ARect.Right - 2, ARect.Bottom - 2);
-        Brush.Color := clBtnText;
-        y := ARect.Top + 2;
-        FillRect(ARect.Left + 2, y, ARect.Right - 2, y + 2);
+        InflateRect(ARect, -1, 1);
+        Frame(ARect);
+        FillRect(ARect.Left + 2, ARect.Top + 6, ARect.Right - 2, ARect.Bottom - 3);
+        Brush.Color := Pen.Color;
+        FillRect(ARect.Left + 2, ARect.Top + 3, ARect.Right - 2, ARect.Top + 5);
       end;
     egdWindowRect: 
       begin
@@ -398,22 +398,34 @@ begin
       end; 
     egdWindowRound:
       begin
-        InflateRect(ARect, -1, -1);
+        InflateRect(ARect, 0, -1);
         Frame(ARect);
-        x := ARect.Left - 1;
-        Line(x, ARect.Top, x, ARect.Bottom);
-        x := ARect.Right;
-        Line(x, ARect.Top, x, ARect.Bottom);
-        y := ARect.Top - 1;
-        Line(ARect.Left, y, ARect.Right, y);
-        y := ARect.Bottom;
-        Line(ARect.Left, y, ARect.Right, y);
-        y := ARect.Top + 2;
-        FillRect(ARect.Left + 2, y, ARect.Right - 2, y + 2);
+        InflateRect(ARect, -1, 1);
+        Frame(ARect);
+        Brush.Color := Pen.Color;
+        FillRect(ARect.Left + 2, ARect.Top + 3, ARect.Right - 2, ARect.Top + 5);
         y := (ARect.Bottom + ARect.Top + 1) div 2;
         Line(ARect.Left + 2, y, ARect.Right - 2, y);
         inc(y, 2);
         if y < ARect.Bottom then Line(ARect.Left + 2, y, ARect.Right - 2, y);
+      end;
+    egdMenu:
+      begin
+        x := (ARect.Bottom - ARect.Top) div 12;
+        InflateRect(ARect, -x, -x);
+        y2 := ARect.Bottom - ARect.Top;
+        y := y2 div 5;  { line }
+        x := y;         { space }
+        case y2 mod 5 of
+          2: inc(x);     { l-S-l-S-l }
+          3, 4: inc(y);  { L-s-L-s-L }
+        end;
+        for x2 := 0 to 2 do
+          begin
+            for y2 := 0 to y - 1 do
+              Line(ARect.Left, ARect.Top + y2, ARect.Right, ARect.Top + y2);
+            inc(ARect.Top, x + y);
+          end;
       end;
     otherwise 
       x := ARect.Right - ARect.Left;
@@ -936,4 +948,5 @@ begin
       end;  { case }                
   end;  { case }
 end;   
-  
+
+

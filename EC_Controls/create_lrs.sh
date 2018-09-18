@@ -14,7 +14,10 @@
 ~/Lazarus_FPC/lazarus/tools/lazres ecconfcurve.lrs tecconfcurve.png
 ~/Lazarus_FPC/lazarus/tools/lazres ecchecklistbox.lrs tecchecklistbox.png
 ~/Lazarus_FPC/lazarus/tools/lazres echeader.lrs techeader.png
-~/Lazarus_FPC/lazarus/tools/lazres ectabctrl.lrs tectabctrl.png add.png close.png closeinact.png closedis.png closehigh.png
+~/Lazarus_Qt/lazarus/tools/lazres ectabctrl.lrs tectabctrl.png addL.png closeL.png closenorm.png closeinact.png closedis.png closehigh.png
+~/Lazarus_Qt/lazarus/tools/lazres ecaccordion.lrs tecaccordion.png
+~/Lazarus_Qt/lazarus/tools/lazres ectriangle.lrs tectriangle.png
+~/Lazarus_Qt/lazarus/tools/lazres ecgrid.lrs tecgrid.png
 
 
 
