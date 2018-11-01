@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectSession>
-    <Version Value="9"/>
+    <Version Value="11"/>
     <BuildModes Active="Default"/>
     <Units Count="19">
       <Unit0>
         <Filename Value="project1.lpr"/>
         <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
         <WindowIndex Value="1"/>
         <CursorPos X="15" Y="19"/>
         <UsageCount Value="215"/>
@@ -19,8 +20,7 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="SchemeDesigner"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="-1"/>
+        <EditorIndex Value="1"/>
         <WindowIndex Value="1"/>
         <CursorPos X="64" Y="8"/>
         <UsageCount Value="215"/>
@@ -117,7 +117,7 @@
         <UsageCount Value="9"/>
       </Unit15>
       <Unit16>
-        <Filename Value="../../../../../../../lazarus/lcl/include/customcontrol.inc"/>
+        <Filename Value="C:/lazarus/lcl/include/customcontrol.inc"/>
         <EditorIndex Value="-1"/>
         <WindowIndex Value="1"/>
         <TopLine Value="88"/>
@@ -125,14 +125,14 @@
         <UsageCount Value="10"/>
       </Unit16>
       <Unit17>
-        <Filename Value="../../../../../../../lazarus/lcl/include/wincontrol.inc"/>
+        <Filename Value="C:/lazarus/lcl/include/wincontrol.inc"/>
         <WindowIndex Value="1"/>
         <TopLine Value="4741"/>
         <CursorPos Y="4762"/>
         <UsageCount Value="22"/>
       </Unit17>
       <Unit18>
-        <Filename Value="../../../../../../../lazarus/components/lazutils/laz2_dom.pas"/>
+        <Filename Value="C:/lazarus/components/lazutils/laz2_dom.pas"/>
         <EditorIndex Value="-1"/>
         <WindowIndex Value="1"/>
         <CursorPos X="45" Y="131"/>
@@ -181,5 +181,9 @@
         <Caret Line="318" Column="3" TopLine="316"/>
       </Position10>
     </JumpHistory>
+    <RunParams>
+      <FormatVersion Value="2"/>
+      <Modes Count="0" ActiveMode="default"/>
+    </RunParams>
   </ProjectSession>
 </CONFIG>

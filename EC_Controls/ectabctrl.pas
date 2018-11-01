@@ -2333,15 +2333,8 @@ const cGlyphResName: array[TGlyphKind] of string =
   ('addL', 'closeL', 'closenorm', 'closeinact', 'closehigh', 'closedis');
 var aGlyphKind: TGlyphKind;
 begin
-  SetLength(DropDownRStrs,8);
-  DropDownRStrs[0] := rsETCLeftmost;
-  DropDownRStrs[1] := rsETCLeft;
-  DropDownRStrs[2] := rsETCRight;
-  DropDownRStrs[3] := rsETCRightmost;
-  DropDownRStrs[4] := rsETCTopmost;
-  DropDownRStrs[5] := rsETCUp;
-  DropDownRStrs[6] := rsETCDown;
-  DropDownRStrs[7] := rsETCBottmomost;
+  DropDownRStrs:=TStringArray.Create(rsETCLeftmost, rsETCLeft, rsETCRight, rsETCRightmost,
+                                 rsETCTopmost, rsETCUp, rsETCDown, rsETCBottmomost);
   {$I ectabctrl.lrs}
   for aGlyphKind:=low(TGlyphKind) to high(TGlyphKind) do
     begin
@@ -3445,7 +3438,7 @@ begin
       for i:=0 to high(VisibleTabs) do
         if (etfParentFont in VisibleTabs[i].Tab.Flags) and
           (VisibleTabs[i].Tab.FontOptions.FontColor<>Font.Color)
-          then VisibleTabs[i].Tab.Flags -= [etfParentFont];
+          then exclude(VisibleTabs[i].Tab.Flags, etfParentFont);
       Redraw;
     end else
     RecalcInvalidate;
