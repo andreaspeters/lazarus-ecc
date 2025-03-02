@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,9 +34,8 @@ unit ECScheme;
 interface
 
 uses
-  Classes, SysUtils, Controls, FGL, Graphics, LCLIntf, LCLType, LMessages, Math, 
-  {$IFDEF DEBUG} LCLProc, {$ENDIF} LazFileUtils, Types, Themes, Forms, ImgList,
-  Laz2_DOM, Laz2_XMLRead, Laz2_XMLWrite, ECTypes;
+  Classes, SysUtils, Controls, FGL, Forms, Graphics, ImgList, LazFileUtils, Laz2_DOM, Laz2_XMLRead,
+  Laz2_XMLWrite, LCLIntf, {$IFDEF DEBUG} LCLProc, {$ENDIF} LCLType, LMessages, Math, Themes, Types, ECTypes;
 
 type
   {$PACKENUM 2}
@@ -86,7 +85,7 @@ type
               exfVisuals      { Style, Color, FontColor, Options defined in TECDevice(s) }
               );
   TXMLFlags = set of TXMLFlag;  { what will be loaded/saved from/to XML }
-  { Events }
+  { events }
   TOnBlockClick = procedure(Sender: TObject; AIndex: Integer) of object;
   TOnDrawBlock = procedure(Sender: TObject; ABitmap: TBitmap) of object;  { for same customdrawn blocks }
   TOnPaintBlock = procedure(Sender: TObject; ARect: TRect) of object;  { for different blocks }
@@ -293,7 +292,7 @@ type
     cColor: DOMString = 'Color';
     cID_Color = 106;
     cDescript: DOMString = 'Description';
-    cID_Decript = 111;
+    cID_Descript = 111;
     cFontColor: DOMString = 'FontColor';
     cID_FontColor = 116;
     cHeight: DOMString = 'Height';
@@ -517,7 +516,7 @@ function TECDevice.DeleteConnIndex(AIndex: Integer): Boolean;
 var i, aLengthM1: Integer;
 begin
   aLengthM1:=high(Outputs);
-  Result:= (AIndex>=0) and (AIndex<=aLengthM1);
+  Result:=(AIndex>=0) and (AIndex<=aLengthM1);
   if Result then
     begin
       for i:=AIndex+1 to aLengthM1 do
@@ -548,8 +547,7 @@ begin
     end;
 end;
 
-procedure TECDevice.ChangeConnectionProperties(AInput: Integer; AColor: TColor;
-  AOptions: TConnectionOptions);
+procedure TECDevice.ChangeConnectionProperties(AInput: Integer; AColor: TColor; AOptions: TConnectionOptions);
 var i: Integer;
 begin
   for i:=0 to high(Outputs) do
@@ -585,23 +583,27 @@ end;
 procedure TECDevice.UpdateDevice;
 begin
   if assigned(FOwner) then
-    with FOwner do FScheme.UpdateDevice(self);
+    with FOwner do
+      FScheme.UpdateDevice(self);
 end;
      
 procedure TECDevice.UpdateOwner;
 begin
   if assigned(FOwner) then
-    with FOwner do FScheme.InvalidateNonUpdated;
+    with FOwner do
+      FScheme.InvalidateNonUpdated;
 end;
 
 procedure TECDevice.UpdateScheme;
 begin
-  with FOwner do FScheme.UpdateScheme;
+  with FOwner do
+    FScheme.UpdateScheme;
 end;
 
 procedure TECDevice.UpdateSelection;
 begin
-  with FOwner do FScheme.UpdateSelection;
+  with FOwner do
+    FScheme.UpdateSelection;
 end;
 
 { TECDevice.Setters }
@@ -682,13 +684,11 @@ procedure TECDevice.SetLeft(AValue: Integer);
 begin
   if FLeft=AValue then exit;
   if assigned(FOwner) then
-    with FOwner.FScheme do
-      begin
-        if Indent>AValue 
-          then AValue:=Indent
-          else if (AreaWidth>=0) and (AValue>(FullAreaWidth-Indent))
-                 then AValue:=FullAreaWidth-Indent;
-      end;
+  with FOwner.FScheme do
+      if Indent>AValue
+        then AValue:=Indent
+        else if (AreaWidth>=0) and (AValue>(FullAreaWidth-Indent))
+               then AValue:=FullAreaWidth-Indent;
   FLeft:=AValue;
   UpdateArea;
 end;
@@ -706,12 +706,12 @@ begin
 end;
 
 procedure TECDevice.SetOptions(AValue: TDeviceOptions);
-var bAutoSize, bUpdate: Boolean;
 const cUpdateOpts = [edoNoIcon, edoNoText];
+var bAutoSize, bUpdate: Boolean;
 begin
   if FOptions=AValue then exit;
-  bAutoSize:= ([edoAutosized]*AValue<>[edoAutosized]*FOptions);
-  bUpdate:= (cUpdateOpts*AValue<>cUpdateOpts*FOptions);;
+  bAutoSize:=([edoAutosized]*AValue<>[edoAutosized]*FOptions);
+  bUpdate:=(cUpdateOpts*AValue<>cUpdateOpts*FOptions);
   FOptions:=AValue;
   if bUpdate or (bAutoSize and (edoAutosized in AValue)) then UpdateDevice;
 end;
@@ -741,12 +741,10 @@ begin
   if FTop=AValue then exit;
   if assigned(FOwner) then
     with FOwner.FScheme do
-      begin
-        if Indent>AValue 
-          then AValue:=Indent
-          else if (AreaHeight>=0) and (AValue>(FullAreaHeight-Indent))
-                 then AValue:=FullAreaHeight-Indent;
-      end;
+      if Indent>AValue
+        then AValue:=Indent
+        else if (AreaHeight>=0) and (AValue>(FullAreaHeight-Indent))
+               then AValue:=FullAreaHeight-Indent;
   FTop:=AValue;
   UpdateArea;
 end;
@@ -761,7 +759,7 @@ end;
 { TECDevices }
 
 function TECDevices.AddConnection(AInput, AOutput: Integer; AColor: TColor;
-  AOptions: TConnectionOptions): TAddConnectionResult;
+           AOptions: TConnectionOptions): TAddConnectionResult;
 begin
   if IsConnectedDirectly(AInput, AOutput)
     then Result:=eacAlreadyExists
@@ -773,7 +771,7 @@ begin
 end;
 
 function TECDevices.AddConnectionSafe(AInput, AOutput: Integer; AColor: TColor;
-  AOptions: TConnectionOptions): TAddConnectionResult;
+           AOptions: TConnectionOptions): TAddConnectionResult;
 begin
   Result:=eacFailed;
   if (AInput>=0) and (AOutput>=0) and (AInput<Count) and (AOutput<Count) and (AInput<>AOutput) 
@@ -897,7 +895,7 @@ begin
     DeleteOutput(i);
   for i:=AIndex+1 to Count-1 do
     DeleteOutput(i);
- if Result>0 then FScheme.UpdateScheme;
+  if Result>0 then FScheme.UpdateScheme;
 end;
 
 function TECDevices.ClearInputs(ACaption: string): Integer;
@@ -962,7 +960,7 @@ begin
 end;
 
 function TECDevices.DoAddConnection(AInput, AOutput: Integer; AColor: TColor;
-  AOptions: TConnectionOptions): TAddConnectionResult;
+           AOptions: TConnectionOptions): TAddConnectionResult;
 var aInputs, aOutputs: Integer;
 begin  { no checking for existing reversed conn., no scheme update }
   aInputs:=CalculateInputs(AInput);
@@ -970,7 +968,7 @@ begin  { no checking for existing reversed conn., no scheme update }
   if (aInputs>=Items[AInput].MaxInputs) or (aOutputs>=Items[AOutput].MaxOutputs) then
     begin
       Result:=eacOccupied;
-      exit
+      exit;  { Exit! }
     end;
   SetLength(Items[AOutput].FOutputs, aOutputs+1);
   Items[AOutput].Outputs[aOutputs].Input:=AInput;
@@ -1018,7 +1016,7 @@ begin
     if Items[AOutput].Outputs[i].Input=AInput then
       begin
         Result:=True;
-        exit;
+        exit;  { Exit! }
       end;          
 end;
 
@@ -1061,13 +1059,12 @@ end;
 
 function TECDevices.IsConnectedDirectly(AIndex, BIndex: Integer): Boolean;
 begin
-  Result:= HasDirectOutput(AIndex, BIndex) or HasDirectOutput(BIndex, AIndex);
+  Result:=(HasDirectOutput(AIndex, BIndex) or HasDirectOutput(BIndex, AIndex));
 end;    
 
 function TECDevices.IsConnectedIndirectly(AIndex, BIndex: Integer; out APath: TIntegerDynArray): Boolean;
 begin
-  Result:= HasIndirectOutput(AIndex, BIndex, APath) or
-           HasIndirectOutput(BIndex, AIndex, APath);
+  Result:=(HasIndirectOutput(AIndex, BIndex, APath) or HasIndirectOutput(BIndex, AIndex, APath));
 end;
 
 function TECDevices.ReverseConnection(ADevice, AInput: Integer): Boolean;
@@ -1084,8 +1081,8 @@ begin
       end;
   if aOutIndex>=0 then
     begin
-      Result:= (DoAddConnection(ADevice, AInput, Items[ADevice].Outputs[aOutIndex].Color,
-                                Items[ADevice].Outputs[aOutIndex].Options)=eacCreated);
+      Result:=(DoAddConnection(ADevice, AInput, Items[ADevice].Outputs[aOutIndex].Color,
+                               Items[ADevice].Outputs[aOutIndex].Options)=eacCreated);
       if Result then DeleteConnection(AInput, ADevice);
     end;
   dec(FScheme.UpdateCount);
@@ -1166,8 +1163,7 @@ begin
   Devices:=TECDevices.Create(True);
 end;
 
-procedure TCustomECScheme.CreateNode(AXMLDoc: TXMLDocument; AParent: TDOMNode; AIdent,
-  AValue: string; AID: Word);
+procedure TCustomECScheme.CreateNode(AXMLDoc: TXMLDocument; AParent: TDOMNode; AIdent, AValue: string; AID: Word);
 var aNode: TDOMNode;
 begin
   aNode:=AXMLDoc.CreateElement(AIdent);
@@ -1177,23 +1173,22 @@ begin
 end;
 
 procedure TCustomECScheme.CalcBlockSizesAndContent(ADevice: TECDevice = nil);
-var bEnabled, bHasImage: Boolean;
+var aExtent, aTextExtent: TSize;
     aImageCount: Integer;
-    aExtent, aTextExtent: TSize;
     aLayout: TObjectPos;
     aRect: TRect;
+    bEnabled, bHasImage: Boolean;
 
   procedure Calculate;
   begin
     aTextExtent:=Size(0, 0);
     if ADevice.Caption<>'' then
       begin
-        aRect:=ThemeServices.GetTextExtent(Canvas.Handle,
-                 ThemeServices.GetElementDetails(caThemedContent[caItemState[bEnabled]]),
+        aRect:=ThemeServices.GetTextExtent(Canvas.Handle, ArBtnDetails[bEnabled, False],
                  GetFullCaption(ADevice), FTextFlags, nil);
         aTextExtent:=Size(aRect.Right, aRect.Bottom);
       end;
-    bHasImage:= (assigned(Images) and (ADevice.ImageIndex>=0) and (ADevice.ImageIndex<aImageCount));
+    bHasImage:=(assigned(Images) and (ADevice.ImageIndex>=0) and (ADevice.ImageIndex<aImageCount));
     if bHasImage then
       case aLayout of
         eopTop, eopBottom:
@@ -1208,7 +1203,8 @@ var bEnabled, bHasImage: Boolean;
             aExtent.cx:=aTextExtent.cx+Images.Width;
             if aTextExtent.cx>0 then inc(aExtent.cx, cIndentImageText);
           end;
-      end else aExtent:=aTextExtent;
+      end else
+        aExtent:=aTextExtent;
     if not (esoIdenticalBlocks in Options) and (edoAutosized in ADevice.Options) then
       begin  { autosized blocks }
         ADevice.FWidth:=aExtent.cx+2*cIndentAround;
@@ -1236,14 +1232,12 @@ var bEnabled, bHasImage: Boolean;
       eopTop, eopBottom:
         begin
           ADevice.FCaptionRect.Left:=(ADevice.Width-aTextExtent.cx) div 2;
-          if bHasImage then
-            ADevice.FImagePoint.X:=(ADevice.Width-Images.Width) div 2;
+          if bHasImage then ADevice.FImagePoint.X:=(ADevice.Width-Images.Width) div 2;
         end;
       eopRight, eopLeft:
         begin
           ADevice.FCaptionRect.Top:=(ADevice.Height-aTextExtent.cy) div 2;
-          if bHasImage then
-            ADevice.FImagePoint.Y:=(ADevice.Height-Images.Height) div 2;
+          if bHasImage then ADevice.FImagePoint.Y:=(ADevice.Height-Images.Height) div 2;
         end;
     end;
     if not bHasImage then
@@ -1257,8 +1251,8 @@ var bEnabled, bHasImage: Boolean;
           end;
       end else
       begin  { has image }
-        if aTextExtent.cx>0 then
-          begin  { has Caption }
+        if aTextExtent.cx>0
+          then  { has Caption }
             case aLayout of
               eopTop:
                 begin
@@ -1280,16 +1274,14 @@ var bEnabled, bHasImage: Boolean;
                   ADevice.FImagePoint.X:=(ADevice.Width-aExtent.cx) div 2;
                   ADevice.FCaptionRect.Left:=ADevice.FImagePoint.X+Images.Width+cIndentImageText;
                 end;
-            end;
-          end else
-          begin  { only Image }
+            end
+          else  { only Image }
             case aLayout of
               eopTop, eopBottom:
                 ADevice.FImagePoint.Y:=(ADevice.Height-Images.Height) div 2;
               eopRight, eopLeft:
                 ADevice.FImagePoint.X:=(ADevice.Width-Images.Width) div 2;
             end;
-          end;
       end;
     ADevice.FCaptionRect.Right:=ADevice.FCaptionRect.Left+aTextExtent.cx;
     ADevice.FCaptionRect.Bottom:=ADevice.FCaptionRect.Top+aTextExtent.cy;
@@ -1300,20 +1292,16 @@ begin
   if assigned(Images) then aImageCount:=Images.Count;
   aLayout:=Layout;
   if IsRightToLeft then
-    begin
-      case aLayout of
-        eopRight: aLayout:=eopLeft;
-        eopLeft: aLayout:=eopRight;
-      end;
+    case aLayout of
+      eopRight: aLayout:=eopLeft;
+      eopLeft: aLayout:=eopRight;
     end;
   Canvas.Font.Size:=BlockFontSize;
   if HandleAllocated then
-    begin
-      if ADevice=nil
-        then for ADevice in Devices do
-               Calculate
-        else Calculate;
-    end;
+    if ADevice=nil
+      then for ADevice in Devices do
+             Calculate
+      else Calculate;
 end;
 
 function TCustomECScheme.CalcFullArea: TPoint;
@@ -1337,10 +1325,10 @@ procedure TCustomECScheme.ChangeCursor(AAction: TSchemeAction);
 begin           
   include(FFlags, esfCursorLock);
   case AAction of 
-    esaDefault: Cursor:=FCursorBkgnd;
-    esaHovering: Cursor:=crHandPoint;
+    esaDefault:    Cursor:=FCursorBkgnd;
+    esaHovering:   Cursor:=crHandPoint;
     esaConnecting: Cursor:=crCross;
-    esaDragging: Cursor:=crDrag;
+    esaDragging:   Cursor:=crDrag;
   end;                         
   exclude(FFlags, esfCursorLock);                    
 end;
@@ -1381,13 +1369,12 @@ begin
   if bSelected then InvalidateNonUpdated;
 end;           
 
-procedure TCustomECScheme.DrawBlock(ACanvas: TCanvas; ARect: TRect; ABlockStyle: TBlockStyle;
-  AEnabled: Boolean);
+procedure TCustomECScheme.DrawBlock(ACanvas: TCanvas; ARect: TRect; ABlockStyle: TBlockStyle; AEnabled: Boolean);
 var h: Integer;
 begin
   case ABlockStyle of
-    ebsButton: ACanvas.DrawButtonBackGround(ARect, AEnabled);
-    ebsPanel: ACanvas.DrawPanelBackGround(ARect, bvNone, bvRaised, 1, clBtnFace);
+    ebsButton: ACanvas.DrawButtonBackground(ARect, caItemState[AEnabled]);
+    ebsPanel: ACanvas.DrawPanelBackground(ARect, bvNone, bvRaised, 1, clBtnFace);
     otherwise
       ACanvas.Pen.Width:=2;
       ACanvas.Pen.Style:=psSolid;
@@ -1426,7 +1413,7 @@ begin
           end;
       end;
       ACanvas.AntialiasingMode:=amOff;
-  end;
+  end;  {case}
 end;
 
 procedure TCustomECScheme.GetAllSelected(out ACount: Integer; out ASelected: TIntegerDynArray);
@@ -1514,118 +1501,106 @@ begin
   inherited KeyDown(Key, Shift);
   bUsed:=True;
   case Key of
-    VK_PRIOR: 
-      begin
-        if not (ssCtrl in Shift) 
-          then ClientAreaTop:=ClientAreaTop-ClientHeight
-          else ClientAreaLeft:=ClientAreaLeft-ClientWidth;
-      end;
-    VK_NEXT: 
-      begin
-        if not (ssCtrl in Shift) 
-          then ClientAreaTop:=ClientAreaTop+ClientHeight
-          else ClientAreaLeft:=ClientAreaLeft+ClientWidth;
-      end;
-    VK_END: 
-      begin
-        if not (ssCtrl in Shift)
-          then ClientAreaTop:=FullAreaHeight-ClientHeight
-          else ClientAreaLeft:=FullAreaWidth-ClientWidth;        
-      end;
-    VK_HOME: 
-      begin
-        if not (ssCtrl in Shift)
-          then ClientAreaTop:=0
-          else ClientAreaLeft:=0;
-      end;
-    VK_LEFT: ClientAreaLeft:=ClientAreaLeft-GetIncrementX;
-    VK_UP: ClientAreaTop:=ClientAreaTop-GetIncrementY;
+    VK_PRIOR: if not (ssModifier in Shift)
+                then ClientAreaTop:=ClientAreaTop-ClientHeight
+                else ClientAreaLeft:=ClientAreaLeft-ClientWidth;
+    VK_NEXT:  if not (ssModifier in Shift)
+                then ClientAreaTop:=ClientAreaTop+ClientHeight
+                else ClientAreaLeft:=ClientAreaLeft+ClientWidth;
+    VK_END:   if not (ssModifier in Shift)
+                then ClientAreaTop:=FullAreaHeight-ClientHeight
+                else ClientAreaLeft:=FullAreaWidth-ClientWidth;
+    VK_HOME:  if not (ssModifier in Shift)
+                then ClientAreaTop:=0
+                else ClientAreaLeft:=0;
+    VK_LEFT:  ClientAreaLeft:=ClientAreaLeft-GetIncrementX;
+    VK_UP:    ClientAreaTop:=ClientAreaTop-GetIncrementY;
     VK_RIGHT: ClientAreaLeft:=ClientAreaLeft+GetIncrementX;
-    VK_DOWN: ClientAreaTop:=ClientAreaTop+GetIncrementY;
+    VK_DOWN:  ClientAreaTop:=ClientAreaTop+GetIncrementY;
     otherwise bUsed:=False;
-  end;
+  end;  {case}
   if bUsed then Key:=0;			 
 end; 
 
 procedure TCustomECScheme.KeyUp(var Key: Word; Shift: TShiftState);
 begin
   inherited KeyUp(Key, Shift);
-  if (((ssModifier=ssCtrl) and (Key=VK_CONTROL)) or
-    ((ssModifier=ssMeta) and (Key=VK_LWIN))) and (FConnecting>-1) then
-    StopConnecting;
+  if (((ssModifier=ssModifier) and (Key=VK_CONTROL)) or
+    ((ssModifier=ssMeta) and (Key=VK_LWIN))) and (FConnecting>-1)
+    then StopConnecting;
 end; 
 
 procedure TCustomECScheme.LoadDeviceFromXML(AIndex: Integer; ADeviceNode: TDOMNode;
-  AXMLFlags: TXMLFlags = cXMLFlagsAll);
-var aNode, aOutputNode, aHelpNode: TDOMNode;
-    id, aCount, aLength, aOutput: Integer;
+            AXMLFlags: TXMLFlags = cXMLFlagsAll);
+var id, aCount, aLength, aOutput: Integer;
+    aNode, aOutputNode, aHelpNode: TDOMNode;
     aStr: string;
 begin
   aNode:=ADeviceNode.FirstChild;
   while assigned(aNode) do
     begin
-      id:=strtoint(TDOMElement(aNode).GetAttribute(cID));
+      id:=strToInt(TDOMElement(aNode).GetAttribute(cID));
       aStr:=TDOMElement(aNode).GetAttribute(cValue);
       case id of
-        cID_Caption: if exfCaption in AXMLFlags then Devices[AIndex].Caption:=aStr;
-        cID_Color: if exfVisuals in AXMLFlags then Devices[AIndex].Color:=StringToColor(aStr);
-        cID_Decript: if exfDescript in AXMLFlags then Devices[AIndex].Description:=aStr;
-        cID_FontColor: if exfVisuals in AXMLFlags then Devices[AIndex].FontColor:=StringToColor(aStr);
-        cID_Height: if exfGeometry in AXMLFlags then Devices[AIndex].Height:=strtoint(aStr);
-        cID_ImageIndex: if exfVisuals in AXMLFlags then Devices[AIndex].ImageIndex:=strtoint(aStr);
-        cID_Left: if exfGeometry in AXMLFlags then Devices[AIndex].Left:=strtoint(aStr);
-        cID_MaxIn: if exfConfig in AXMLFlags then Devices[AIndex].MaxInputs:=strtoint(aStr);
-        cID_MaxOut: if exfConfig in AXMLFlags then Devices[AIndex].MaxOutputs:=strtoint(aStr);
-        cID_Options: if exfVisuals in AXMLFlags then Devices[AIndex].Options:=TDeviceOptions(LongWord(strtoint('%'+aStr)));
-        cID_Style: if exfVisuals in AXMLFlags then Devices[AIndex].Style:=TBlockStyle(strtoint(aStr));
-        cID_Tag: if exfConfig in AXMLFlags then Devices[AIndex].Tag:=strtoint(aStr);
-        cID_Top: if exfGeometry in AXMLFlags then Devices[AIndex].Top:=strtoint(aStr);
-        cID_Width: if exfGeometry in AXMLFlags then Devices[AIndex].Width:=strtoint(aStr);
+        cID_Caption:    if exfCaption in AXMLFlags then Devices[AIndex].Caption:=aStr;
+        cID_Color:      if exfVisuals in AXMLFlags then Devices[AIndex].Color:=StringToColor(aStr);
+        cID_Descript:   if exfDescript in AXMLFlags then Devices[AIndex].Description:=aStr;
+        cID_FontColor:  if exfVisuals in AXMLFlags then Devices[AIndex].FontColor:=StringToColor(aStr);
+        cID_Height:     if exfGeometry in AXMLFlags then Devices[AIndex].Height:=strToInt(aStr);
+        cID_ImageIndex: if exfVisuals in AXMLFlags then Devices[AIndex].ImageIndex:=strToInt(aStr);
+        cID_Left:       if exfGeometry in AXMLFlags then Devices[AIndex].Left:=strToInt(aStr);
+        cID_MaxIn:      if exfConfig in AXMLFlags then Devices[AIndex].MaxInputs:=strToInt(aStr);
+        cID_MaxOut:     if exfConfig in AXMLFlags then Devices[AIndex].MaxOutputs:=strToInt(aStr);
+        cID_Options:    if exfVisuals in AXMLFlags then Devices[AIndex].Options:=TDeviceOptions(LongWord(strToInt('%'+aStr)));
+        cID_Style:      if exfVisuals in AXMLFlags then Devices[AIndex].Style:=TBlockStyle(strToInt(aStr));
+        cID_Tag:        if exfConfig in AXMLFlags then Devices[AIndex].Tag:=strToInt(aStr);
+        cID_Top:        if exfGeometry in AXMLFlags then Devices[AIndex].Top:=strToInt(aStr);
+        cID_Width:      if exfGeometry in AXMLFlags then Devices[AIndex].Width:=strToInt(aStr);
         cID_Connects:  { keep this at the last pos }
           if [exfConfig, exfVisuals]*AXMLFlags<>[] then
             begin
-              aCount:=strtoint(TDOMElement(aNode).GetAttribute(cCount));
+              aCount:=strToInt(TDOMElement(aNode).GetAttribute(cCount));
               SetLength(Devices[AIndex].FOutputs, aCount);
               aCount:=length(cOutput);
               aOutputNode:=aNode.FirstChild;
               while assigned(aOutputNode) do
                 begin
                   aLength:=length(TDOMElement(aOutputNode).NodeName);
-                  aOutput:=strtoint(RightStr(TDOMElement(aOutputNode).NodeName, aLength-aCount));
+                  aOutput:=strToInt(RightStr(TDOMElement(aOutputNode).NodeName, aLength-aCount));
                   aHelpNode:=aOutputNode.FirstChild;
                   while assigned(aHelpNode) do
                     begin
-                      id:=strtoint(TDOMElement(aHelpNode).GetAttribute(cID));
+                      id:=strToInt(TDOMElement(aHelpNode).GetAttribute(cID));
                       aStr:=TDOMElement(aHelpNode).GetAttribute(cValue);
                       case id of
-                        cID_Input: if exfConfig in AXMLFlags then
-                                     Devices[AIndex].Outputs[aOutput].Input:=strtoint(aStr);
-                        cID_Color: if exfVisuals in AXMLFlags then
-                                     Devices[AIndex].Outputs[aOutput].Color:=StringToColor(aStr);
+                        cID_Input:   if exfConfig in AXMLFlags then
+                                       Devices[AIndex].Outputs[aOutput].Input:=strToInt(aStr);
+                        cID_Color:   if exfVisuals in AXMLFlags then
+                                       Devices[AIndex].Outputs[aOutput].Color:=StringToColor(aStr);
                         cID_Options: if exfVisuals in AXMLFlags then
                                        Devices[AIndex].Outputs[aOutput].Options:=
-                                         TConnectionOptions(strtoint('%'+aStr));
-                      end;  { case }
+                                         TConnectionOptions(strToInt('%'+aStr));
+                      end;
                       aHelpNode:=aHelpNode.NextSibling;
                     end;
                   aOutputNode:=aOutputNode.NextSibling;
                 end;
             end;
-      end;  { case }
+      end;  {case}
       aNode:=aNode.NextSibling;
     end;
 end; 
 
 procedure TCustomECScheme.LoadSchemeFromXML(AFileName: string; ASchemeNode: DOMString;
             AXMLFlags: TXMLFlags = cXMLFlagsAll);
-var XMLDoc: TXMLDocument;
-    aNode: TDOMNode;
+var aNode: TDOMNode;
+    aXMLDoc: TXMLDocument;
 begin
-  XMLDoc:=nil;
+  aXMLDoc:=nil;
   if FileExistsUTF8(AFileName) then 
-    ReadXMLFile(XMLDoc, AFileName, [xrfAllowSpecialCharsInAttributeValue]);
-  if assigned(XMLDoc) then
-    with XMLDoc do
+    ReadXMLFile(aXMLDoc, AFileName, [xrfAllowSpecialCharsInAttributeValue]);
+  if assigned(aXMLDoc) then
+    with aXMLDoc do
       begin
         if assigned(DocumentElement) then 
           begin
@@ -1637,17 +1612,16 @@ begin
       end;        
 end;
 
-procedure TCustomECScheme.LoadSchemeFromXML(ASchemeNode: TDOMNode;
-            AXMLFlags: TXMLFlags = cXMLFlagsAll);
+procedure TCustomECScheme.LoadSchemeFromXML(ASchemeNode: TDOMNode; AXMLFlags: TXMLFlags = cXMLFlagsAll);
 var aCount, aID: Integer;
-    aNodeName: DOMString;
     aNode: TDOMNode;
+    aNodeName: DOMString;
     aStr: string;
 begin
   inc(UpdateCount);
   Devices.Clear;
   { create devices from children }
-  aCount:=strtoint(TDOMElement(ASchemeNode).GetAttribute(cCount));
+  aCount:=strToInt(TDOMElement(ASchemeNode).GetAttribute(cCount));
   if aCount>0 then
     for aID:=0 to aCount-1 do
       Devices.AddDevice(TECDevice.Create);
@@ -1656,23 +1630,23 @@ begin
     begin
       aNodeName:=TDOMElement(aNode).NodeName;
       if aNodeName=cDevice
-        then LoadDeviceFromXML(strtoint(TDOMElement(aNode).GetAttribute(cIndex)), aNode, AXMLFlags)
+        then LoadDeviceFromXML(strToInt(TDOMElement(aNode).GetAttribute(cIndex)), aNode, AXMLFlags)
         else if exfScheme in AXMLFlags then
                begin
-                 aID:=strtoint(TDOMElement(aNode).GetAttribute(cID));
+                 aID:=strToInt(TDOMElement(aNode).GetAttribute(cID));
                  aStr:=TDOMElement(aNode).GetAttribute(cValue);
                  case aID of
-                   cID_Options: Options:=TSchemeOptions(LongWord(strtoint('%'+aStr)));
-                   cID_BlockColor: BlockColor:=StringToColor(aStr);
-                   cID_BlockFontSize: BlockFontSize:=strtoint(aStr);
-                   cID_BlockHeight: BlockHeight:=strtoint(aStr);
-                   cID_BlockStyle: BlockStyle:=TBlockStyle(strtoint(aStr));
-                   cID_BlockWidth: BlockWidth:=strtoint(aStr);
-                   cID_ConnColor: ConnectorColor:=StringToColor(aStr);
-                   cID_ConnWidth: ConnectorWidth:=strtoint(aStr);
-                   cID_Grid: Grid:=strtoint(aStr);
-                   cID_Indent: Indent:=strtoint(aStr);
-                   cID_Layout: Layout:=TObjectPos(strtoint(aStr));
+                   cID_Options:       Options:=TSchemeOptions(LongWord(strToInt('%'+aStr)));
+                   cID_BlockColor:    BlockColor:=StringToColor(aStr);
+                   cID_BlockFontSize: BlockFontSize:=strToInt(aStr);
+                   cID_BlockHeight:   BlockHeight:=strToInt(aStr);
+                   cID_BlockStyle:    BlockStyle:=TBlockStyle(strToInt(aStr));
+                   cID_BlockWidth:    BlockWidth:=strToInt(aStr);
+                   cID_ConnColor:     ConnectorColor:=StringToColor(aStr);
+                   cID_ConnWidth:     ConnectorWidth:=strToInt(aStr);
+                   cID_Grid:          Grid:=strToInt(aStr);
+                   cID_Indent:        Indent:=strToInt(aStr);
+                   cID_Layout:        Layout:=TObjectPos(strToInt(aStr));
                  end;
                end;
       aNode:=aNode.NextSibling;
@@ -1692,23 +1666,21 @@ begin
         bChanged:=False;
         for i:=0 to FHovering-1 do
           begin
-            bChanged:= (bChanged or Devices[i].FSelected);
+            bChanged:=(bChanged or Devices[i].FSelected);
             Devices[i].FSelected:=False;
           end;
         for i:=FHovering+1 to Devices.Count-1 do  { if Hovering=-1 then this clears all }
           begin
-            bChanged:=bChanged or Devices[i].FSelected;
+            bChanged:=(bChanged or Devices[i].FSelected);
             Devices[i].FSelected:=False;
           end;
         if FHovering>=0 then 
           begin
-            bChanged:= (bChanged or not Devices[FHovering].FSelected);
+            bChanged:=(bChanged or not Devices[FHovering].FSelected);
             include(FFlags, esfSelected);
             Devices[FHovering].FSelected:=True;
           end else
-          begin
             exclude(FFlags, esfSelected);
-          end; 
         if bChanged then UpdateSelection;
       end else
       begin
@@ -1729,7 +1701,7 @@ begin
             if bSelected
               then include(FFlags, esfSelected)
               else exclude(FFlags, esfSelected);
-            Devices[FHovering].FSelected:= not Devices[FHovering].Selected;
+            Devices[FHovering].FSelected:=not Devices[FHovering].Selected;
             UpdateSelection;
           end;
       end;
@@ -1742,8 +1714,8 @@ begin
 end;
 
 procedure TCustomECScheme.MouseMove(Shift: TShiftState; X, Y: Integer);
-var i, aAreaLeft, aAreaTop, aHovering, aLeft, aTop: Integer;
-    aGrid: SmallInt;
+var aGrid: SmallInt;
+    i, aAreaLeft, aAreaTop, aHovering, aLeft, aTop: Integer;
 begin
   inherited MouseMove(Shift, X, Y);
   if esfWasEnabled in FFlags then
@@ -1767,7 +1739,7 @@ begin
                       include(FFlags, esfSelecting);
                       FSelStartPoint:=Point(X, Y);
                     end else
-                    Invalidate;
+                      Invalidate;
                 end;
             end else
             begin
@@ -1814,7 +1786,7 @@ begin
               aTop:=Math.min(aTop, AreaHeight-Devices[FDragging].Height-Indent);
               Devices[FDragging].FTop:=aTop;
             end;   
-         { snap to grid }
+          { snap to grid }
           aGrid:=Grid;
           if (esoSnapToGrid in Options) and (aGrid>=cMinGrid) then
             begin
@@ -1846,16 +1818,15 @@ begin
           if FRequiredArea.Y<=ClientHeight then aAreaTop:=0;
           ClientAreaLeft:=aAreaLeft;
           ClientAreaTop:=aAreaTop;
-          
           Invalidate;
         end;
    end;        
 end;
 
 procedure TCustomECScheme.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-var i: Integer;
+var aRect: TRect;
     bSelected, bSelectionChange, bSelectNotEmpty: Boolean;
-    aRect: TRect;
+    i: Integer;
 begin
   inherited MouseUp(Button, Shift, X, Y);
   if ((Button=mbMiddle) or ((Button=mbLeft) and (ssModifier in Shift))) and (FConnecting>-1) then
@@ -1881,17 +1852,13 @@ begin
           for i:=0 to Devices.Count-1 do
             begin
               bSelected:=IsRectIntersect(aRect, Devices[i].BoundsRect);
-              bSelectionChange:= bSelectionChange or (Devices[i].FSelected<>bSelected);
+              bSelectionChange:=(bSelectionChange or (Devices[i].FSelected<>bSelected));
          		  Devices[i].FSelected:=bSelected;
          	    bSelectNotEmpty:=bSelectNotEmpty or bSelected;
             end;   
-          if bSelectNotEmpty then
-            begin
-              include(FFlags, esfSelected);
-            end else
-            begin
-              exclude(FFlags, esfSelected);
-            end;
+          if bSelectNotEmpty
+            then include(FFlags, esfSelected)
+            else exclude(FFlags, esfSelected);
           exclude(FFlags, esfSelecting);
           if bSelectionChange
             then UpdateSelection
@@ -1903,25 +1870,25 @@ begin
 end;
 
 procedure TCustomECScheme.PaintConnection(ADevice, AOutput: Integer; ADefColor: TColor; BFullRepaint: Boolean);
+const cNonShiftShapes = [ebsRhombus, ebsEllipse];
 var aConnectWidth: SmallInt;
     aInput, aPenWidth: Integer;
     aPenColor: TColor;
     aPenStyle: TPenStyle;
     aSrcPoint: TPoint;
-const cNonShiftShapes = [ebsRhombus, ebsEllipse];
 
   function CanShiftSourcePoint: Boolean;
   begin
     if esoIdenticalBlocks in Options
-      then Result:= not (BlockStyle in cNonShiftShapes)
-      else Result:= not (Devices[ADevice].Style in cNonShiftShapes);
+      then Result:=not (BlockStyle in cNonShiftShapes)
+      else Result:=not (Devices[ADevice].Style in cNonShiftShapes);
   end;
 
   function CanShiftDestPoint: Boolean;
   begin
     if esoIdenticalBlocks in Options
-      then Result:= not (BlockStyle in cNonShiftShapes)
-      else Result:= not (Devices[aInput].Style in cNonShiftShapes);
+      then Result:=not (BlockStyle in cNonShiftShapes)
+      else Result:=not (Devices[aInput].Style in cNonShiftShapes);
   end;
 
   procedure DrawArrowRectConnect(ALeft, ATop, ARight, ABottom: Integer; AGlyph: TGlyphDesign);
@@ -1940,39 +1907,37 @@ const cNonShiftShapes = [ebsRhombus, ebsEllipse];
 
 var dx, dy, aShift: Integer;
     aArrowAlt: SmallInt;
-    aCosAlpha, aSinAlpha: Single;
     aArrow1, aArrow2, aArrow3, aDestPoint: TPoint;
+    aCosAlpha, aSinAlpha: Single;
     b, bHorizontal, bL_Connect, bL_VertThenHor: Boolean;
-const caArrowsLR: array [False..True] of TGlyphDesign = (egdSizeArrLeft, egdSizeArrRight);
-      caArrowsUD: array [False..True] of TGlyphDesign = (egdSizeArrUp, egdSizeArrDown);
+const caArrowsLR: array[False..True] of TGlyphDesign = (egdSizeArrLeft, egdSizeArrRight);
+      caArrowsUD: array[False..True] of TGlyphDesign = (egdSizeArrUp, egdSizeArrDown);
 begin
   aInput:=Devices[ADevice].Outputs[AOutput].Input;
   dx:=Devices[ADevice].HorCenter-Devices[aInput].HorCenter;
   dy:=Devices[ADevice].VertCenter-Devices[aInput].VertCenter;
-  bL_VertThenHor:= (ecoL_VertThenHor in Devices[ADevice].Outputs[AOutput].Options);
-  bHorizontal:= (abs(dx)>abs(dy));
+  bL_VertThenHor:=(ecoL_VertThenHor in Devices[ADevice].Outputs[AOutput].Options);
+  bHorizontal:=(abs(dx)>abs(dy));
   bL_Connect:=False;
   if ecoL_Connection in Devices[ADevice].Outputs[AOutput].Options then
     begin
-      if bHorizontal then
-        begin
+      if bHorizontal
+        then
           if not bL_VertThenHor
-            then bL_Connect:= ((Devices[ADevice].VertCenter<Devices[aInput].Top)
+            then bL_Connect:=((Devices[ADevice].VertCenter<Devices[aInput].Top)
                            or (Devices[ADevice].VertCenter>Devices[aInput].Bottom))
-            else bL_Connect:= ((Devices[ADevice].Bottom<Devices[aInput].VertCenter)
-                           or (Devices[ADevice].Top>Devices[aInput].VertCenter));
-        end else
-        begin
+            else bL_Connect:=((Devices[ADevice].Bottom<Devices[aInput].VertCenter)
+                           or (Devices[ADevice].Top>Devices[aInput].VertCenter))
+        else
           if not bL_VertThenHor
-            then bL_Connect:= ((Devices[ADevice].Right<Devices[aInput].HorCenter)
+            then bL_Connect:=((Devices[ADevice].Right<Devices[aInput].HorCenter)
                            or (Devices[ADevice].Left>Devices[aInput].HorCenter))
-            else bL_Connect:= ((Devices[ADevice].HorCenter<Devices[aInput].Left)
+            else bL_Connect:=((Devices[ADevice].HorCenter<Devices[aInput].Left)
                            or (Devices[ADevice].HorCenter>Devices[aInput].Right));
-        end;
     end;
   if bHorizontal
-    then b:= not bL_Connect or not bL_VertThenHor
-    else b:= not (not bL_Connect or bL_VertThenHor);
+    then b:=not bL_Connect or not bL_VertThenHor
+    else b:=not (not bL_Connect or bL_VertThenHor);
   if b then
     begin
       if dx>=0
@@ -1993,8 +1958,8 @@ begin
   dec(aSrcPoint.X, ClientAreaLeft);
   dec(aSrcPoint.Y, ClientAreaTop);
   if bHorizontal
-    then b:= not bL_Connect or bL_VertThenHor
-    else b:= bL_Connect and bL_VertThenHor;
+    then b:=not bL_Connect or bL_VertThenHor
+    else b:=(bL_Connect and bL_VertThenHor);
   if b then
     begin
       if dx<0
@@ -2103,15 +2068,15 @@ begin
 end;
 
 procedure TCustomECScheme.PaintContent(AIndex: Integer; ABlockRect: TRect);
-var aDetails: TThemedElementDetails;
-    aPoint: TPoint;
+var aPoint: TPoint;
     aRect: TRect;
+    bEnabled: Boolean;
 begin
   if assigned(OnPaintContent)
     then OnPaintContent(self, AIndex, ABlockRect)
     else
     begin
-      aDetails:=ThemeServices.GetElementDetails(caThemedContent[caItemState[IsEnabled]]);
+      bEnabled:=IsEnabled;
       if not (edoNoText in Devices[AIndex].Options) then
         begin
           aRect:=Devices[AIndex].FCaptionRect;
@@ -2119,14 +2084,14 @@ begin
           inc(aRect.Right, ABlockRect.Left);
           inc(aRect.Top, ABlockRect.Top);
           inc(aRect.Bottom, ABlockRect.Top);
-          ThemeServices.DrawText(Canvas, aDetails, GetFullCaption(Devices[AIndex]),
+          ThemeServices.DrawText(Canvas, ArBtnDetails[bEnabled, False], GetFullCaption(Devices[AIndex]),
             aRect, FTextFlags, 0);
         end;
       if not (edoNoIcon in Devices[AIndex].Options) and assigned(Images) then
         begin
           aPoint.X:=Devices[AIndex].FImagePoint.X+ABlockRect.Left;
           aPoint.Y:=Devices[AIndex].FImagePoint.Y+ABlockRect.Top;
-          ThemeServices.DrawIcon(Canvas, aDetails, aPoint, Images, Devices[AIndex].ImageIndex);
+          ThemeServices.DrawIcon(Canvas, ArBtnDetails[bEnabled, False], aPoint, Images, Devices[AIndex].ImageIndex);
         end;
     end;
 end;
@@ -2212,12 +2177,11 @@ begin
         end;
     end;
 
-  bFullRepaint:= ((esoFullDragRepaint in Options) or ((FDragging<0) and (FConnecting<0)));
+  bFullRepaint:=(esoFullDragRepaint in Options) or ((FDragging<0) and (FConnecting<0));
 
   { draw grid }
-  if (bFullRepaint or (esoSnapToGrid in Options)) and
-    (esoShowGrid in Options) and (Grid>=cMinGrid) then
-      DrawGrid;
+  if (bFullRepaint or (esoSnapToGrid in Options)) and (esoShowGrid in Options) and (Grid>=cMinGrid)
+    then DrawGrid;
 
   if bFullRepaint and not (esoRectangularConnect in Options) then Canvas.AntialiasingMode:=amOn;
 
@@ -2264,8 +2228,8 @@ begin
               DrawBlock(Canvas, aRect, Devices[i].Style, bEnabled);
             end;
         end else
-        Canvas.Frame(aRect);
-      { Paint Caption }
+          Canvas.Frame(aRect);
+      { paint Caption }
       if bFullRepaint then
         begin
           if not (esoIdenticalBlocks in Options) then
@@ -2274,10 +2238,10 @@ begin
               if not bEnabled then aColor:=GetMergedColor(GetMonochromaticColor(aColor), clBtnFace, 0.55);
               Canvas.Font.Color:=aColor;
             end else
-            Canvas.Font.Color:=Font.Color;
+              Canvas.Font.Color:=Font.Color;
           PaintContent(i, aRect);
         end;
-      { Paint single FocusRect }
+      { paint single FocusRect }
       if Devices[i].Selected and
         not (((FDragging>=0) or (FConnecting>=0)) and not (esoFullDragRepaint in Options)) then
         begin
@@ -2322,14 +2286,14 @@ begin
 end;
 
 procedure TCustomECScheme.SaveDeviceToXML(AIndex: Integer; AXMLDoc: TXMLDocument;
-  ADeviceNode: TDOMNode; AXMLFlags: TXMLFlags = cXMLFlagsAll);
+            ADeviceNode: TDOMNode; AXMLFlags: TXMLFlags = cXMLFlagsAll);
 var aConnNode, aOutputNode: TDOMNode;  
     i, aConnectCnt: Integer;  
 begin
   if exfCaption in AXMLFlags then
     CreateNode(AXMLDoc, ADeviceNode, cCaption, Devices[AIndex].Caption, cID_Caption);
   if exfDescript in AXMLFlags then
-    CreateNode(AXMLDoc, ADeviceNode, cDescript, Devices[AIndex].Description, cID_Decript);
+    CreateNode(AXMLDoc, ADeviceNode, cDescript, Devices[AIndex].Description, cID_Descript);
   if exfGeometry in AXMLFlags then
     begin
       CreateNode(AXMLDoc, ADeviceNode, cHeight, inttostr(Devices[AIndex].Height), cID_Height);
@@ -2378,17 +2342,17 @@ begin
 end;
 
 { saves scheme to file, i.e. xml file contains scheme in <ROOT><ASchemeNode>... }
-procedure TCustomECScheme.SaveSchemeToXML(AFileName: string;
-            ASchemeNode: DOMString; AXMLFlags: TXMLFlags = cXMLFlagsAll);
-var XMLDoc: TXMLDocument;
-    aNode: TDOMNode;
+procedure TCustomECScheme.SaveSchemeToXML(AFileName: string; ASchemeNode: DOMString;
+            AXMLFlags: TXMLFlags = cXMLFlagsAll);
+var aNode: TDOMNode;
+    aXMLDoc: TXMLDocument;
 begin
-  XMLDoc:=nil;
+  aXMLDoc:=nil;
   if FileExistsUTF8(AFileName) then 
-    ReadXMLFile(XMLDoc, AFileName, [xrfAllowSpecialCharsInAttributeValue]);
-  if not assigned(XMLDoc) then XMLDoc:=TXMLDocument.Create;
+    ReadXMLFile(aXMLDoc, AFileName, [xrfAllowSpecialCharsInAttributeValue]);
+  if not assigned(aXMLDoc) then aXMLDoc:=TXMLDocument.Create;
   try
-    with XMLDoc do
+    with aXMLDoc do
       begin
         if not assigned(DocumentElement) then
           begin
@@ -2402,11 +2366,11 @@ begin
             aNode:=CreateElement(ASchemeNode);
             DocumentElement.AppendChild(aNode);
           end;
-        SaveSchemeToXML(XMLDoc, aNode, AXMLFlags);
-        WriteXMLFile(XMLDoc, AFileName);
+        SaveSchemeToXML(aXMLDoc, aNode, AXMLFlags);
+        WriteXMLFile(aXMLDoc, AFileName);
       end;
   finally
-    XMLDoc.Free;
+    aXMLDoc.Free;
   end;
 end;
 
@@ -2703,14 +2667,14 @@ begin
       for i:=0 to Devices.Count-1 do
         if Devices[i].Right>s then Devices[i].Left:=s-Devices[i].Width;
     end else
-    UpdateRequiredAreaWidth;
+      UpdateRequiredAreaWidth;
   if AreaHeight>=0 then
     begin
       s:=AreaHeight-Indent;
       for i:=0 to Devices.Count-1 do
         if Devices[i].Bottom>s then Devices[i].Top:=s-Devices[i].Height;
     end else
-    UpdateRequiredAreaHeight;               
+      UpdateRequiredAreaHeight;
   EndUpdate;         
 end;
 
@@ -2726,13 +2690,13 @@ begin
 end;
 
 procedure TCustomECScheme.SetOptions(AValue: TSchemeOptions);
+const cInvOptions = [esoIdenticalBlocks, esoDescriptionOnBlock, esoRectangularConnect, esoShowGrid];
 var bIdentBlocksChanged, bInv: Boolean;
     i: Integer;
-const cInvOptions = [esoIdenticalBlocks, esoDescriptionOnBlock, esoRectangularConnect, esoShowGrid];
 begin
   if FOptions=AValue then exit;
-  bIdentBlocksChanged:= (([esoIdenticalBlocks]*FOptions)<>([esoIdenticalBlocks]*AValue));
-  bInv:= ((cInvOptions*FOptions)<>(cInvOptions*AValue));
+  bIdentBlocksChanged:=([esoIdenticalBlocks]*FOptions)<>([esoIdenticalBlocks]*AValue);
+  bInv:=(cInvOptions*FOptions)<>(cInvOptions*AValue);
   FOptions:=AValue;
   if bIdentBlocksChanged and (esoIdenticalBlocks in AValue) then
     begin

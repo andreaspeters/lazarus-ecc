@@ -1,3 +1,322 @@
+2023-05-02 0.9.60.0
+===================
+TECAccordeon: bug when adding items on Frame. Fixed in ECDesignTime, method
+  TECAccordionEditor.ExecuteVerb();. Now it adds a new item for the same Owner,
+  i.e. AddItem(aECAcc.Owner); instead of AddItem(Designer.Form);
+  (which worked for FGorms but not for Frames).
+
+2023-03-03 0.9.58.0
+===================
+TECGrid: bug when closing app. in EditorMode, added FEditorMode:=False; to destructor
+
+2021-11-13 0.9.56.0
+===================
+TECSwitch: added LazMethodList to uses because of function CompareMethods
+
+2020-10-25 0.9.56.0
+===================
+ALL: improved painting when Enabled = False
+
+2020-10-25 0.9.56.0
+===================
+TCanvasHelper: SetFontParams(); deprecated
+
+2020-10-15 0.9.56.0
+===================
+TECImageMenu: Autosize (PreferredWidth) correcly calculates width of multiline
+  Descriptions and Captions.
+
+2020-10-09 0.9.54.0
+===================
+TECTringle: implemented etroSnapToMark Option (when mouse drags pointer)
+            implemented BevelStyle (ebsNone is default)
+            Indent default changed to 2 (was 4)
+            implemented new ColorFill ecfThreeColorEx
+ALL: SmallInt constants changed to untyped
+
+2020-10-06 0.9.54.0
+===================
+TECCheckListBox: published property MultiSelect.
+TECTringle: DrawTriangleBMP boosted via TLazIntfImage:
+          ecfNone/ecfSimple/ecfThreeColors/ecfGradient
+  Old, Default (-O1): 9/20/20/210 ms
+  Old, Final   (-O3): 9/19/19/125 ms
+  New:                3/4/4/7 ms (regardless Default/Final)
+(regardless TLazIntfImage TriLII is created permanently (global) or temporarily (local))
+
+2020-09-18 0.9.54.0
+===================
+TECGrid: improved KeyDown. UTF8 keys can open editor now.
+         added property FocusedCell.
+         CopyToClipboard and IsInSelection are public now.
+
+2020-09-05 0.9.54.0
+===================
+TECGrid: ignoring SB_THUMBPOSITION in WMHScroll and WMVScroll.
+         improved scrolling compatibility in WMHScroll and WMVScroll.
+         added property FocusedCell.
+
+2020-08-30 0.9.54.0
+===================
+TECGrid: now accepts TControl as an in-cell editor. This breaks a compatibility,
+  methods OnSelectEditor event must be implemented with parameter:
+  AEditor: TControl; (instead of TWinControl).
+TECGrid: dragging out-of-bounds scrolls grid.
+
+
+2020-08-28 0.9.54.0
+===================
+TFontOptions, TECCustomKnob, TECGColTitle, TCustomECScale, TSingleSpinBtn now derived
+  from TObject (with {$M+}) instead of TPersistent. It saves 16 bytes per instance.
+  0 bytes for TFPList because it is created on demand (otherwise it takes 24 bytes).
+  REVERTED: They must be derived from TPersistent because of correct streaming.
+
+2020-08-13 0.9.52.0
+===================
+TECAccordion: Item[] renamed to Items[]. Internal Items renamed to ListItems.
+
+2020-07-05 0.9.52.0
+===================
+TECGrid: Shift+MouseWheel does not select anymore (simplicity and compatibility)
+
+2020-07-04 0.9.52.0
+===================
+TECGrid: fixed bug when FixedCols>=ColCount
+         fixed single and multi-range select behaviour
+         fixed MouseWheel scrolling (limit to one step per Paint only)
+
+2020-06-23 0.9.52.0
+===================
+TCustomECScale: removed FontOrientation related code
+TECGrid: added method UpdateGrid; UpdateRowCount is deprecated due to misleading name
+         improved code related to MouseWheel and modifiers (Shift and Control)
+
+2020-06-12 0.9.50.0
+===================
+TECSpeedBtn/TECBitBtn: redesigned, added TECBtnCore
+
+2020-06-09 0.9.48.0
+===================
+TECSpeedBtn/TECBitBtn: removed ActionListImagesDelay
+
+2020-06-07 0.9.48.0
+===================
+ECTypes: added function TCanvasHelper.GetDefaultFontSize
+
+2020-06-05 0.9.48.0
+===================
+TFontOptions: added default: property FontSize default 0; property FontStyles default [];
+TCustomECScale: added IsXYZStored for DateTimeFormat and LogarithmBase
+TECLightView: added Home and End key funcionality; added DefLineHeight
+
+2020-06-04 0.9.48.0
+===================
+Subcomponents properties made ReadOnly (to prevent crash or confusion in OI):
+ TECSpinEdit.Buttons, TECEditBtn.Button, TECColorBtn.Button,
+ TECComboBtn.Button, TECColorCombo.Button, TECSpinPosition.Buttons
+
+2020-06-04 0.9.46.0
+===================
+TECSpeedBtnPlus: added default: property GlyphDesign default egdNone;
+ added IsXYZStored for MaxInEdit and MinInEdit
+TECSpinEdit: added IsXYZStored for DateTimeFormat and MantissaExp
+TSingleSpinBtn: added IsBtnOrderStored
+This can reduce up to 13 entries is *.lfm per TECSpinEdit (9 per TECSpinBtns)
+
+2020-05-28 0.9.44.0
+===================
+TBaseECComboBtn: fixed ReadOnly (TCustomComboBox.ReadOnly property was deprecated).
+All: MouseEntered replaced with MouseInClient.
+
+2019-03-21 0.9.42.0
+===================
+TECSpinBtns: added line ~1800 (Qt hack):
+if PushedBtn = -1 then MouseCapture := False;  { added because of Qt4 nested ShowModal }
+rejected;
+TECSpinBtns: added property MenuBtnLeftMouseUp;
+added line ~1870 (Qt hack):
+if (TBtnKind(HoveredBtnReal) = ebkMenu) and not MenuBtnLeftMouseUp then MouseCapture := False;
+
+2019-02-09 0.9.42.0
+===================
+TECLightView: finished.
+
+2019-01-06 0.9.40.0
+===================
+TECLightView: Parser and all tags done.
+
+2018-12-30 0.9.40.0
+===================
+TECLightView: Parser almost done.
+
+2018-12-15 0.9.40.0
+===================
+TECGrid: add UpdateDataCell method and DataRow property.
+
+2018-12-10 0.9.40.0
+===================
+TECLightView: initial state.
+
+2018-12-04 0.9.36.0
+===================
+TECGrid: improved CMExit (exit from EditorMode).
+
+2018-12-02 0.9.36.0
+===================
+TECSpeedBtn, TECBitBtn: proper assigning Images from Actions (and ActionList).
+
+2018-11-26 0.9.36.0
+===================
+TECLink: improved default HoveredColor and VisitedColor, resolves light and dark themes.
+TECSpinEdit, TECBaseEditBtn, TECBaseComboBtn: bug when Parent is BiDiR2L and control
+  is anchored to right. Patched in SetButtonPosition method.
+
+2018-11-22 0.9.36.0
+===================
+TECSpeedBtn, TECBitBtn: improved allocating bitmaps (allocated just once,
+  no more Free/Create when Enabled changes). Improved drawing of icon when
+  ebmToggleBox is Checked (added new ItemState eisChecked).
+
+2018-11-02 0.9.36.0 - reverted 2018-11-15
+===================
+TECGrid: added option egoSelectionMinusOne which triggers OnSelection when
+  Row:=-1 or SelectCell(ARow=-1)
+
+2018-10-30 0.9.36.0
+===================
+TECGrid: fixed method SaveColumnsToXML, column widths are stored non-enlarged.
+
+2018-10-15 0.9.36.0
+===================
+TECGColTitle: implemented function GetOwner for proper work with Translator.
+
+2018-10-12 0.9.36.0
+===================
+TECSpeedBtn, TECBitBtn: improved drawing when FontStyles are fsBold.
+
+2018-10-04 0.9.36.0
+===================
+ECEditBtns: TButtonMode: ebmSpeedBtn changed to ebmButton.
+
+2018-10-04 0.9.36.0
+===================
+TECBitBtn: initial implementation. Share code with TECSpeedBtn as much as possible.
+  Added file ecxbtn.inc.
+
+2018-09-19 0.9.34.0
+===================
+ECGrpCtrls: implemented egoCaptionCenter. Item.Caption changed from TTranslateString
+  to TCaption (to display properly accelerators).
+
+2018-09-08 0.9.34.0
+===================
+TECSpinEdit: OnChange triggers on Value real change only.
+  Changes like 0,000 to 0,0000 does not trigger event anymore.
+
+2018-08-15 0.9.34.0
+===================
+TECGrid: XML idents changed to lowercase.
+
+2018-07-27 0.9.34.0
+===================
+TBaseECSlider, TECProgressBar: improved default colors for dark themes.
+
+2018-07-08 0.9.34.0
+===================
+TECGrid: avoid Paint when UpdateCount>0.
+
+2018-06-28 0.9.34.0
+===================
+TBaseECSlider: added property Flags: TSFlags to replace Boolean fields of descendants.
+
+2018-06-28 0.9.34.0
+===================
+TECSwitch, TECTriangle, TECGrid: improved changing Enabled
+  (EnabledChanged nor CMEnabledChanged is not triggered when Parent's Enabled changes).
+
+2018-06-17 0.9.34.0
+===================
+TCustomECSpeedBtn: added property ImageWidth. Support for new ImageLists (incl. hi-DPI).
+
+2018-05-17 0.9.34.0
+===================
+TECGrid: OnSelection and OnSelectEditor not triggered while updating (UpdateCount>0).
+
+2018-05-13 0.9.34.0
+===================
+TECProgressBar: Implemented property Kind, i.e. 5 marquee modes.
+
+2018-05-11 0.9.34.0
+===================
+TECScale: Fixed drawing values of reversed logarithmic scale.
+TECTabCtrl: Fixed triggering OnChanging with option etcoDontOnChangeOnCode.
+
+2018-05-09 0.9.34.0
+===================
+TECScale: implemented ValueFormat esvfSIPrefix.
+ECTypes: added routine FloatToSIPrefix(AValue, ARound);
+
+2018-05-05 0.9.34.0
+===================
+TECGrid: implemented option egoAutoEnlargeColumns. Fixed SetSortIndex (if AValue=-1).
+
+2018-05-02 0.9.34.0
+===================
+Refactoring: ssCtrl -> ssModifier; MouseInCient back to MouseEntered to keep
+  compatible with Laz. 1.8.2
+
+2018-04-30 0.9.32.0
+===================
+TECGrid: Fix: SetRow on invisible grid raised index out o bounds in MakeCellFullyVisi.
+TECTabCtrl: Added option etcoDoubleClickClose.
+  Added option etcoDontOnChangeOnCode, default in False (to not break existing code).
+  Added for TPageControl (and Delphi) compatibility.
+  Fixed triggering OnChanging/OnChange when switching folded Tab from DropDown menu.
+
+2018-04-22 0.9.32.0
+===================
+TECGrid: Editor not opened when ssModifier, ssAlt or ssMeta in ShiftState.
+  Fix in Paint method: selected cell is not repainted when it was not changed.
+
+2018-04-21 0.9.32.0
+===================
+TECGrid: Added parameter AResetRow to SelectCell() method. Limit Row in SelectCell
+  when exceeds RowCount. Set Row to -1 in UpdateRowCount when exceeds RowCount.
+
+2018-04-08 0.9.32.0
+===================
+TECGrid: Fixed Columns enlarging (ecfEnlarged accidentally reseted in Paint;).
+
+2018-04-08 0.9.32.0
+===================
+TECGrid: Added property DataCellsOrd for convenience. Corrected CellsOrd.
+
+2018-04-04 0.9.32.0
+===================
+Added keyword "nodefault" for proper streaming of single/double properties
+  that are <> 0. TECSpinBtns/TECSpinBtnsPlus Max, Min, MaxInEdit, MinInEdit.
+  TCScale Max.
+
+2018-04-02 0.9.32.0
+===================
+TEGrid: OnSelection now does not triggered when Row<FixedRows.
+        Changing prop. Color now repaints grid properly.
+
+2018-03-13 0.9.32.0
+===================
+TECImageMenu: support for multiline (property) Description.
+
+2018-03-09 0.9.32.0
+===================
+Released 0.9.30
+---------------
+MouseEntered replaced with MouseInClient.
+TECSpinPosition: added class TECComboBtnSpacing and implemented aligning
+  in similarly to TECSpinEdit, TECEditBtn and TECComboBtn.
+TECSpinEdit: reduced OnChange events when editing by PgDn/PgUp and arrow keys.
+  Improved behaviour when limit is like 0,99999 formated to 23:59:59.
+TECSpinEdit, TECEditBtn: removed method SwitchOption.
+
 2018-03-06 0.9.30.0
 ===================
 TECCheckListBox: fixed invalid typecast at InitializeWnd.

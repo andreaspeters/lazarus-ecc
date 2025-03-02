@@ -13,6 +13,9 @@ No matter if you have stable FPC (2.6.4) or trunk (2.7.1)
 
 Known issues:
 =============
+TECColorBtn and TECColorCombo: incorrect entries to property Text are
+  silently ignored.
+
 TECSwitch has not OnEditingDone event. This is difference to TCheckBox.
 Use OnChange or OnExit instead.
 

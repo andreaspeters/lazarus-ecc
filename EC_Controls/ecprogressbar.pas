@@ -1,7 +1,11 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2017 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2020 Vojtěch Čihák, Czech Republic
+
+  Credit: alignment of composite components (class TECSpinPosSpacing)
+    is based on idea of Flávio Etrusco published on mailing list.
+    http://lists.lazarus.freepascal.org/pipermail/lazarus/2013-March/079971.html
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,47 +38,58 @@ unit ECProgressBar;
 interface
 
 uses
-  Classes, SysUtils, Controls, Forms, Graphics, LCLIntf, LCLProc, LMessages,
-  Math, ECSlider, ECSpinCtrls, ECScale, ECTypes, Types;
+  Classes, SysUtils, Controls, CustomTimer, Forms, Graphics, LCLIntf, LCLProc, LMessages, Math, Types,
+  ECScale, ECSlider, ECSpinCtrls, ECTypes;
 
 type  
   {$PACKENUM 2}
+  TProgressKind = (epkProgress, epkMarquee12, epkMarquee17, epkMarquee25, epkMarquee33, epkMarquee50);
   TProgressTextStyle = (eptNone, eptSolid, eptInverted);
   
   { TCustomECProgressBar }
   TCustomECProgressBar = class(TBaseECSlider)
   private
     FCaptionInline: Boolean;
+    FKind: TProgressKind;
     FProgressDigits: Word;
     FProgressFontOptions: TFontOptions;
     FProgressTextAlign: SmallInt;
     FProgressTextStyle: TProgressTextStyle;
     FUnits: string;
     procedure SetCaptionInline(AValue: Boolean);
+    procedure SetKind(AValue: TProgressKind);
     procedure SetProgressDigits(AValue: Word); virtual;
     procedure SetProgressTextAlign(AValue: SmallInt);
     procedure SetProgressTextStyle(AValue: TProgressTextStyle);
     procedure SetUnits(const AValue: string);
   protected const
+    cMarqueeFrames = 50;  { 50*50ms = 2.5 seconds there and 2.5 secs back }
     cDefGrooveWidth = 16;
     cDefProgMarkSize = 3;
     cDefProgressText = eptInverted;
   protected
+    MarqueeInc: Boolean;
+    MarqueePos: Integer;
+    Timer: TCustomTimer;
     procedure CalcGrooveMiddle; override;
     procedure CalcInvalidRectDyn; override;
     procedure CalcInvalidRectStat; override;
     procedure CalcProgressInvRect; virtual;
     procedure CorrectGrooveLength(var z1, z2: Integer; AVertical: Boolean); override;
+    procedure DoMarquee(Sender: TObject);
     procedure DrawGroove; override;
     function GetRelGroovePos: Integer; override;
     function HasCaption: Boolean; override;
     procedure OrientationChanged(AValue: TObjectOrientation); override;
     procedure PaintSelf(AEnabled: Boolean); override;
+    procedure SetGrooveBoundsHorz(x1, x2, {%H-}y1, {%H-}y2: Integer); override;
+    procedure SetGrooveBoundsVert({%H-}x1, {%H-}x2, y1, y2: Integer); override;
     procedure SetPosition(AValue: Double); override;
   public
-    constructor Create(TheOwner: TComponent); override;
+    constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     property CaptionInline: Boolean read FCaptionInline write SetCaptionInline default False;
+    property Kind: TProgressKind read FKind write SetKind default epkProgress;
     property ProgressDigits: Word read FProgressDigits write SetProgressDigits default 0;
     property ProgressFontOptions: TFontOptions read FProgressFontOptions write FProgressFontOptions;
     property ProgressTextAlign: SmallInt read FProgressTextAlign write SetProgressTextAlign default 0;
@@ -113,6 +128,7 @@ type
     property ImagePos;
     property Images;
     property Indent;
+    property Kind;
     property Max;
     property Min;
     property Orientation default eooHorizontal;
@@ -165,7 +181,6 @@ type
   { TCustomECPositionBar }
   TCustomECPositionBar = class(TCustomECProgressBar)
   private
-    FCursorLock: Boolean;
     FMouseDragPx: Integer;
     FMouseDragPxFine: Integer;
     FProgressSign: Boolean;
@@ -176,9 +191,6 @@ type
     cDefMouseDragPx = 1;     
   protected
     FCursorBkgnd: TCursor;
-    FDragAreaEntered: Boolean;
-    FDragState: Boolean;
-    FPrevCTRLDown: Boolean;  { wheter CTRL was pressed in previous MouseMove }
     InitCoord: Integer;
     InitDelta: Double;     
     procedure CalcInvalidRectDyn; override;
@@ -192,7 +204,7 @@ type
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     procedure SetCursor(Value: TCursor); override;
   public
-    constructor Create(TheOwner: TComponent); override;    
+    constructor Create(AOwner: TComponent); override;
     property MouseDragPixels: Integer read FMouseDragPx write FMouseDragPx default cDefMouseDragPx;
     property MouseDragPixelsFine: Integer read FMouseDragPxFine write FMouseDragPxFine default cDefMouseDragPxFine;
     property ProgressSign: Boolean read FProgressSign write SetProgressSign default False;
@@ -315,6 +327,7 @@ type
     property Images;
     property Increment;
     property Left stored False;
+    property MenuBtnLeftMouseUp;
     property MenuControl;
     property Middle;
     property Mode;
@@ -346,6 +359,13 @@ type
     property OnMouseUp;
   end;
 
+  { TECSpinPosSpacing }
+  TECSpinPosSpacing = class(TControlBorderSpacing)
+  public
+    function GetSpace(Kind: TAnchorKind): Integer; override;
+    procedure GetSpaceAround(var SpaceAround: TRect); override;
+  end;
+
   { TECSpinPosition }
   TECSpinPosition = class(TCustomECPositionBar)
   private
@@ -362,6 +382,7 @@ type
   protected
     procedure ChangePosition;
     procedure CMBiDiModeChanged(var Message: TLMessage); message CM_BIDIMODECHANGED;
+    function CreateControlBorderSpacing: TControlBorderSpacing; override;
     procedure DoOnChangeBounds; override;
     procedure InitializeWnd; override;
     procedure RecalcRedraw; override;
@@ -373,7 +394,7 @@ type
     procedure SetSpinBtnsPosition;
     procedure VisibleChanged; override;
   public
-    constructor Create(TheOwner: TComponent); override;
+    constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
   published
     property Align;
@@ -385,7 +406,7 @@ type
     property BevelWidth;
     property BiDiMode;
     property BorderSpacing;
-    property Buttons: TECSpinBtnsPos read FSpinBtns write FSpinBtns;
+    property Buttons: TECSpinBtnsPos read FSpinBtns;
     property Caption;
     property CaptionInline;
     property CaptionPos;
@@ -467,9 +488,9 @@ implementation
 
 { TCustomECProgressBar }
 
-constructor TCustomECProgressBar.Create(TheOwner: TComponent);
+constructor TCustomECProgressBar.Create(AOwner: TComponent);
 begin
-  inherited Create(TheOwner);
+  inherited Create(AOwner);
   ControlStyle:=ControlStyle+[csNoFocus];
   FGrooveWidth:=cDefGrooveWidth;
   FOrientation:=eooHorizontal;
@@ -502,8 +523,8 @@ begin
 end;
 
 procedure TCustomECProgressBar.CalcInvalidRectDyn;
-var aRect: TRect;
-    aCurrentPosition: Integer;
+var aCurrentPosition: Integer;
+    aRect: TRect;
 begin
   {$IFDEF DBGPROGBAR} DebugLn('TCustomECProgressBar.CalcInvalidRectDyn'); {$ENDIF}
   if Orientation=eooHorizontal
@@ -511,25 +532,25 @@ begin
     else FInvalidRect.Right:=FInvRectLimit;
   aRect:=FInvalidRect;
   aCurrentPosition:=round(((Position-Min)/(Max-Min))*FGrooveInnerLength);
-  if not RealReversed 
+  if not (esfRealReversed in Flags)
     then aCurrentPosition:=FGrooveMin+aCurrentPosition
     else aCurrentPosition:=FGrooveMax-aCurrentPosition-1;
   if Orientation=eooHorizontal then
     begin
       if aRect.Left<aCurrentPosition then
-        begin  { Moves Right }
+        begin  { moves Right }
           if aRect.Right<aCurrentPosition then FInvalidRect.Right:=aCurrentPosition
-        end else  { Moves Left }
-        FInvalidRect.Left:=aCurrentPosition;
+        end else  { moves Left }
+          FInvalidRect.Left:=aCurrentPosition;
     end else     
     begin
       if aRect.Top<aCurrentPosition then
-        begin  { Moves Down }
+        begin  { moves Down }
           if aRect.Bottom<aCurrentPosition then FInvalidRect.Bottom:=aCurrentPosition;
-        end else  { Moves Up }
-        FInvalidRect.Top:=aCurrentPosition;
+        end else  { moves Up }
+          FInvalidRect.Top:=aCurrentPosition;
     end;    
-  if not FPrevInvRectPainted then UnionRect(FInvalidRect, aRect, FInvalidRect);
+  if not (esfPrevInvRectPainted in Flags) then UnionRect(FInvalidRect, aRect, FInvalidRect);
   inc(FInvalidRect.Right);
   inc(FInvalidRect.Bottom);
 end;
@@ -554,7 +575,7 @@ procedure TCustomECProgressBar.CalcProgressInvRect;
     
   function CalcProgressInvRectLimit: Integer;
   begin
-    if not RealReversed           
+    if not (esfRealReversed in Flags)
       then Result:=FGrooveMin+round(GetRelPxPos)
       else Result:=FGrooveMax-round(GetRelPxPos)-1;
   end;    
@@ -600,181 +621,237 @@ begin
     end;
 end;         
 
+procedure TCustomECProgressBar.DoMarquee(Sender: TObject);
+begin
+  if MarqueeInc
+    then inc(MarqueePos)
+    else dec(MarqueePos);
+  if (MarqueePos=0) or (MarqueePos=cMarqueeFrames) then MarqueeInc:=not MarqueeInc;
+  if RedrawMode<=ermFreeRedraw then
+    begin
+      RedrawMode:=ermMoveKnob;
+      FInvalidRect:=FGrooveRect;
+      if not (csLoading in ComponentState) then InvalidateRect(Handle, @FInvalidRect, False);
+    end;
+end;
+
 procedure TCustomECProgressBar.DrawGroove;  { must be called from within Paint or PaintSelf! }
+const cMarqueeLength: array[TProgressKind] of SmallInt = (0, 12, 17, 25, 33, 50);  { % }
 var aColor: TColor;
-    bHorizontal: Boolean;
-    aMiddlePos, aMin, aMax, aProgressPos, aStart, aStop, aTextX, aTextY: Integer;
-    aRect, aFullGrooveRect: TRect;
+    aMiddlePos, aMin, aMax, aProgress, aStart, aStop, aTextX, aTextY: Integer;
+    aRect, aProgressRect: TRect;
     aSize: TSize;
     aStr: string;
+    bHorizontal: Boolean;
 begin
-  inherited DrawGroove;
-  if ProgressTextStyle>eptNone then
-    with Canvas do
-      begin
-        Font.Size:=ProgressFontOptions.FontSize;
-        Font.Style:=ProgressFontOptions.FontStyles;
-        bHorizontal:= (Orientation=eooHorizontal);
-        if bHorizontal 
-          then Font.Orientation:=0
-          else Font.Orientation:=900;
-        Brush.Style:=bsClear;
-        aStr:=Units;
-        DeleteAmpersands(aStr);
-        if aStr<>'' then aStr:=' '+aStr;
-        aStr:=Scale.GetStringPosition(Position, ProgressDigits)+aStr;
-        if CaptionInline and (Caption<>'') then aStr:=Caption+' '+aStr;
-        aSize:=TextExtent(aStr);
-        aFullGrooveRect:=FGrooveRect;
-        InflateRect(aFullGrooveRect, -GrooveBevelWidth, -GrooveBevelWidth);
-        aRect:=aFullGrooveRect;
-        if bHorizontal then
+  if Kind=epkProgress then
+    begin
+      inherited DrawGroove;
+      if ProgressTextStyle>eptNone then
+        with Canvas do
           begin
-            if ProgressTextAlign=0 
-              then aRect.Left:=(aRect.Right+aRect.Left-aSize.cx) div 2  { Align to H-Center }
-              else if ProgressTextAlign>0                                  
-                     then aRect.Left:=aRect.Right-ProgressTextAlign-aSize.cx  { Align to Right }
-                     else dec(aRect.Left, ProgressTextAlign);  { Align to Left }                    
-            aRect.Top:=(aRect.Bottom+aRect.Top-aSize.cy) div 2;
-            aRect.Right:=aRect.Left+aSize.cx;
-            aRect.Bottom:=aRect.Top+aSize.cy; 
-            aTextX:=aRect.Left;
-            aTextY:=aRect.Top;
-          end else
-          begin
-            aRect.Left:=(aRect.Right+aRect.Left-aSize.cy) div 2;
-            if ProgressTextAlign=0           
-              then aRect.Top:=(aRect.Bottom+aRect.Top-aSize.cx) div 2  { Align to V-Center }
-              else if ProgressTextAlign>0
-                     then inc(aRect.Top, ProgressTextAlign)  { Align to Top }
-                     else aRect.Top:=aRect.Bottom+ProgressTextAlign-aSize.cx;  { Align to Bottom }
-            aRect.Right:=aRect.Left+aSize.cy;
-            aRect.Bottom:=aRect.Top+aSize.cx+2;    
-            aTextX:=aRect.Left;
-            aTextY:=aRect.Bottom-1;  { necessary for Font.Ori = 900 }
-          end;
-        IntersectRect(aRect, aRect, aFullGrooveRect);
-        case ProgressTextStyle of
-          eptSolid:
-            begin
-              aColor:=ProgressFontOptions.FontColor;
-              if aColor=clDefault then
-                begin
-                  aColor:=GetColorResolvingDefault(GrooveColor, clBtnText);
-                  if not GrooveTransparent then aColor:=InvertColor(ColorToRGB(aColor));
-                end; 
-              if not IsEnabled then aColor:=GetMonochromaticColor(aColor);
-              Font.Color:=aColor; 
-              TextOut(aTextX, aTextY, aStr);
-            end;
-          eptInverted: 
-            begin
-              Clipping:=True;
-              case ProgressVisible of
-                epvNone:
-                  begin
-                    aColor:=GetColorResolvingDefault(ProgressColor, clHighlight);
-                    if not IsEnabled then aColor:=GetMonochromaticColor(aColor);
-                    Font.Color:=aColor;
-                    TextOut(aTextX, aTextY, aStr);
-                  end;
-                epvProgress:
-                  begin
-                    if GrooveTransparent
-                      then aColor:=clBtnFace
-                      else aColor:=GetColorResolvingDefault(GrooveColor, cl3DDkShadow);
-                    if not IsEnabled then aColor:=GetMonochromaticColor(aColor);
-                    if not RealReversed then 
-                      begin
-                        aProgressPos:=FGrooveMin;
-                        aMiddlePos:=aProgressPos+FGrooveMiddle;
-                        inc(aProgressPos, GetRelGroovePos);
-                      end else
-                      begin
-                        aProgressPos:=FGrooveMax-GetRelGroovePos;
-                        aMiddlePos:=FGrooveMax-FGrooveMiddle;
-                      end;
-                    if not ProgressFromMiddle then
-                      begin  { Normal Progress }
-                        if bHorizontal
-                          then aStart:=aRect.Left
-                          else aStart:=aRect.Top; 
-                        if aStart<aProgressPos then
-                          begin
-                            if not RealReversed 
-                              then Font.Color:=aColor
-                              else Font.Color:=GetColorResolvingDefAndEnabled(ProgressColor, clHighlight, IsEnabled); 
-                            if bHorizontal
-                              then ClipRect:=Rect(aRect.Left, aRect.Top, aProgressPos, aRect.Bottom)
-                              else ClipRect:=Rect(aRect.Left, aRect.Top, aRect.Right, aProgressPos);
-                            TextOut(aTextX, aTextY, aStr);
-                          end;
-                        if bHorizontal
-                          then aStart:=aRect.Right
-                          else aStart:=aRect.Bottom;  
-                        if aProgressPos<aStart then
-                          begin
-                            if not RealReversed
-                              then Font.Color:=GetColorResolvingDefAndEnabled(ProgressColor, clHighlight, IsEnabled)
-                              else Font.Color:=aColor;
-                            if bHorizontal
-                              then ClipRect:=Rect(aProgressPos, aRect.Top, aRect.Right, aRect.Bottom)
-                              else ClipRect:=Rect(aRect.Left, aProgressPos, aRect.Right, aRect.Bottom);
-                           TextOut(aTextX, aTextY, aStr);
-                          end;
-                      end else
-                      begin  { Progress from Middle }
-                        if bHorizontal then 
-                          begin
-                            aStart:=aRect.Left;
-                            aStop:=aRect.Right;
-                          end else 
-                          begin
-                            aStart:=aRect.Top;
-                            aStop:=aRect.Bottom;
-                          end;
-                        aMin:=Math.min(aProgressPos, aMiddlePos);
-                        if aStart<aMin then 
-                          begin
-                            Font.Color:=GetColorResolvingDefAndEnabled(ProgressColor, clHighlight, IsEnabled);
-                            if bHorizontal
-                              then ClipRect:=Rect(aRect.Left, aRect.Top, aMin, aRect.Bottom)
-                              else ClipRect:=Rect(aRect.Left, aRect.Top, aRect.Right, aMin);
-                            TextOut(aTextX, aTextY, aStr);
-                          end;
-                        aMax:=Math.max(aProgressPos, aMiddlePos);
-                        if (aStart<aMax) and (aStop>aMin) and (aProgressPos<>aMiddlePos) then
-                          begin  
-                            Font.Color:=aColor;
-                            if bHorizontal
-                              then ClipRect:=Rect(Math.max(aStart, aMin), aRect.Top, Math.min(aStop, aMax), aRect.Bottom)
-                              else ClipRect:=Rect(aRect.Left, Math.max(aStart, aMin), aRect.Right, Math.min(aStop, aMax));
-                            TextOut(aTextX, aTextY, aStr);
-                          end;
-                        if aStop>aMax then
-                          begin
-                            Font.Color:=GetColorResolvingDefAndEnabled(ProgressColor, clHighlight, IsEnabled);
-                            if bHorizontal
-                              then ClipRect:=Rect(aMax, aRect.Top, aRect.Right, aRect.Bottom)
-                              else ClipRect:=Rect(aRect.Left, aMax, aRect.Right, aRect.Bottom);
-                            TextOut(aTextX, aTextY, aStr);
-                          end;
-                      end;
-                  end;
-                epvFull:
-                  begin
-                    if GrooveTransparent
-                      then aColor:=clBtnFace
-                      else aColor:=GetColorResolvingDefault(GrooveColor, cl3DDkShadow);
-                    if not IsEnabled then aColor:=GetMonochromaticColor(aColor);
-                    Font.Color:=aColor;
-                    TextOut(aTextX, aTextY, aStr);
-                  end;
+            Font.Size:=ProgressFontOptions.FontSize;
+            Font.Style:=ProgressFontOptions.FontStyles;
+            bHorizontal:=(Orientation=eooHorizontal);
+            if bHorizontal
+              then Font.Orientation:=0
+              else Font.Orientation:=900;
+            Brush.Style:=bsClear;
+            aStr:=Units;
+            DeleteAmpersands(aStr);
+            if aStr<>'' then aStr:=' '+aStr;
+            aStr:=Scale.GetStringPosition(Position, ProgressDigits)+aStr;
+            if CaptionInline and (Caption<>'') then aStr:=Caption+' '+aStr;
+            aSize:=TextExtent(aStr);
+            aProgressRect:=FGrooveRect;
+            InflateRect(aProgressRect, -GrooveBevelWidth, -GrooveBevelWidth);
+            aRect:=aProgressRect;
+            if bHorizontal then
+              begin
+                if ProgressTextAlign=0
+                  then aRect.Left:=(aRect.Right+aRect.Left-aSize.cx) div 2  { align to h-center }
+                  else if ProgressTextAlign>0
+                         then aRect.Left:=aRect.Right-ProgressTextAlign-aSize.cx  { align to right }
+                         else dec(aRect.Left, ProgressTextAlign);  { align to left }
+                aRect.Top:=(aRect.Bottom+aRect.Top-aSize.cy) div 2;
+                aRect.Right:=aRect.Left+aSize.cx;
+                aRect.Bottom:=aRect.Top+aSize.cy;
+                aTextX:=aRect.Left;
+                aTextY:=aRect.Top;
+              end else
+              begin
+                aRect.Left:=(aRect.Right+aRect.Left-aSize.cy) div 2;
+                if ProgressTextAlign=0
+                  then aRect.Top:=(aRect.Bottom+aRect.Top-aSize.cx) div 2  { align to v-center }
+                  else if ProgressTextAlign>0
+                         then inc(aRect.Top, ProgressTextAlign)  { align to top }
+                         else aRect.Top:=aRect.Bottom+ProgressTextAlign-aSize.cx;  { align to bottom }
+                aRect.Right:=aRect.Left+aSize.cy;
+                aRect.Bottom:=aRect.Top+aSize.cx+2;
+                aTextX:=aRect.Left;
+                aTextY:=aRect.Bottom-1;  { necessary for Font.Ori = 900 }
               end;
-              Clipping:=False;
+            IntersectRect(aRect, aRect, aProgressRect);
+            case ProgressTextStyle of
+              eptSolid:
+                begin
+                  aColor:=ProgressFontOptions.FontColor;
+                  if aColor=clDefault then
+                    begin
+                      aColor:=GetColorResolvingDefault(GrooveColor, clBtnText);
+                      if not GrooveTransparent and IsColorDark(ColorToRGB(clBtnText))
+                        then aColor:=InvertColor(ColorToRGB(aColor));
+                    end;
+                  if not IsEnabled then aColor:=GetMonochromaticColor(aColor);
+                  Font.Color:=aColor;
+                  TextOut(aTextX, aTextY, aStr);
+                end;
+              eptInverted:
+                case ProgressVisible of
+                  epvNone:
+                    begin
+                      aColor:=GetColorResolvingDefault(ProgressColor, clHighlight);
+                      if not IsEnabled then aColor:=GetMonochromaticColor(aColor);
+                      Font.Color:=aColor;
+                      TextOut(aTextX, aTextY, aStr);
+                    end;
+                  epvProgress:
+                    begin
+                      Clipping:=True;
+                      if GrooveTransparent
+                        then aColor:=clBtnFace
+                        else aColor:=GetColorResolvingDefault(GrooveColor, cl3DDkShadow);
+                      if not IsEnabled then aColor:=GetMonochromaticColor(aColor);
+                      if not (esfRealReversed in Flags) then
+                        begin
+                          aProgress:=FGrooveMin;
+                          aMiddlePos:=aProgress+FGrooveMiddle;
+                          inc(aProgress, GetRelGroovePos);
+                        end else
+                        begin
+                          aProgress:=FGrooveMax-GetRelGroovePos;
+                          aMiddlePos:=FGrooveMax-FGrooveMiddle;
+                        end;
+                      if not ProgressFromMiddle then
+                        begin  { normal progress }
+                          if bHorizontal
+                            then aStart:=aRect.Left
+                            else aStart:=aRect.Top;
+                          if aStart<aProgress then
+                            begin
+                              if not (esfRealReversed in Flags)
+                                then Font.Color:=aColor
+                                else Font.Color:=GetColorResolvingDefAndEnabled(ProgressColor, clHighlight, IsEnabled);
+                              if bHorizontal
+                                then ClipRect:=Rect(aRect.Left, aRect.Top, aProgress, aRect.Bottom)
+                                else ClipRect:=Rect(aRect.Left, aRect.Top, aRect.Right, aProgress);
+                              TextOut(aTextX, aTextY, aStr);
+                            end;
+                          if bHorizontal
+                            then aStart:=aRect.Right
+                            else aStart:=aRect.Bottom;
+                          if aProgress<aStart then
+                            begin
+                              if not (esfRealReversed in Flags)
+                                then Font.Color:=GetColorResolvingDefAndEnabled(ProgressColor, clHighlight, IsEnabled)
+                                else Font.Color:=aColor;
+                              if bHorizontal
+                                then ClipRect:=Rect(aProgress, aRect.Top, aRect.Right, aRect.Bottom)
+                                else ClipRect:=Rect(aRect.Left, aProgress, aRect.Right, aRect.Bottom);
+                              TextOut(aTextX, aTextY, aStr);
+                            end;
+                        end else
+                        begin  { ProgressFromMiddle }
+                          if bHorizontal then
+                            begin
+                              aStart:=aRect.Left;
+                              aStop:=aRect.Right;
+                            end else
+                            begin
+                              aStart:=aRect.Top;
+                              aStop:=aRect.Bottom;
+                            end;
+                          aMin:=Math.min(aProgress, aMiddlePos);
+                          if aStart<aMin then
+                            begin
+                              Font.Color:=GetColorResolvingDefAndEnabled(ProgressColor, clHighlight, IsEnabled);
+                              if bHorizontal
+                                then ClipRect:=Rect(aRect.Left, aRect.Top, aMin, aRect.Bottom)
+                                else ClipRect:=Rect(aRect.Left, aRect.Top, aRect.Right, aMin);
+                              TextOut(aTextX, aTextY, aStr);
+                            end;
+                          aMax:=Math.max(aProgress, aMiddlePos);
+                          if (aStart<aMax) and (aStop>aMin) and (aProgress<>aMiddlePos) then
+                            begin
+                              Font.Color:=aColor;
+                              if bHorizontal
+                                then ClipRect:=Rect(Math.max(aStart, aMin), aRect.Top, Math.min(aStop, aMax), aRect.Bottom)
+                                else ClipRect:=Rect(aRect.Left, Math.max(aStart, aMin), aRect.Right, Math.min(aStop, aMax));
+                              TextOut(aTextX, aTextY, aStr);
+                            end;
+                          if aStop>aMax then
+                            begin
+                              Font.Color:=GetColorResolvingDefAndEnabled(ProgressColor, clHighlight, IsEnabled);
+                              if bHorizontal
+                                then ClipRect:=Rect(aMax, aRect.Top, aRect.Right, aRect.Bottom)
+                                else ClipRect:=Rect(aRect.Left, aMax, aRect.Right, aRect.Bottom);
+                              TextOut(aTextX, aTextY, aStr);
+                            end;
+                        end;
+                      Clipping:=False;
+                    end;
+                  epvFull:
+                    begin
+                      if GrooveTransparent
+                        then aColor:=clBtnFace
+                        else aColor:=GetColorResolvingDefault(GrooveColor, cl3DDkShadow);
+                      if not IsEnabled then aColor:=GetMonochromaticColor(aColor);
+                      Font.Color:=aColor;
+                      TextOut(aTextX, aTextY, aStr);
+                    end;
+                end;  {case}
+            end;  {case}
+          end;
+    end else
+    begin  { marquee }
+      aProgress:=round(0.01*cMarqueeLength[Kind]*FGrooveInnerLength);
+      aStart:=round(MarqueePos*(FGrooveInnerLength-aProgress)/cMarqueeFrames);
+      if not GrooveTransparent then
+        begin
+          Canvas.Brush.Style:=bsSolid;
+          aColor:=GetColorResolvingDefault(GrooveColor, cl3DDkShadow);
+          if IsEnabled
+            then Canvas.Brush.Color:=aColor
+            else Canvas.Brush.Color:=GetMonochromaticColor(aColor);
+        end;
+      aProgressRect:=FGrooveRect;
+      InflateRect(aProgressRect, -GrooveBevelWidth, -GrooveBevelWidth);
+      if Orientation=eooHorizontal then
+        begin
+          aRect.Top:=aProgressRect.Top;
+          aRect.Bottom:=aProgressRect.Bottom;
+          aRect.Left:=aProgressRect.Left+aStart;
+          aRect.Right:=aRect.Left+aProgress;
+          Canvas.CopyRect(aRect, GrooveBMP.Canvas, Rect(aStart, 0, aStart+aProgress, GrooveBMP.Height));
+          if not GrooveTransparent then
+            begin
+              Canvas.FillRect(Rect(aProgressRect.Left, aRect.Top, aRect.Left, aRect.Bottom));
+              Canvas.FillRect(Rect(aRect.Right, aRect.Top, aProgressRect.Right, aRect.Bottom));
+            end;
+        end else
+        begin
+          aRect.Left:=aProgressRect.Left;
+          aRect.Right:=aProgressRect.Right;
+          aRect.Top:=aProgressRect.Top+aStart;
+          aRect.Bottom:=aRect.Top+aProgress;
+          Canvas.CopyRect(aRect, GrooveBMP.Canvas, Rect(0, aStart, GrooveBMP.Width, aStart+aProgress));
+          if not GrooveTransparent then
+            begin
+              Canvas.FillRect(Rect(aRect.Left, aProgressRect.Top, aRect.Right, aRect.Top));
+              Canvas.FillRect(Rect(aRect.Left, aRect.Bottom, aRect.Right, aProgressRect.Bottom));
             end;
         end;
-      end;
+    end;
 end;
 
 function TCustomECProgressBar.GetRelGroovePos: Integer;
@@ -784,7 +861,7 @@ end;
 
 function TCustomECProgressBar.HasCaption: Boolean;
 begin
-  Result:= ((Caption<>'') and not CaptionInline);
+  Result:=(Caption<>'') and not CaptionInline;
 end;  
 
 procedure TCustomECProgressBar.OrientationChanged(AValue: TObjectOrientation);
@@ -795,7 +872,7 @@ end;
 
 procedure TCustomECProgressBar.PaintSelf(AEnabled: Boolean);
 begin
-  if WasEnabled<>AEnabled then
+  if (esfWasEnabled in Flags)<>AEnabled then
     if RedrawMode<ermRedrawBkgnd then RedrawMode:=ermRedrawBkgnd;
   if RedrawMode=ermRecalcRedraw then Calculate;
   if RedrawMode>=ermRedrawBkgnd then
@@ -813,8 +890,20 @@ begin
       Canvas.CopyRect(FInvalidRect, Background.Canvas, FInvalidRect);
       DrawGroove;
     end;
-  FPrevInvRectPainted:=True;
+  include(Flags, esfPrevInvRectPainted);
   CalcProgressInvRect;
+end;
+
+procedure TCustomECProgressBar.SetGrooveBoundsHorz(x1, x2, y1, y2: Integer);
+begin
+  FGrooveMin:=x1+GrooveBevelWidth;
+  FGrooveMax:=x2-GrooveBevelWidth;
+end;
+
+procedure TCustomECProgressBar.SetGrooveBoundsVert(x1, x2, y1, y2: Integer);
+begin
+  FGrooveMin:=y1+GrooveBevelWidth;
+  FGrooveMax:=y2-GrooveBevelWidth;
 end;
 
 procedure TCustomECProgressBar.SetPosition(AValue: Double);
@@ -828,19 +917,39 @@ begin
   if PositionToHint then Hint:=Scale.GetStringPosition(Position, ProgressDigits);
   if UpdateCount=0 then
     begin
-      InvalidateCustomRect(True);
+      if HandleAllocated then InvalidateCustomRect(True);
       if assigned(FOnChange) then FOnChange(self);
     end;
 end;
 
-{ Setters }
+{ TCustomECProgressBar.Setters }
 
 procedure TCustomECProgressBar.SetCaptionInline(AValue: Boolean);
 begin
   if FCaptionInline=AValue then exit;
   FCaptionInline:=AValue;
   RecalcRedraw;
-end;      
+end;
+
+procedure TCustomECProgressBar.SetKind(AValue: TProgressKind);
+begin
+  if FKind=AValue then exit;
+  FKind:=AValue;
+  if AValue>epkProgress then
+    begin
+      if not assigned(Timer) then
+        begin
+          Timer:=TCustomTimer.Create(self);
+          Timer.Interval:=50;
+          Timer.OnTimer:=@DoMarquee;
+          Timer.Enabled:=not (csDesigning in ComponentState);
+        end;
+      MarqueeInc:=True;
+      MarqueePos:=0;
+    end else
+      FreeAndNil(Timer);
+  Redraw;
+end;
 
 procedure TCustomECProgressBar.SetProgressDigits(AValue: Word);
 begin
@@ -872,9 +981,9 @@ end;
 
 { TCustomECPositionBar }
 
-constructor TCustomECPositionBar.Create(TheOwner: TComponent);
+constructor TCustomECPositionBar.Create(AOwner: TComponent);
 begin
-  inherited Create(TheOwner);
+  inherited Create(AOwner);
   FCursorBkgnd:=Cursor;
   FMouseDragPxFine:=cDefMouseDragPxFine;
   FMouseDragPx:=cDefMouseDragPx;
@@ -883,8 +992,8 @@ begin
 end;
 
 procedure TCustomECPositionBar.CalcInvalidRectDyn;
-var aRect: TRect;
-    aCurrentPosition: Integer;
+var aCurrentPosition: Integer;
+    aRect: TRect;
 begin
   {$IFDEF DBGPROGBAR} DebugLn('TCustomECPositionBar.CalcInvalidRectDyn'); {$ENDIF}
   if Orientation=eooHorizontal
@@ -892,30 +1001,28 @@ begin
     else FInvalidRect.Right:=FInvRectLimit;
   aRect:=FInvalidRect;
   aCurrentPosition:=round(((Position-Scale.Min)/(Scale.Max-Scale.Min))*FGrooveInnerLength);
-  if not RealReversed 
+  if not (esfRealReversed in Flags)
     then aCurrentPosition:=FGrooveMin+aCurrentPosition
     else aCurrentPosition:=FGrooveMax-aCurrentPosition-1;
   if (ProgressTextStyle=eptNone) and (ProgressSign or (ProgressVisible=epvProgress)) then
     if Orientation=eooHorizontal then
-      begin  { Horizontal }
+      begin  { horizontal }
         {$IFDEF DBGPROGBAR} DebugLn('aR.L ', intToStr(aRect.Left), ' aR.R ', intToStr(aRect.Right),
           ' aCP ', intToStr(aCurrentPosition), ' aR.C ', intToStr((aRect.Left+aRect.Right) div 2)); {$ENDIF}
         if ((aRect.Left+aRect.Right) div 2)<aCurrentPosition then
-          begin  { Moves Right }
+          begin  { moves right }
             {$IFDEF DBGPROGBAR} DebugLn('MoveRight'); {$ENDIF}
             FInvalidRect.Right:=aCurrentPosition+ProgressMarkSize;
-          end else  { Moves Left }
+          end else  { moves left }
           begin
             {$IFDEF DBGPROGBAR} DebugLn('MoveLeft'); {$ENDIF}
             FInvalidRect.Left:=aCurrentPosition-ProgressMarkSize;
           end;
-      end else     
-      begin  { Vertical }
-        if ((aRect.Top+aRect.Bottom) div 2)<aCurrentPosition 
-          then FInvalidRect.Bottom:=aCurrentPosition+ProgressMarkSize  { Moves Down }  
-          else FInvalidRect.Top:=aCurrentPosition-ProgressMarkSize;  { Moves Up }
-      end;    
-  if not FPrevInvRectPainted then UnionRect(FInvalidRect, aRect, FInvalidRect);
+      end else  { vertical }
+        if ((aRect.Top+aRect.Bottom) div 2)<aCurrentPosition
+          then FInvalidRect.Bottom:=aCurrentPosition+ProgressMarkSize  { moves down }
+          else FInvalidRect.Top:=aCurrentPosition-ProgressMarkSize;    { moves up }
+  if not (esfPrevInvRectPainted in Flags) then UnionRect(FInvalidRect, aRect, FInvalidRect);
   inc(FInvalidRect.Right); 
   inc(FInvalidRect.Bottom);
 end;                   
@@ -926,7 +1033,7 @@ var aMin, aMax: Integer;
   procedure CalcProgressInvRectLimit;
   var  i: SmallInt;
   begin
-    if not RealReversed then 
+    if not (esfRealReversed in Flags) then
         begin
           aMin:=FGrooveMin+round(GetRelPxPos);
           aMax:=aMin;
@@ -974,13 +1081,13 @@ end;
 
 procedure TCustomECPositionBar.ChangeCursors(AMouseHoverDragArea: Boolean);
 begin           
-  FCursorLock:=True;
+  include(Flags, esfCursorLock);
   if AMouseHoverDragArea 
     then if Orientation=eooHorizontal 
            then Cursor:=crSizeWE
            else Cursor:=crSizeNS
     else Cursor:=FCursorBkgnd;
-  FCursorLock:=False;                    
+  exclude(Flags, esfCursorLock);
 end;  
 
 function TCustomECPositionBar.DoMouseWheelDown(Shift: TShiftState; MousePos: TPoint): Boolean;
@@ -991,7 +1098,7 @@ begin
     begin
       d:=MouseDragPixels;
       if ssModifier in Shift then d:=d/MouseDragPixelsFine;
-      if not RealReversed
+      if not (esfRealReversed in Flags)
         then Position:=Position+d
         else Position:=Position-d;
       Result:=True;
@@ -1006,7 +1113,7 @@ begin
     begin
       d:=MouseDragPixels;
       if ssModifier in Shift then d:=d/MouseDragPixelsFine;
-      if not RealReversed
+      if not (esfRealReversed in Flags)
         then Position:=Position-d
         else Position:=Position+d;
       Result:=True;
@@ -1022,7 +1129,8 @@ begin
   if ProgressSign and (ProgressMarkSize>=1) then
     with Canvas do
       begin              
-        aColor:=GetColorResolvingDefault(ProgressFontOptions.FontColor, clBtnText);
+        aColor:=GetColorResolvingDefAndEnabled(ProgressFontOptions.FontColor, clBtnText, IsEnabled);
+        aColor:=ColorToRGB(aColor);
         aInvColor:=GetMergedColor(aColor, InvertColor(aColor), 0.25);
         Pen.Color:=aColor;
         Pen.Style:=psSolid;
@@ -1034,8 +1142,8 @@ begin
         ClipRect:=aRect;
         Clipping:=True;
         if Orientation=eooHorizontal then
-          begin  { Horizontal }
-            if not RealReversed
+          begin  { horizontal }
+            if not (esfRealReversed in Flags)
               then inc(aPos, aRect.Left)
               else aPos:=aRect.Right-aPos;
             for i:=1 to ProgressMarkSize-1 do
@@ -1064,7 +1172,7 @@ begin
             dec(j, i);
             Line(aPos-i+1, j, aPos+i, j); 
           end else
-          begin  { Vertical }
+          begin  { vertical }
             if not Reversed
               then inc(aPos, aRect.Top)
               else aPos:=aRect.Bottom-aPos;
@@ -1108,11 +1216,11 @@ begin
         if Orientation=eooHorizontal
           then aMousePos:=GetPosFromCoord(X)
           else aMousePos:=GetPosFromCoord(Y);
-        if not RealReversed
+        if not (esfRealReversed in Flags)
           then aMousePos:=Min+aMousePos
           else aMousePos:=Max-aMousePos;
-        if FDragAreaEntered then
-          begin  { Left click on Drag Area}
+        if (esfDragAreaEntered in Flags) then
+          begin  { left click on drag area}
             if Orientation=eooHorizontal then 
               begin
                 InitCoord:=X;
@@ -1122,9 +1230,9 @@ begin
                 InitCoord:=Y;
                 InitDelta:=GetPosFromCoord(Y)-Position;
               end;
-            FDragState:=True;
-          end else  { Middle or Double click }
-          Position:=aMousePos;               
+            include(Flags, esfDragState);
+          end else  { middle or double click }
+            Position:=aMousePos;
       end;
     mbMiddle: 
       if not ProgressFromMiddle
@@ -1136,48 +1244,49 @@ end;
 procedure TCustomECPositionBar.MouseMove(Shift: TShiftState; X, Y: Integer);
 const cTolerance = 5;
 var aInit, aPosition: Integer;
-    bCTRLDown: Boolean;
-    bPrevDragAreaEntered: Boolean;
+    bCTRLDown, bPrevDragAreaEntered: Boolean;
 begin
   inherited MouseMove(Shift, X, Y);
   if IsEnabled then
     begin  
       aPosition:=GetRelGroovePos+GrooveBevelWidth;
-      if not FDragState then
+      if not (esfDragState in Flags) then
         begin
+          bPrevDragAreaEntered:=(esfDragAreaEntered in Flags);
           if Orientation=eooHorizontal then
-            begin  { Horizontal }
-              if not RealReversed 
+            begin  { horizontal }
+              if not (esfRealReversed in Flags)
                 then aPosition:=aPosition+FGrooveRect.Left
                 else aPosition:=FGrooveRect.Right-aPosition;
-              bPrevDragAreaEntered:=FDragAreaEntered;
-              FDragAreaEntered:= (Y>=FGrooveRect.Top) and (Y<=FGrooveRect.Bottom)
-                and (X>=(aPosition-cTolerance)) and (X<=(aPosition+cTolerance));
+              if ((Y>=FGrooveRect.Top) and (Y<=FGrooveRect.Bottom)
+                and (X>=(aPosition-cTolerance)) and (X<=(aPosition+cTolerance)))
+                then include(Flags, esfDragAreaEntered)
+                else exclude(Flags, esfDragAreaEntered);
             end else
-            begin  { Vertical }
+            begin  { vertical }
               if not Reversed
                 then aPosition:=aPosition+FGrooveRect.Top
                 else aPosition:=FGrooveRect.Bottom-aPosition;
-              bPrevDragAreaEntered:=FDragAreaEntered;
-              FDragAreaEntered:= (X>=FGrooveRect.Left) and (X<=FGrooveRect.Right)
-                and (Y>=(aPosition-cTolerance)) and (Y<=(aPosition+cTolerance));
+              if ((X>=FGrooveRect.Left) and (X<=FGrooveRect.Right)
+                and (Y>=(aPosition-cTolerance)) and (Y<=(aPosition+cTolerance)))
+                then include(Flags, esfDragAreaEntered)
+                else exclude(Flags, esfDragAreaEntered);
             end;
-          if FDragAreaEntered<>bPrevDragAreaEntered then ChangeCursors(FDragAreaEntered);
+          if (esfDragAreaEntered in Flags)<>bPrevDragAreaEntered
+            then ChangeCursors(esfDragAreaEntered in Flags);
         end else
         begin
-          bCTRLDown:= (ssCtrl in Shift);
-          if bCTRLDown<>FPrevCTRLDown then
-            begin
-              if Orientation=eooHorizontal then 
-                begin
-                  InitCoord:=X;
-                  InitDelta:=GetPosFromCoord(X)-Position
-                end else
-                begin
-                  InitCoord:=Y;
-                  InitDelta:=GetPosFromCoord(Y)-Position;
-                end;
-            end; 
+          bCTRLDown:=(ssModifier in Shift);
+          if bCTRLDown<>(esfPrevCTRLDown in Flags) then
+            if Orientation=eooHorizontal then
+              begin
+                InitCoord:=X;
+                InitDelta:=GetPosFromCoord(X)-Position
+              end else
+              begin
+                InitCoord:=Y;
+                InitDelta:=GetPosFromCoord(Y)-Position;
+              end;
           aInit:=InitCoord;
           if Orientation=eooHorizontal 
             then aPosition:=X-aInit
@@ -1185,10 +1294,12 @@ begin
           if not bCTRLDown 
             then aPosition:=aPosition div MouseDragPixels
             else aPosition:=aPosition div MouseDragPixelsFine;
-          if not RealReversed
+          if not (esfRealReversed in Flags)
             then Position:=GetPosFromCoord(aInit+aPosition)-InitDelta
             else Position:=GetPosFromCoord(aInit-aPosition)-InitDelta;
-          FPrevCTRLDown:=bCTRLDown;
+          if bCTRLDown
+            then include(Flags, esfPrevCTRLDown)
+            else exclude(Flags, esfPrevCTRLDown);
         end;   
     end;
 end;
@@ -1196,10 +1307,10 @@ end;
 procedure TCustomECPositionBar.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
-  if FDragState then
+  if esfDragState in Flags then
     begin
-      FDragState:=False;
-      if not FDragAreaEntered then ChangeCursors(False);
+      exclude(Flags, esfDragState);
+      if not (esfDragAreaEntered in Flags) then ChangeCursors(False);
     end;        
   if ShowHint and PositionToHint then Application.ActivateHint(Mouse.CursorPos);
 end;                 
@@ -1207,7 +1318,7 @@ end;
 procedure TCustomECPositionBar.SetCursor(Value: TCursor);
 begin
   inherited SetCursor(Value);
-  if not FCursorLock then FCursorBkgnd:=Value;   
+  if not (esfCursorLock in Flags) then FCursorBkgnd:=Value;
 end;     
 
 { Setters }
@@ -1220,6 +1331,13 @@ begin
 end;
 
 { TECSpinBtnsPos }
+
+constructor TECSpinBtnsPos.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  ControlStyle:=ControlStyle+[csNoDesignSelectable];
+  SetSubComponent(True);
+end;
 
 procedure TECSpinBtnsPos.RecalcRedraw;
 begin
@@ -1240,19 +1358,36 @@ begin
   if assigned(CustomResize) then CustomResize;
 end;
 
-constructor TECSpinBtnsPos.Create(AOwner: TComponent);
+{ TECSpinPosSpacing }
+
+function TECSpinPosSpacing.GetSpace(Kind: TAnchorKind): Integer;
 begin
-  inherited Create(AOwner);
-  ControlStyle := ControlStyle+[csNoDesignSelectable];
-  SetSubComponent(True);
+  Result:=inherited GetSpace(Kind);
+  case Kind of
+    akLeft:  if Control.IsRightToLeft then
+               inc(Result, TECSpinPosition(Control).FSpinBtns.Width+TECSpinPosition(Control).IndentBtns);
+    akRight: if not Control.IsRightToLeft then
+               inc(Result, TECSpinPosition(Control).FSpinBtns.Width+TECSpinPosition(Control).IndentBtns);
+  end;
+end;
+
+procedure TECSpinPosSpacing.GetSpaceAround(var SpaceAround: TRect);
+var aIndentButtonWidth: Integer;
+begin
+  inherited GetSpaceAround(SpaceAround);
+  with TECSpinPosition(Control) do
+    aIndentButtonWidth:=FSpinBtns.Width+IndentBtns;
+  if not Control.IsRightToLeft
+    then inc(SpaceAround.Right, aIndentButtonWidth)
+    else inc(SpaceAround.Left, aIndentButtonWidth);
 end;
 
 { TECSpinPosition }
 
-constructor TECSpinPosition.Create(TheOwner: TComponent);
+constructor TECSpinPosition.Create(AOwner: TComponent);
 begin
   FSpinBtns:=TECSpinBtnsPos.Create(self);
-  inherited Create(TheOwner);
+  inherited Create(AOwner);
   ControlStyle:=ControlStyle-[csSetCaption];
   FIndentBtns:=cDefIndentBtns;
   FScale.TickVisible:=etvNone;
@@ -1284,6 +1419,11 @@ begin
   inherited CMBiDiModeChanged(Message);
   FSpinBtns.BiDiMode:=BiDiMode;
   SetSpinBtnsPosition;
+end;
+
+function TECSpinPosition.CreateControlBorderSpacing: TControlBorderSpacing;
+begin
+  Result:=TECSpinPosSpacing.Create(self);
 end;
 
 procedure TECSpinPosition.DoOnChangeBounds;

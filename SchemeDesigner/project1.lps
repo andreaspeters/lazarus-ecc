@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectSession>
-    <Version Value="11"/>
+    <Version Value="12"/>
     <BuildModes Active="Default"/>
     <Units Count="19">
       <Unit0>
         <Filename Value="project1.lpr"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
         <WindowIndex Value="1"/>
         <CursorPos X="15" Y="19"/>
         <UsageCount Value="215"/>
@@ -20,9 +19,11 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="SchemeDesigner"/>
+        <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <WindowIndex Value="1"/>
-        <CursorPos X="64" Y="8"/>
+        <TopLine Value="533"/>
+        <CursorPos Y="543"/>
         <UsageCount Value="215"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
@@ -139,7 +140,7 @@
         <UsageCount Value="10"/>
       </Unit18>
     </Units>
-    <JumpHistory Count="10" HistoryIndex="9">
+    <JumpHistory Count="11" HistoryIndex="10">
       <Position1>
         <Filename Value="schemedesigner.pas"/>
         <Caret Line="257" Column="15" TopLine="250"/>
@@ -180,10 +181,14 @@
         <Filename Value="schemedesigner.pas"/>
         <Caret Line="318" Column="3" TopLine="316"/>
       </Position10>
+      <Position11>
+        <Filename Value="schemedesigner.pas"/>
+        <Caret Line="8" Column="64"/>
+      </Position11>
     </JumpHistory>
     <RunParams>
       <FormatVersion Value="2"/>
-      <Modes Count="0" ActiveMode="default"/>
+      <Modes ActiveMode="default"/>
     </RunParams>
   </ProjectSession>
 </CONFIG>

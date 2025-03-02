@@ -1,0 +1,15 @@
+**/*/project1
+**/*/flexpacket
+**/*/backup/**/*
+backup/**/*
+cache/**/*
+**/*/lib/**/*
+**/*/.~*
+flexpacket
+project1
+lib/**/*
+**/appimage/*
+src/*.dbg
+src/*.exe
+src/*.res
+use/*/*

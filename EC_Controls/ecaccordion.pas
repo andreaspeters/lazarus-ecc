@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2017 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2017-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,8 +34,8 @@ unit ECAccordion;
 interface
 
 uses
-  Classes, SysUtils, Controls, Forms, Graphics, LMessages, LCLIntf, LCLType,
-  {$IFDEF DBGACC} LCLProc, {$ENDIF} Contnrs, ImgList, Math, Themes, Types, ECTypes;
+  Classes, SysUtils, Contnrs, Controls, Forms, Graphics, ImgList, LMessages, LCLIntf,
+  {$IFDEF DBGACC} LCLProc, {$ENDIF} LCLType, Math, Themes, Types, ECTypes;
 
 type
   {$PACKENUM 2}
@@ -103,7 +103,7 @@ type
     FStyle: TAccordionStyle;
     function GetActiveItem: TAccordionItem;
     function GetCount: Integer;
-    function GetItem(AIndex: Integer): TAccordionItem;
+    function GetItems(AIndex: Integer): TAccordionItem;
     procedure SetActiveItem(AValue: TAccordionItem);
     procedure SetAlignment(AValue: TAlignment);
     procedure SetBevelWidth(AValue: SmallInt);
@@ -127,7 +127,7 @@ type
     ExpandedHeight: Integer;
     Hovered: Integer;
     ItemIndexLFM: Integer;
-    Items: TFPObjectList;
+    ListItems: TFPObjectList;
     procedure AnchorActiveItem;
     procedure ChangeOrder(ACurrentPos: Word; var ANewPos: Word);
     function ChildClassAllowed(ChildClass: TClass): Boolean; override;
@@ -170,7 +170,7 @@ type
     property Images: TCustomImageList read FImages write SetImages;
     property ItemHeight: SmallInt read FItemHeight write SetItemHeight default cDefItemHeight;
     property ItemIndex: SmallInt read FItemIndex write SetItemIndex default -1;
-    property Item[AIndex: Integer]: TAccordionItem read GetItem;
+    property Items[AIndex: Integer]: TAccordionItem read GetItems;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnDrawItem: TDrawAccordionItem read FOnDrawItem write FOnDrawItem;
     property SelectedFontOptions: TFontOptions read FSelectedFontOptions write SetSelectedFontOptions;
@@ -258,7 +258,7 @@ end;
 
 procedure TAccordionItem.SetParent(NewParent: TWinControl);
 begin
-  if (NewParent=nil) or (NewParent.InheritsFrom(TCustomECAccordion)) then
+  if not assigned(NewParent) or NewParent.InheritsFrom(TCustomECAccordion) then
     begin
       inherited SetParent(NewParent);
       if not ChangingParentFlag and not (csDestroying in ComponentState) then Accordion:=TCustomECAccordion(NewParent);
@@ -276,7 +276,7 @@ end;
 function TAccordionItem.GetIndex: Integer;
 begin
   if assigned(Accordion)
-    then Result:=Accordion.Items.IndexOf(self)
+    then Result:=Accordion.ListItems.IndexOf(self)
     else Result:=-1;
 end;
 
@@ -292,8 +292,8 @@ begin
     begin
       AnchorParallel(akLeft, 0, AValue);
       AnchorParallel(akRight, 0, AValue);
-      AValue.Items.Add(self);
-      FOrder:=AValue.Items.Count-1;
+      AValue.ListItems.Add(self);
+      FOrder:=AValue.ListItems.Count-1;
     end;
 end;
 
@@ -307,8 +307,7 @@ end;
 procedure TAccordionItem.SetOrder(AValue: Word);
 begin
   if FOrder=AValue then exit;
-  if not (csLoading in ComponentState) then
-    if assigned(Accordion) then Accordion.ChangeOrder(FOrder, AValue);
+  if not (csLoading in ComponentState) and assigned(Accordion) then Accordion.ChangeOrder(FOrder, AValue);
   FOrder:=AValue;
 end;
 
@@ -333,7 +332,7 @@ begin
   FItemHeight:=cDefItemHeight;
   FItemIndex:=-1;
   ItemIndexLFM:=-1;
-  Items:=TFPObjectList.Create(False);
+  ListItems:=TFPObjectList.Create(False);
   FSelectedFontOptions:=TFontOptions.Create(self);
   with FSelectedFontOptions do
     begin
@@ -349,7 +348,7 @@ end;
 
 destructor TCustomECAccordion.Destroy;
 begin
-  FreeAndNil(Items);
+  FreeAndNil(ListItems);
   FreeAndNil(FSelectedFontOptions);
   inherited Destroy;
 end;
@@ -359,7 +358,7 @@ begin
   Result:=TAccordionItem.Create(AOwner);
   Result.Accordion:=self;
   if AActivate
-    then ItemIndex:=Items.Count-1
+    then ItemIndex:=ListItems.Count-1
     else AnchorActiveItem;
 end;
 
@@ -368,14 +367,14 @@ var aExpHeight, aTop: Integer;
 begin
   if ItemIndex>=0 then
     begin
-      aExpHeight:=Height-Items.Count*ItemHeight;
-      if not FullExpand then aExpHeight:=Math.min(Item[ItemIndex].PreferredHeight, aExpHeight);
+      aExpHeight:=Height-ListItems.Count*ItemHeight;
+      if not FullExpand then aExpHeight:=Math.min(Items[ItemIndex].PreferredHeight, aExpHeight);
       ExpandedHeight:=aExpHeight;
       aTop:=(ItemIndex+1)*ItemHeight;
-      Item[ItemIndex].AnchorParallel(akTop, aTop, self);
-      Item[ItemIndex].AnchorParallel(akBottom, Height-aExpHeight-aTop, self);
+      Items[ItemIndex].AnchorParallel(akTop, aTop, self);
+      Items[ItemIndex].AnchorParallel(akBottom, Height-aExpHeight-aTop, self);
     end else
-    ExpandedHeight:=0;
+      ExpandedHeight:=0;
   InvalidateNonUpdated;
 end;
 
@@ -389,7 +388,7 @@ var i: Integer;
 begin
   ItemIndex:=-1;
   BeginUpdate;
-  for i:=Items.Count-1 downto 0 do
+  for i:=ListItems.Count-1 downto 0 do
     DeleteItem(i);
   EndUpdate;
 end;
@@ -397,20 +396,20 @@ end;
 procedure TCustomECAccordion.ChangeOrder(ACurrentPos: Word; var ANewPos: Word);
 var aActiveItem: TAccordionItem;
 begin
-  if ANewPos>Items.Count-1 then ANewPos:=Items.Count-1;
+  if ANewPos>ListItems.Count-1 then ANewPos:=ListItems.Count-1;
   if ANewPos=ACurrentPos then exit;  { Exit! }
   aActiveItem:=ActiveItem;
-  Items.Move(ACurrentPos, ANewPos);
+  ListItems.Move(ACurrentPos, ANewPos);
   MakeNewOrder;
   BeginUpdate;
   ItemIndex:=-1;
   EndUpdate;
-  ItemIndex:=Items.IndexOf(aActiveItem);
+  ItemIndex:=ListItems.IndexOf(aActiveItem);
 end;
 
 function TCustomECAccordion.ChildClassAllowed(ChildClass: TClass): Boolean;
 begin
-  Result:= (ChildClass=TAccordionItem);
+  Result:=(ChildClass=TAccordionItem);
 end;
 
 procedure TCustomECAccordion.DeleteItem(AIndex: Integer);
@@ -419,7 +418,7 @@ begin
   if AIndex=ItemIndex
     then ItemIndex:=-1
     else if AIndex<ItemIndex then dec(FItemIndex);
-  aItem:=Item[AIndex];
+  aItem:=Items[AIndex];
   aItem.Accordion:=nil;
   if not (csDestroying in aItem.ComponentState) then FreeAndNil(aItem);
   AnchorActiveItem;
@@ -427,7 +426,7 @@ end;
 
 procedure TCustomECAccordion.DeleteItem(AItem: TAccordionItem);
 begin
-  DeleteItem(Items.IndexOf(AItem));
+  DeleteItem(ListItems.IndexOf(AItem));
 end;
 
 function TCustomECAccordion.DialogChar(var Message: TLMKey): Boolean;
@@ -435,38 +434,36 @@ var i: SmallInt;
 begin
   Result:=False;
   if Message.Msg=LM_SYSCHAR then
-    begin
-      if IsEnabled and IsVisible then
-        begin
-          for i:=0 to Items.Count-1 do
-            if IsAccel(Message.CharCode, TAccordionItem(Items[i]).Caption) then
-              begin
-                if i<>ItemIndex
-                  then ItemIndex:=i
-                  else ItemIndex:=-1;
-                SetFocus;
-                Result:=True;
-                exit;  { Exit! }
-              end;
-          Result:=inherited DialogChar(Message);
-        end;
-    end;
+    if IsEnabled and IsVisible then
+      begin
+        for i:=0 to ListItems.Count-1 do
+          if IsAccel(Message.CharCode, TAccordionItem(Items[i]).Caption) then
+            begin
+              if i<>ItemIndex
+                then ItemIndex:=i
+                else ItemIndex:=-1;
+              SetFocus;
+              Result:=True;
+              exit;  { Exit! }
+            end;
+        Result:=inherited DialogChar(Message);
+      end;
 end;
 
 function TCustomECAccordion.DoMouseWheelDown(Shift: TShiftState; MousePos: TPoint): Boolean;
-var j: Integer;
+var j: SmallInt;
 begin
   Result:=inherited DoMouseWheelDown(Shift, MousePos);
   if not Result then
     begin
       j:=ItemIndex;
-      if j<(Items.Count-1) then ItemIndex:=j+1;
+      if j<(ListItems.Count-1) then ItemIndex:=j+1;
       Result:=True;
     end;
 end;
 
 function TCustomECAccordion.DoMouseWheelUp(Shift: TShiftState; MousePos: TPoint): Boolean;
-var j: Integer;
+var j: SmallInt;
 begin
   Result:=inherited DoMouseWheelUp(Shift, MousePos);
   if not Result then
@@ -487,7 +484,7 @@ procedure TCustomECAccordion.FindNextItem;
 var aItemIndex: Integer;
 begin
   aItemIndex:=ItemIndex;
-  if aItemIndex<(Items.Count-1) then ItemIndex:=aItemIndex+1;
+  if aItemIndex<(ListItems.Count-1) then ItemIndex:=aItemIndex+1;
 end;
 
 procedure TCustomECAccordion.FindPreviousItem;
@@ -504,17 +501,17 @@ begin
   Result:=TAccordionItem.Create(AOwner);
   Result.Accordion:=self;
   if AActivate then ItemIndex:=-1;
-  aOrder:=Item[Items.Count-1].FOrder;
-  Item[Items.Count-1].FOrder:=Item[AIndex].Order;
-  Item[AIndex].FOrder:=aOrder;
-  Items.Move(Items.Count-1, AIndex);
+  aOrder:=Items[ListItems.Count-1].FOrder;
+  Items[ListItems.Count-1].FOrder:=Items[AIndex].Order;
+  Items[AIndex].FOrder:=aOrder;
+  ListItems.Move(ListItems.Count-1, AIndex);
   EndUpdate;
   if not AActivate then
     begin
       if AIndex<ItemIndex then inc(FItemIndex);
       AnchorActiveItem;
     end else
-    ItemIndex:=AIndex;
+      ItemIndex:=AIndex;
 end;
 
 procedure TCustomECAccordion.InvalidateNonUpdated;
@@ -530,18 +527,18 @@ end;
 
 function TCustomECAccordion.GetCount: Integer;
 begin
-  Result:=Items.Count;
+  Result:=ListItems.Count;
 end;
 
 procedure TCustomECAccordion.Loaded;
 var i, j: Integer;
 begin
   inherited Loaded;
-  for j:=0 to Items.Count-1 do
-    for i:=j to Items.Count-1 do
-      if j=Item[i].Order then
+  for j:=0 to ListItems.Count-1 do
+    for i:=j to ListItems.Count-1 do
+      if j=Items[i].Order then
         begin
-          Items.Move(i, j);
+          ListItems.Move(i, j);
           break;
         end;
   FItemIndex:=ItemIndexLFM;
@@ -551,8 +548,8 @@ end;
 procedure TCustomECAccordion.MakeNewOrder;
 var i: Integer;
 begin
-  for i:=0 to Items.Count-1 do
-    Item[i].FOrder:=i;
+  for i:=0 to ListItems.Count-1 do
+    Items[i].FOrder:=i;
 end;
 
 procedure TCustomECAccordion.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
@@ -565,49 +562,48 @@ begin
 end;
 
 procedure TCustomECAccordion.MouseMove(Shift: TShiftState; X, Y: Integer);
-var aBottom, aHovered, aItemHeight: Integer;
+var aBottom, aItemHeight: Integer;
     aItemIndex, j: SmallInt;
 begin
   inherited MouseMove(Shift, X, Y);
   aItemHeight:=ItemHeight;
   aItemIndex:=ItemIndex;
-  aHovered:=-1;
   if (Y>=0) and (Y<Height) then
     begin
       aBottom:=aItemHeight;
-      for j:=0 to Items.Count-1 do
+      for j:=0 to ListItems.Count-1 do
         begin
           if Y<aBottom then
             begin
-              aHovered:=j;
-              break;
+              Hovered:=j;
+              exit;  { Exit! }
             end;
           if j=aItemIndex then inc(aBottom, ExpandedHeight);
           inc(aBottom, aItemHeight);
         end;
     end;
-  Hovered:=aHovered;
+  Hovered:=-1;
 end;
 
 procedure TCustomECAccordion.MoveItemDown;
-var aItemIndex: Integer;
+var aItemIndex: SmallInt;
 begin
   aItemIndex:=ItemIndex;
-  if aItemIndex<(Items.Count-1) then
+  if aItemIndex<(ListItems.Count-1) then
     begin
-      Items.Move(aItemIndex, aItemIndex+1);
+      ListItems.Move(aItemIndex, aItemIndex+1);
       ItemIndex:=aItemIndex+1;
       MakeNewOrder;
     end;
 end;
 
 procedure TCustomECAccordion.MoveItemUp;
-var aItemIndex: Integer;
+var aItemIndex: SmallInt;
 begin
   aItemIndex:=ItemIndex;
   if aItemIndex>0 then
     begin
-      Items.Move(aItemIndex, aItemIndex-1);
+      ListItems.Move(aItemIndex, aItemIndex-1);
       ItemIndex:=aItemIndex-1;
       MakeNewOrder;
     end;
@@ -615,18 +611,17 @@ end;
 
 procedure TCustomECAccordion.Paint;
 var aFlags: Cardinal;
-    aImagePoint: TPoint;
     aGlyphRect, aTextRect: TRect;
+    aImagePoint: TPoint;
     aIndex, aTop: Integer;
     bEnabled, bR2L: Boolean;
 
   procedure DrawItem;
+  const caHeaders: array[Boolean] of TThemedHeader = (thHeaderItemNormal, thHeaderItemPressed);
   var aColorTop, aColorBottom: TColor;
-      aDetails: TThemedElementDetails;
       aGlyphDesign: TGlyphDesign;
       aHandled: Boolean;
       aRect: TRect;
-      aState: TItemState;
   begin
     aRect:=Rect(0, aTop, Width, aTop+ItemHeight);
     aHandled:=False;
@@ -634,39 +629,20 @@ var aFlags: Cardinal;
     if aHandled then exit;  { Exit! }
     case Style of
       easHeader:
-        begin
-          if bEnabled then
-            begin
-              if aIndex<>ItemIndex
-                then aDetails:=ThemeServices.GetElementDetails(thHeaderItemNormal)
-                else aDetails:=ThemeServices.GetElementDetails(thHeaderItemPressed);
-            end else
-            aDetails:=ThemeServices.GetElementDetails(thHeaderItemNormal);
-          ThemeServices.DrawElement(Canvas.Handle, aDetails, aRect);
-        end;
+        ThemeServices.DrawElement(Canvas.Handle,
+          ThemeServices.GetElementDetails(caHeaders[aIndex=ItemIndex]), aRect);
       easButton:
-        begin
-          if bEnabled then
-            begin
-              if aIndex<>ItemIndex
-                then aDetails:=ThemeServices.GetElementDetails(tbPushButtonNormal)
-                else aDetails:=ThemeServices.GetElementDetails(tbPushButtonPressed);
-            end else
-            aDetails:=ThemeServices.GetElementDetails(tbPushButtonDisabled);
-          ThemeServices.DrawElement(Canvas.Handle, aDetails, aRect);
-        end;
+        ThemeServices.DrawElement(Canvas.Handle, ArBtnDetails[bEnabled, aIndex=ItemIndex], aRect);
       easGradient:
         begin
           aColorTop:=GetColorResolvingDefault(ColorGradTop, clHighlight);
           aColorBottom:=GetColorResolvingDefault(ColorGradBottom, clForm);
-          if bEnabled then
+          if aIndex=ItemIndex then
             begin
-              if aIndex=ItemIndex then
-                begin
-                  aColorTop:=GetMergedColor(aColorTop, clBlack, 0.8);
-                  aColorBottom:=GetMergedColor(aColorBottom, clWhite, 0.4);
-                end;
-            end else
+              aColorTop:=GetMergedColor(aColorTop, clBlack, 0.8);
+              aColorBottom:=GetMergedColor(aColorBottom, clWhite, 0.4);
+            end;
+          if not bEnabled then
             begin
               aColorTop:=GetMonochromaticColor(aColorTop);
               aColorBottom:=GetMonochromaticColor(aColorBottom);
@@ -681,37 +657,19 @@ var aFlags: Cardinal;
         Canvas.Font.Color:=Font.Color;
         Canvas.Font.Size:=Font.Size;
         Canvas.Font.Style:=Font.Style;
-        if bEnabled
-          then aDetails:=ThemeServices.GetElementDetails(tbPushButtonNormal)
-          else aDetails:=ThemeServices.GetElementDetails(tbPushButtonDisabled);
       end else
-      begin
-        Canvas.Font.Color:=SelectedFontOptions.FontColor;
-        Canvas.Font.Size:=SelectedFontOptions.FontSize;
-        Canvas.Font.Style:=SelectedFontOptions.FontStyles;
-        if bEnabled
-          then aDetails:=ThemeServices.GetElementDetails(tbPushButtonPressed)
-          else aDetails:=ThemeServices.GetElementDetails(tbPushButtonDisabled);
-      end;
-    ThemeServices.DrawText(Canvas, aDetails, Item[aIndex].Caption, aTextRect, aFlags, 0);
+        SelectedFontOptions.ApplyTo(Canvas.Font, clBtnText);
+    ThemeServices.DrawText(Canvas, ArBtnDetails[bEnabled, aIndex=ItemIndex], Items[aIndex].Caption, aTextRect, aFlags, 0);
     if assigned(Images) then
-      ThemeServices.DrawIcon(Canvas, aDetails, aImagePoint, Images, Item[aIndex].ImageIndex);
-    if bEnabled then
-      begin
-        if aIndex<>ItemIndex
-          then aState:=eisEnabled
-          else aState:=eisPushed;
-      end else
-      aState:=eisDisabled;
+      ThemeServices.DrawIcon(Canvas, ArBtnDetails[bEnabled, aIndex=ItemIndex], aImagePoint, Images, Items[aIndex].ImageIndex);
     if aIndex<>ItemIndex
       then aGlyphDesign:=GlyphExpand
       else aGlyphDesign:=GlyphCollapse;
-    Canvas.DrawGlyph(aGlyphRect, clBtnText, aGlyphDesign, aState);
+    Canvas.DrawGlyph(aGlyphRect, clBtnText, aGlyphDesign, caItemState[bEnabled]);
   end;
 
 var aBevelPos: SmallInt;
     aGlyphSize: TSize;
-    aToY: Integer;
 begin
   inherited Paint;
   Canvas.Font.Assign(Font);
@@ -728,7 +686,7 @@ begin
       aGlyphRect.Top:=0;
       aGlyphRect.Bottom:=ItemHeight;
     end else
-    aGlyphSize.cx:=Spacing;
+      aGlyphSize.cx:=Spacing;
   if not bR2L
     then aTextRect.Right:=Width-aGlyphSize.cx
     else aTextRect.Left:=aGlyphSize.cx;
@@ -740,46 +698,33 @@ begin
       aImagePoint.Y:=(ItemHeight-Images.Height) div 2;
       aGlyphSize.cx:=Images.Width+2*Spacing
     end else
-    aGlyphSize.cx:=Spacing;
+      aGlyphSize.cx:=Spacing;
   if not bR2L
     then aTextRect.Left:=aGlyphSize.cx
     else aTextRect.Right:=Width-aGlyphSize.cx;
-  aFlags:=DT_VCENTER+DT_SINGLELINE+DT_END_ELLIPSIS;
-  if not bR2L then
-    case Alignment of
-      taRightJustify: aFlags:=aFlags+DT_RIGHT;
-      taCenter: aFlags:=aFlags+DT_CENTER;
-    end else
-    begin
-      aFlags:=aFlags+DT_RTLREADING;
-      case Alignment of
-        taLeftJustify: aFlags:=aFlags+DT_RIGHT;
-        taCenter: aFlags:=aFlags+DT_CENTER;
-      end;
-    end;
+  aFlags:=DT_VCENTER or DT_SINGLELINE or DT_END_ELLIPSIS or caDTRTLFlags[bR2L];
+  if Alignment=taCenter
+    then aFlags:=aFlags or DT_CENTER
+    else if bR2L xor (Alignment=taRightJustify) then aFlags:=aFlags or DT_RIGHT;
   aTop:=0;
-  for aIndex:=0 to Items.Count-1 do
+  for aIndex:=0 to ListItems.Count-1 do
     begin
-      if (BevelWidth>0) and (aIndex=ItemIndex) then
-        begin
-          Canvas.Pen.Color:=cl3DShadow;
-          Canvas.Pen.EndCap:=pecFlat;
-          Canvas.Pen.Style:=psSolid;
-          Canvas.Pen.Width:=BevelWidth;
-          aToY:=aTop+ItemHeight+ExpandedHeight;
-          if aIndex<(Items.Count-1) then inc(aToY, 3);
-          aBevelPos:=BevelWidth div 2;
-          Canvas.Line(aBevelPos, aTop+ItemHeight-3, aBevelPos, aToY);
-          inc(aBevelPos);
-          if (BevelWidth>1) then dec(aBevelPos, (BevelWidth-1) and 1);
-          Canvas.Line(Width-aBevelPos, aTop+ItemHeight-3, Width-aBevelPos, aToY);
-          if aIndex=(Items.Count-1) then
-            Canvas.Line(0, aToY-aBevelPos, Width, aToY-aBevelPos);
-        end;
       DrawItem;
       inc(aTop, ItemHeight);
       if aIndex=ItemIndex then
         begin
+          if BevelWidth>0 then
+            begin
+              Canvas.Pen.Color:=GetColorResolvingEnabled(cl3DShadow, bEnabled);
+              Canvas.Pen.EndCap:=pecFlat;
+              Canvas.Pen.Style:=psSolid;
+              Canvas.Pen.Width:=BevelWidth;
+              Canvas.Line(BevelWidth div 2, aTop, BevelWidth div 2, aTop+ExpandedHeight);
+              aBevelPos:=(BevelWidth+1) div 2;
+              Canvas.Line(Width-aBevelPos, aTop, Width-aBevelPos, aTop+ExpandedHeight);
+              if aIndex=(ListItems.Count-1) then
+                Canvas.Line(0, aTop+ExpandedHeight-aBevelPos, Width, aTop+ExpandedHeight-aBevelPos);
+            end;
           inc(aTop, ExpandedHeight);
           inc(aGlyphRect.Top, ExpandedHeight);
           inc(aGlyphRect.Bottom, ExpandedHeight);
@@ -792,11 +737,10 @@ begin
 end;
 
 procedure TCustomECAccordion.RemoveFromItems(AValue: TAccordionItem);
-var aIndex: Integer;
+var aIndex: SmallInt;
 begin
-
-  aIndex:=Items.IndexOf(AValue);
-  Items.Delete(aIndex);
+  aIndex:=ListItems.IndexOf(AValue);
+  ListItems.Delete(aIndex);
   MakeNewOrder;
   if aIndex=ItemIndex
     then ItemIndex:=-1
@@ -816,20 +760,20 @@ end;
 function TCustomECAccordion.GetActiveItem: TAccordionItem;
 begin
   if FItemIndex>=0
-    then Result:=TAccordionItem(Items[FItemIndex])
+    then Result:=TAccordionItem(ListItems[FItemIndex])
     else Result:=nil;
 end;
 
-function TCustomECAccordion.GetItem(AIndex: Integer): TAccordionItem;
+function TCustomECAccordion.GetItems(AIndex: Integer): TAccordionItem;
 begin
-  Result:=TAccordionItem(Items[AIndex]);
+  Result:=TAccordionItem(ListItems[AIndex]);
 end;
 
 procedure TCustomECAccordion.SetActiveItem(AValue: TAccordionItem);
 var aIndex: Integer;
 begin
   if assigned(AValue) and (AValue.Accordion<>self) then exit;
-  aIndex:=Items.IndexOf(AValue);
+  aIndex:=ListItems.IndexOf(AValue);
   ItemIndex:=aIndex;
 end;
 
@@ -897,7 +841,7 @@ begin
 end;
 
 procedure TCustomECAccordion.SetItemIndex(AValue: SmallInt);
-var aOldIndex: Integer;
+var aOldIndex: SmallInt;
 begin  { do not change csNoDesignVisible }
   aOldIndex:=FItemIndex;
   if aOldIndex=AValue then exit;
@@ -906,8 +850,8 @@ begin  { do not change csNoDesignVisible }
       ItemIndexLFM:=AValue;
       exit;  { Exit! }
     end;
-  if (aOldIndex>=0) and (aOldIndex<Items.Count) then
-    with Item[aOldIndex] do
+  if (aOldIndex>=0) and (aOldIndex<ListItems.Count) then
+    with Items[aOldIndex] do
       begin
         Anchors:=[akLeft, akRight];
         Height:=0;
@@ -915,7 +859,7 @@ begin  { do not change csNoDesignVisible }
       end;
   FItemIndex:=AValue;
   if UpdateCount=0 then if assigned(OnChange) then OnChange(self);
-  if AValue>=0 then Item[AValue].Visible:=True;
+  if AValue>=0 then Items[AValue].Visible:=True;
   AnchorActiveItem;
 end;
 

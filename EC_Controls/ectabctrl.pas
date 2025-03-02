@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2015-2018 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2015-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,9 +34,8 @@ unit ECTabCtrl;
 interface
 
 uses
-  Classes, SysUtils, LMessages, LResources, LCLIntf, LCLType, Controls, ComCtrls,
-  Forms, Graphics, ImgList, {$IFDEF DBGTAB} LCLProc, {$ENDIF} LCLStrConsts, Menus,
-  Math, Themes, Types, ECEditBtns, ECTypes;
+  Classes, SysUtils, ComCtrls, Controls, Forms, Graphics, ImgList, LCLIntf, {$IFDEF DBGTAB} LCLProc, {$ENDIF}
+  LCLStrConsts, LCLType, LMessages, LResources, Math, Menus, Themes, Types, ECEditBtns, ECTypes;
 
 type
   {$PACKENUM 2}
@@ -56,18 +55,22 @@ type
                     ectfCloseBtnDown,     { Close button of any tab is pushed down }
                     ectfDragFolding,      { Dragged tab can be folded }
                     ectfExDeletingTab,    { Exclusive deleting, prevents cases when tab changes but TabIndex remains }
+                    ectfIgnoreFolded,     { ignore search in folded tabs in Tab.Destroy }
                     ectfInvPrefSize,      { reduces InvalidatePreferredSize calls }
                     ectfKeepActiveVisi,   { keeps active tab visible, when any tab is added/closed }
                     ectfLockHint,         { lock when changing hint }
-                    ectfRealignButtons);  { reduces buttons alinging (less AlignControls and Resize) }
+                    ectfRealignButtons,   { reduces buttons alinging (less AlignControls and Resize) }
+                    ectfUserInitChange);  { to avoids OnChange on code & etcoDontOnChangeOnCode }
   TECTabCtrlFlags = set of TECTabCtrlFlag;
   TECTabCtrlOption = (etcoAddTabButton,         { Add button is shown }
                       etcoAutoDragTabs,         { automatic mouse dragging }
                       etcoAutoSizeTabsHeight,   { tabs are vertically autosized }
                       etcoAutoSizeTabsWidth,    { tabs are horizontally autosized }
                       etcoCloseBtnActiveOnly,   { Close button is shown only on the active tab }
+                      etcoDontOnChangeOnCode,   { does not trigger OnChange on code }
                       etcoDontEnlargeTopRow,    { top-row (when RowCount>1) is not enlarged }
                       etcoDontShrinkActiveTab,  { active tab is never shrinked }
+                      etcoDoubleClickClose,     { middle mouse button closes tab }
                       etcoDropDownMenu,         { build-in drop down menu }
                       etcoDropDownFoldingOnly,  { drop-down menu contains item related to folding only }
                       etcoEnlargeTabsToFit,     { tabs are enlarged to fill the whole row; max. is 0.5*Width }
@@ -229,9 +232,9 @@ type
     procedure SetTabPosition(AValue: TTabPosition);
   protected const
     caOverlay: array[TObjectStyle] of SmallInt = (4, 1, 3, 3);
-    cBottomBevel: SmallInt = 2;
-    cCloseBtnBorder: SmallInt = 3;
-    cContentIndent: SmallInt = 6;
+    cBottomBevel = 2;
+    cCloseBtnBorder = 3;
+    cContentIndent = 6;
     cDefMaxRowCount = 1;
     cDefNewTabPos = etaLast;
     cDefOptions = [etcoAutoDragTabs, etcoDontEnlargeTopRow, etcoDropDownMenu, etcoNewTabActive];
@@ -241,7 +244,7 @@ type
     cDefMaxWidth = 140;
     cDefMinWidth = 40;
     cDefTabHeight = 20;
-    cSeparator: SmallInt = 5;
+    cSeparator = 5;
   protected type
     TGlyphKind = (gkAddL, gkCloseL, gkCloseNorm, gkCloseInact, gkCloseHigh, gkCloseDis);
     TStringArray = array of string;
@@ -277,11 +280,12 @@ type
     procedure Calculate;
     procedure CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer;
                                      {%H-}WithThemeSpace: Boolean); override;
-    procedure CalcVisibleTabsAnFlags;
+    procedure CalcVisibleTabsAndFlags;
     function CalcVisiTabsInRow(ARow, AFrom, ARowWidth: Integer; ALRBtns: Boolean): Boolean;
     function CalcVisiTabsInRows(ARowWidth: Integer; ALRBtns: Boolean; var ARows: Smallint): Boolean;
     procedure ChangeHint(ATabIndex: Integer);
     procedure CMBiDiModeChanged(var {%H-}Message: TLMessage); message CM_BIDIMODECHANGED;
+    procedure DblClick; override;
     procedure DeleteFromFoldedTabs(AFolder, ATabID: Integer);
     procedure DesignLeftRightBtns;
     function DialogChar(var Message: TLMKey): Boolean; override;
@@ -291,7 +295,12 @@ type
     procedure DoInitDeletion(AIndex: Integer);
     function DoMouseWheelDown(Shift: TShiftState; MousePos: TPoint): Boolean; override;
     function DoMouseWheelUp(Shift: TShiftState; MousePos: TPoint): Boolean; override;
+    procedure DoSelectNext;
+    procedure DoSelectPrev;
+    procedure DoSelectRowDown;
+    procedure DoSelectRowUp;
     procedure DoSwitchFoldedTab(AIndex, AFolder: Integer);
+    procedure DoUserDeleteTab(AIndex: Integer);
     procedure DragOver(Source: TObject; X, Y: Integer; State: TDragState; var Accept: Boolean); override;
     procedure DropDownMenuClose(Sender: TObject);
     class destructor FinalizeClass;
@@ -469,10 +478,9 @@ type
     property Visible;
   end;
 
-const cECNoTabHovered: SmallInt = -1;
-      cECNoBotomBevel: SmallInt = -2;
-
 implementation
+
+const cECNoBotomBevel = -2;
 
 resourcestring
   rsETCAdd = 'Add a New Tab';
@@ -527,15 +535,21 @@ var aIndex: Integer;
 begin
   FreeAndNil(FFontOptions);
   aTabs:=TECTabs(Collection);
-  bDoDeletion:= (assigned(aTabs)) and (aTabs.UpdateCount=0) and assigned(aTabs.FECTabCtrl);
+  bDoDeletion:=(assigned(aTabs)) and (aTabs.UpdateCount=0) and assigned(aTabs.FECTabCtrl);
   if bDoDeletion then
     begin
       aIndex:=Index;
-      aTabs.FECTabCtrl.DoInitDeletion(aIndex);
+      inc(aTabs.FECTabCtrl.UpdateCount);
+      if not (ectfIgnoreFolded in aTabs.FECTabCtrl.Flags)
+        then aTabs.FECTabCtrl.DoInitDeletion(aIndex);
     end;
   FreeAndNil(FFoldedTabs);
   inherited Destroy;
-  if bDoDeletion then aTabs.FECTabCtrl.DoDeletion(aIndex, PreviousID);
+  if bDoDeletion then
+    begin
+      aTabs.FECTabCtrl.DoDeletion(aIndex, PreviousID);
+      aTabs.FECTabCtrl.EndUpdate;
+    end;
 end;
 
 function TECTab.GetDisplayName: string;
@@ -546,7 +560,7 @@ end;
 
 function TECTab.IsFolded: Boolean;
 begin
-  Result:= (etfFolded in Flags);
+  Result:=(etfFolded in Flags);
 end;
 
 procedure TECTab.RecalcRedraw;
@@ -582,7 +596,7 @@ const cRecalcOpts = [etoCloseable, etoCloseBtn, etoDontShrink, etoVisible];
 var bRecalc: Boolean;
 begin
   if FOptions=AValue then exit;
-  bRecalc:= ((cRecalcOpts*FOptions)<>(cRecalcOpts*AValue));
+  bRecalc:=((cRecalcOpts*FOptions)<>(cRecalcOpts*AValue));
   FOptions:=AValue;
   if bRecalc
     then RecalcRedraw
@@ -661,8 +675,8 @@ end;
 { TCustomECTabCtrl }
 
 constructor TCustomECTabCtrl.Create(TheOwner: TComponent);
-const cDelay: SmallInt = 500;
-      cRepeating: SmallInt = 125;
+const cDelay = 500;
+      cRepeating = 125;
 begin
   inherited Create(TheOwner);
   FCompStyle:=csNotebook;
@@ -672,7 +686,7 @@ begin
                             -[csCaptureMouse, csNoFocus, csOpaque, csSetCaption];
   FColorActiveTab:=clDefault;
   FColorHighlighted:=clDefault;
-  FHovered:=cECNoTabHovered;
+  FHovered:=-1;
   FMaxRowCount:=cDefMaxRowCount;
   SetLength(VisiTabsInRow, cDefMaxRowCount);
   VisiTabsInRow[0].From:=0;
@@ -730,11 +744,9 @@ end;
 procedure TCustomECTabCtrl.ActivateTab(AIndex: Integer);
 begin
   if (AIndex<Tabs.Count) and (etoVisible in Tabs[AIndex].Options) then
-    begin
-      if (AIndex<0) or not (etfFolded in Tabs[AIndex].Flags)
-        then TabIndex:=AIndex
-        else SwitchFoldedTab(AIndex, FindFolderOfTab(AIndex));
-    end;
+    if (AIndex<0) or not (etfFolded in Tabs[AIndex].Flags)
+      then TabIndex:=AIndex
+      else SwitchFoldedTab(AIndex, FindFolderOfTab(AIndex));
 end;
 
 function TCustomECTabCtrl.AddTab(APosition: TECTabAdding; AActivate: Boolean): TECTab;
@@ -742,15 +754,15 @@ begin
   BeginUpdate;
   case APosition of
     etaFirst: Result:=TECTab(Tabs.Insert(0));
-    etaLast: Result:=Tabs.Add;
+    etaLast:  Result:=Tabs.Add;
     otherwise Result:=TECTab(Tabs.Insert(TabIndex+1));
   end;
   if AActivate then
     begin
       include(Flags, ectfKeepActiveVisi);
       case APosition of
-        etaFirst: TabIndex:=0;
-        etaLast: TabIndex:=Tabs.Count-1;
+        etaFirst:  TabIndex:=0;
+        etaLast:   TabIndex:=Tabs.Count-1;
         etaBeside: TabIndex:=TabIndex+1;
       end;
     end;
@@ -765,12 +777,11 @@ procedure TCustomECTabCtrl.AlignButtons;
     Result:=cBottomBevel+BottomSize+1;
   end;
 
+const cHorAnchors: array[Boolean] of TAnchorKind = (akBottom, akTop);
+      cVerAnchors: array[Boolean] of TAnchorKind = (akRight, akLeft);
 var aRowCount, aWidth, aHeight: SmallInt;
     aTabPos: TTabPosition;
     bRev: Boolean;
-const
-    cHorAnchors: array[Boolean] of TAnchorKind = (akBottom, akTop);
-    cVerAnchors: array[Boolean] of TAnchorKind = (akRight, akLeft);
 begin
   if ectfRealignButtons in Flags then
     begin
@@ -779,8 +790,8 @@ begin
       aHeight:=aWidth;
       aRowCount:=RowCount;
       if (aRowCount=1) and (TabActiveRise=0) then dec(aHeight);
-      bRev:= (etcoReversed in Options);
-      if aTabPos in [tpTop, tpBottom] then bRev:= (bRev xor IsRightToLeft);
+      bRev:=(etcoReversed in Options);
+      if aTabPos in [tpTop, tpBottom] then bRev:=(bRev xor IsRightToLeft);
       if BtnLeftUp.Visible then
         begin
           BtnRightDown.Anchors:=[];
@@ -788,7 +799,7 @@ begin
           BtnRightDown.BorderSpacing.Bottom:=0;
           BtnRightDown.BorderSpacing.Left:=0;
           BtnRightDown.BorderSpacing.Right:=0;
-          if aRowCount>=2 then dec(aHeight, TabActiveRise div 2 +1);
+          if aRowCount>=2 then dec(aHeight, (TabActiveRise div 2)+1);
           if aTabPos in [tpTop, tpBottom] then
             begin  { tpTop, tpBottom }
               BtnRightDown.AnchorParallel(cVerAnchors[bRev], 0, self);
@@ -898,7 +909,12 @@ end;
 
 procedure TCustomECTabCtrl.BtnAddMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
-  if Button=mbLeft then AddTab(NewTabPosition, etcoNewTabActive in Options);
+  if Button=mbLeft then
+    begin
+      include(Flags, ectfUserInitChange);
+      AddTab(NewTabPosition, etcoNewTabActive in Options);
+      exclude(Flags, ectfUserInitChange);
+    end;
 end;
 
 procedure TCustomECTabCtrl.BtnLeftUpRepeat(Sender: TObject);
@@ -909,7 +925,7 @@ end;
 procedure TCustomECTabCtrl.BtnLeftUpMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   case Button of
-    mbLeft: ScrollLeft;
+    mbLeft:   ScrollLeft;
     mbMiddle: PosLeftRight:=0;
   end;
 end;
@@ -922,7 +938,7 @@ end;
 procedure TCustomECTabCtrl.BtnRightDownMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   case Button of
-    mbLeft: ScrollRight;
+    mbLeft:   ScrollRight;
     mbMiddle: PosLeftRight:=PosLRMax;
   end;
 end;
@@ -964,17 +980,15 @@ var aRows: SmallInt;
         dec(aRowWidth, 2*aBtnWidth);
         if not (etcoAddTabButton in Options) then dec(aRowWidth, 1);
       end else
-      begin
         if not (etcoAddTabButton in Options)
           then dec(aRowWidth, aBtnWidth+1)
           else if (aRows=2) then dec(aRowWidth, aBtnWidth);
-      end;
     RowWidth:=aRowWidth;
   end;
 
   procedure EnlargeTabsInRow(ARowWidth: Integer; ARow: SmallInt);
   var i, aFrom, aMaxTabWidth, aRealTabWidth, aTotalWidth: Integer;
-      aDiff, aTabWidth, aRatio: Single;
+      aDiff, aRatio, aTabWidth: Single;
   begin
     aMaxTabWidth:=ARowWidth div 2;
     aTotalWidth:=0;
@@ -1060,33 +1074,31 @@ var aRows: SmallInt;
         VisiTabsInRow[ARow].Width:=aPrefWidth;
         if aPrefWidth>aRowWidth then Result:=True;
       end else
-      for i:=aFrom to aFrom+VisiTabsInRow[ARow].Count-1 do
-        VisibleTabs[i].Tab.FWidth:=VisibleTabs[i].Tab.PreferredWidth;
+        for i:=aFrom to aFrom+VisiTabsInRow[ARow].Count-1 do
+          VisibleTabs[i].Tab.FWidth:=VisibleTabs[i].Tab.PreferredWidth;
   end;
 
 var i, aHelpSize, aPrefWidth: Integer;
     aSize: TSize;
     bLRBtns, bVertTabsHor: Boolean;
 begin
-  bVertTabsHor:= ((TabPosition in [tpLeft, tpRight]) and (etcoVertTabsHorizontal in Options));
-  CalcVisibleTabsAnFlags;
+  bVertTabsHor:=((TabPosition in [tpLeft, tpRight]) and (etcoVertTabsHorizontal in Options));
+  CalcVisibleTabsAndFlags;
   if ([etcoAutoSizeTabsHeight, etcoAutoSizeTabsWidth]*Options)<>[] then
-    begin
-      for i:=0 to high(VisibleTabs) do
-        begin
-          if etfParentFont in VisibleTabs[i].Tab.Flags then
-            begin
-              Canvas.Font.Size:=Font.Size;
-              Canvas.Font.Style:=Font.Style;
-            end else
-            begin
-              Canvas.Font.Size:=VisibleTabs[i].Tab.FontOptions.FontSize;
-              Canvas.Font.Style:=VisibleTabs[i].Tab.FontOptions.FontStyles;
-            end;
-          aSize:=Canvas.TextExtent(VisibleTabs[i].Tab.Text);
-          VisibleTabs[i].Tab.CaptionRect:=Rect(0, 0, aSize.cx, aSize.cy);
-        end;
-    end;
+    for i:=0 to high(VisibleTabs) do
+      begin
+        if etfParentFont in VisibleTabs[i].Tab.Flags then
+          begin
+            Canvas.Font.Size:=Font.Size;
+            Canvas.Font.Style:=Font.Style;
+          end else
+          begin
+            Canvas.Font.Size:=VisibleTabs[i].Tab.FontOptions.FontSize;
+            Canvas.Font.Style:=VisibleTabs[i].Tab.FontOptions.FontStyles;
+          end;
+        aSize:=Canvas.TextExtent(VisibleTabs[i].Tab.Text);
+        VisibleTabs[i].Tab.CaptionRect:=Rect(0, 0, aSize.cx, aSize.cy);
+      end;
   if etcoAutoSizeTabsHeight in Options then
     begin
       aHelpSize:=0;
@@ -1122,7 +1134,7 @@ begin
           aPrefWidth:=length(VisibleTabs)*aHelpSize;
         end;
     end else
-    aPrefWidth:=length(VisibleTabs)*TabHeight+caOverlay[Style];
+      aPrefWidth:=length(VisibleTabs)*TabHeight+caOverlay[Style];
   if TabPosition in [tpTop, tpBottom]
     then aRowWidth:=Width
     else aRowWidth:=Height;
@@ -1138,45 +1150,43 @@ begin
               bLRBtns:=CalcVisiTabsInRows(aRowWidth, False, aRows);
               if not bLRBtns then
                 begin  { tabs fit }
-                  if not (etcoEnlargeTabsToFit in Options)
-                    then for i:=0 to high(VisibleTabs) do  { do NOT enlarge }
-                           VisibleTabs[i].Tab.FWidth:=VisibleTabs[i].Tab.PreferredWidth
-                    else
+                  if etcoEnlargeTabsToFit in Options then
                     begin  { rearrange tabs and enlarge }
                       RearrangeVisibleTabs;
                       EnlargeTabs(aRowWidth);
-                    end;
+                    end else
+                      for i:=0 to high(VisibleTabs) do  { do NOT enlarge }
+                        VisibleTabs[i].Tab.FWidth:=VisibleTabs[i].Tab.PreferredWidth;
                 end else
-                if not (etcoShrinkTabsToMin in Options) then
-                  begin  { shrink not possible, tabs don't fit, Left-Right btns needed }
-                    aRows:=MaxRowCount;
-                    AdjustRowWidth;
-                    i:=aPrefWidth div aRows;
-                    CalcVisiTabsInRows(i, bLRBtns, aRows);
-                    PrefRowWidth:=i;
-                    if not (etcoEnlargeTabsToFit in Options)
-                      then for i:=0 to high(VisibleTabs) do  { do NOT enlarge }
-                             VisibleTabs[i].Tab.FWidth:=VisibleTabs[i].Tab.PreferredWidth
-                      else
-                      begin  { enlarge tabs to the widest row }
-                        aHelpSize:=0;
-                        for i:=0 to aRows-1 do
-                          if VisiTabsInRow[i].Width>aHelpSize then aHelpSize:=VisiTabsInRow[i].Width;
-                        RearrangeVisibleTabs;
-                        EnlargeTabs(aHelpSize);
-                      end;
-                  end else
-                  begin  { shrink possible, tabs do NOT fit, attempt to shrink }
-                    aRows:=MaxRowCount;
-                    PrefRowWidth:=aPrefWidth div aRows;
-                    RearrangeVisibleTabs;
-                    {$BOOLEVAL ON}
-                    bLRBtns:=False;
-                    for i:=0 to aRows-1 do
-                      bLRBtns:= bLRBtns or ShrinkTabsInRow(i);
-                    {$BOOLEVAL OFF}
-                    if bLRBtns then AdjustRowWidth;
-                  end;
+                  if not (etcoShrinkTabsToMin in Options) then
+                    begin  { shrink not possible, tabs don't fit, Left-Right btns needed }
+                      aRows:=MaxRowCount;
+                      AdjustRowWidth;
+                      i:=aPrefWidth div aRows;
+                      CalcVisiTabsInRows(i, bLRBtns, aRows);
+                      PrefRowWidth:=i;
+                      if etcoEnlargeTabsToFit in Options then
+                        begin  { enlarge tabs to the widest row }
+                          aHelpSize:=0;
+                          for i:=0 to aRows-1 do
+                            if VisiTabsInRow[i].Width>aHelpSize then aHelpSize:=VisiTabsInRow[i].Width;
+                          RearrangeVisibleTabs;
+                          EnlargeTabs(aHelpSize);
+                        end else
+                          for i:=0 to high(VisibleTabs) do  { do NOT enlarge }
+                            VisibleTabs[i].Tab.FWidth:=VisibleTabs[i].Tab.PreferredWidth;
+                    end else
+                    begin  { shrink possible, tabs do NOT fit, attempt to shrink }
+                      aRows:=MaxRowCount;
+                      PrefRowWidth:=aPrefWidth div aRows;
+                      RearrangeVisibleTabs;
+                      {$BOOLEVAL ON}
+                      bLRBtns:=False;
+                      for i:=0 to aRows-1 do
+                        bLRBtns:=(bLRBtns or ShrinkTabsInRow(i));
+                      {$BOOLEVAL OFF}
+                      if bLRBtns then AdjustRowWidth;
+                    end;
             end else
             begin  { tabs fit to single row }
               CalcVisiTabsInRow(0, 0, aRowWidth, False);
@@ -1189,11 +1199,11 @@ begin
         begin  { vert. tabs horizontal }
           VisiTabsInRow[0].From:=0;
           VisiTabsInRow[0].Count:=length(VisibleTabs);
-          bLRBtns:= (aPrefWidth>aRowWidth);
+          bLRBtns:=(aPrefWidth>aRowWidth);
           if bLRBtns and not (etcoAddTabButton in Options) then dec(aRowWidth, GetButtonsWidth+1);
         end;
     end else
-    VisiTabsInRow[0].Count:=0;
+      VisiTabsInRow[0].Count:=0;
   if FRowCount<>aRows then
     begin
       include(Flags, ectfRealignButtons);
@@ -1220,9 +1230,9 @@ begin
                 end;
             end;
         end else
-        PosLRMax:=(aPrefWidth-aRowWidth) div TabHeight +1;
+          PosLRMax:=(aPrefWidth-aRowWidth) div TabHeight +1;
     end else
-    PosLRMax:=0;
+      PosLRMax:=0;
   if bLRBtns<>BtnLeftUp.Visible then
     begin
       if bLRBtns then include(Flags, ectfRealignButtons);
@@ -1232,12 +1242,12 @@ begin
 end;
 
 procedure TCustomECTabCtrl.Calculate;
+const caSideLap: array[TObjectStyle] of SmallInt = (6, 3, 4, 4);
+      caBottomLap: array[TObjectStyle] of SmallInt = (8, 3, 5, 4);
 var aDDGlyphSize: SmallInt;
     aRect: TRect;
     aSize: TSize;
     bR2L, bReversed: Boolean;
-const caSideLap: array[TObjectStyle] of SmallInt = (6, 3, 4, 4);
-      caBottomLap: array[TObjectStyle] of SmallInt = (8, 3, 5, 4);
 
   procedure CalcContentHor(AIndex: Integer; AHasSideLap, AVerticalPos : Boolean);
   var aTab: TECTab;
@@ -1247,7 +1257,7 @@ const caSideLap: array[TObjectStyle] of SmallInt = (6, 3, 4, 4);
     aTab:=VisibleTabs[AIndex].Tab;
     if not AVerticalPos then
       begin
-        bTop:= (TabPosition=tpTop);
+        bTop:=(TabPosition=tpTop);
         if AIndex=VisibleTabIndex then
           if bTop
             then dec(aRect.Top, TabActiveRise)
@@ -1255,7 +1265,7 @@ const caSideLap: array[TObjectStyle] of SmallInt = (6, 3, 4, 4);
       end else
       begin
         bTop:=True;
-        bLeft:= (TabPosition=tpLeft);
+        bLeft:=(TabPosition=tpLeft);
         if AIndex=VisibleTabIndex then
           if bLeft
             then dec(aRect.Left, TabActiveRise)
@@ -1263,17 +1273,13 @@ const caSideLap: array[TObjectStyle] of SmallInt = (6, 3, 4, 4);
       end;
     aTab.BoundRect:=aRect;
     aTab.PaintRect:=aRect;
-    if not AVerticalPos then
-      begin
-        if bTop
-          then inc(aTab.PaintRect.Bottom, caBottomLap[Style])
-          else dec(aTab.PaintRect.Top, caBottomLap[Style]);
-      end else
-      begin
-        if bLeft
-          then inc(aTab.PaintRect.Right, caBottomLap[Style])
-          else dec(aTab.PaintRect.Left, caBottomLap[Style]);
-      end;
+    if not AVerticalPos
+      then if bTop
+             then inc(aTab.PaintRect.Bottom, caBottomLap[Style])
+             else dec(aTab.PaintRect.Top, caBottomLap[Style])
+      else if bLeft
+             then inc(aTab.PaintRect.Right, caBottomLap[Style])
+             else dec(aTab.PaintRect.Left, caBottomLap[Style]);
     if not AVerticalPos and (AIndex<>VisibleTabIndex) and AHasSideLap then
       if not (bReversed xor bR2L)
         then inc(aTab.PaintRect.Right, caSideLap[Style])
@@ -1336,7 +1342,7 @@ const caSideLap: array[TObjectStyle] of SmallInt = (6, 3, 4, 4);
       bLeft: Boolean;
       x: SmallInt;
   begin
-    bLeft:= (TabPosition=tpLeft);
+    bLeft:=(TabPosition=tpLeft);
     aTab:=VisibleTabs[AIndex].Tab;
     if AIndex=VisibleTabIndex then
       if bLeft
@@ -1353,7 +1359,7 @@ const caSideLap: array[TObjectStyle] of SmallInt = (6, 3, 4, 4);
           inc(aTab.PaintRect.Bottom, caSideLap[Style]);
           dec(aRect.Bottom, caOverlay[Style]-1);
         end else
-        dec(aTab.PaintRect.Top, caSideLap[Style]);
+          dec(aTab.PaintRect.Top, caSideLap[Style]);
     if bLeft then inc(aRect.Left);
     inc(aRect.Top, cContentIndent);
     dec(aRect.Bottom, cContentIndent);
@@ -1379,7 +1385,7 @@ const caSideLap: array[TObjectStyle] of SmallInt = (6, 3, 4, 4);
     x:=Canvas.TextWidth(aTab.Text);
     case Alignment of
       taRightJustify: aRect.Bottom:=Math.min(aRect.Bottom, aRect.Top+x);
-      taCenter: aRect.Bottom:=Math.min(aRect.Bottom, (aRect.Bottom+aRect.Top+x) div 2);
+      taCenter:       aRect.Bottom:=Math.min(aRect.Bottom, (aRect.Bottom+aRect.Top+x) div 2);
     end;
     aTab.CaptionRect:=aRect;
   end;
@@ -1562,9 +1568,9 @@ var aTopLeft, aBttmRight: Integer;
       end;
   end;
 
+const cOuterRect: TRect = (Left: -100; Top: -100; Right: -80; Bottom: -80);
 var i, aBound, aFrom, aIndex, aPosLRBtns, aRow, aWidest: Integer;
     aTabInRow: TTabRow;
-const cOuterRect: TRect = (Left: -100; Top: -100; Right: -80; Bottom: -80);
 begin
   {$IFDEF DBGTAB} DebugLn('TCustomECTabCtrl.Calculate'); {$ENDIF}
   if (TabPosition in [tpTop, tpBottom]) or (etcoVertTabsHorizontal in Options)
@@ -1572,7 +1578,7 @@ begin
     else aDDGlyphSize:=Canvas.GlyphExtent(egdArrowsUD).cy;
   FontHeight:=Canvas.TextHeight('Šj|9');
   bR2L:=IsRightToLeft;
-  bReversed:= (etcoReversed in Options);
+  bReversed:=(etcoReversed in Options);
   i:=-1;  { find row with TabIndex }
   for aRow:=0 to RowCount-1 do
     begin
@@ -1625,7 +1631,7 @@ begin
               if aWidest<VisiTabsInRow[i].Width then aWidest:=VisiTabsInRow[i].Width;
           end;
       end else
-      aPosLRBtns:=0;
+        aPosLRBtns:=0;
   for aIndex:=0 to high(VisibleTabs) do     { clear Tab bound rects }
     VisibleTabs[aIndex].Tab.BoundRect:=cOuterRect;
   if assigned(Images) and (ImageIndexClose>=0) then
@@ -1637,8 +1643,8 @@ begin
       aSize.cx:=Glyphs[gkCloseNorm].Width;
       aSize.cy:=Glyphs[gkCloseNorm].Height;
     end;
-  if TabPosition in [tpTop, tpBottom] then  { calc. Tab bound rects }
-    begin
+  if TabPosition in [tpTop, tpBottom] then
+    begin  { calc. Tab bound rects }
       for aRow:=0 to RowCount-1 do
         begin
           aFrom:=VisiTabsInRow[aRow].From;
@@ -1653,31 +1659,26 @@ begin
                 aTopLeft:=cBottomBevel+BottomSize+aRow*TabHeight;
                 aBttmRight:=aTopLeft+TabHeight;
               end;
-          end;  { case }
-          if (PosLRMax=0) or (aPosLRBtns<PosLRMax) then
-            begin
-              if not (bR2L xor bReversed) then
-                begin
+          end;
+          if (PosLRMax=0) or (aPosLRBtns<PosLRMax)
+            then
+              if not (bR2L xor bReversed)
+                then
                   if aFrom=0
                     then CalcBoundRectsHor(0, aFrom+aPosLRBtns, aFrom+VisiTabsInRow[aRow].Count-1)
-                    else CalcBoundRectsHor(-aBound, aFrom, aFrom+VisiTabsInRow[aRow].Count-1);
-                end else
-                begin
+                    else CalcBoundRectsHor(-aBound, aFrom, aFrom+VisiTabsInRow[aRow].Count-1)
+                else
                   if aFrom=0
                     then CalcBoundRectsHorRev(Width, aFrom+aPosLRBtns, aFrom+VisiTabsInRow[aRow].Count-1)
-                    else CalcBoundRectsHorRev(Width+aBound, aFrom, aFrom+VisiTabsInRow[aRow].Count-1);
-                end;
-            end else
-            begin
+                    else CalcBoundRectsHorRev(Width+aBound, aFrom, aFrom+VisiTabsInRow[aRow].Count-1)
+            else
               if not (bR2L xor bReversed)
                 then CalcBoundRectsHorLimit(RowWidth+VisiTabsInRow[aRow].Width-aWidest,
                        aFrom+VisiTabsInRow[aRow].Count-1, Math.max(aFrom+aPosLRBtns-1, 0))
                 else CalcBoundRectsHorRevLimit(Width-RowWidth-VisiTabsInRow[aRow].Width+aWidest,
                        aFrom+VisiTabsInRow[aRow].Count-1, Math.max(aFrom+aPosLRBtns-1, 0));
-            end;
-        end;
-    end else
-    begin  { tpLeft, tpRight }
+        end
+    end else  { tpLeft, tpRight }
       if not (etcoVertTabsHorizontal in Options) then
         begin
           for aRow:=0 to RowCount-1 do
@@ -1694,20 +1695,18 @@ begin
                     aTopLeft:=cBottomBevel+BottomSize+aRow*TabHeight;
                     aBttmRight:=aTopLeft+TabHeight;
                   end;
-              end;  { case }
+              end;
               if (PosLRMax=0) or (aPosLRBtns<PosLRMax) then
                 begin
-                  if not bReversed then
-                    begin
+                  if not bReversed
+                    then
                       if aFrom=0
                         then CalcBoundRectsVer(0, aFrom+aPosLRBtns, aFrom+VisiTabsInRow[aRow].Count-1)
-                        else CalcBoundRectsVer(-aBound, aFrom, aFrom+VisiTabsInRow[aRow].Count-1);
-                    end else
-                    begin
+                        else CalcBoundRectsVer(-aBound, aFrom, aFrom+VisiTabsInRow[aRow].Count-1)
+                    else
                       if aFrom=0
                         then CalcBoundRectsVerRev(Height, aFrom+aPosLRBtns, aFrom+VisiTabsInRow[aRow].Count-1)
                         else CalcBoundRectsVerRev(Height+aBound, aFrom, aFrom+VisiTabsInRow[aRow].Count-1);
-                    end;
                 end else
                 begin
                   if not bReversed
@@ -1730,20 +1729,15 @@ begin
                 aTopLeft:=cBottomBevel+BottomSize;
                 aBttmRight:=aTopLeft+TabMaxWidth;
               end;
-          end;  { case }
-          if (PosLRMax=0) or (aPosLRBtns<PosLRMax) then
-            begin
-              if not bReversed
-                then CalcBoundRectsVerH(0, aPosLRBtns, VisiTabsInRow[0].Count-1)
-                else CalcBoundRectsVerHRev(Height, aPosLRBtns, VisiTabsInRow[0].Count-1)
-            end else
-            begin
-              if not bReversed
-                then CalcBoundRectsVerHLimit(RowWidth, VisiTabsInRow[0].Count-1, Math.max(aPosLRBtns-1, 0))
-                else CalcBoundRectsVerHRevLimit(Height-RowWidth, VisiTabsInRow[0].Count-1, Math.max(aPosLRBtns-1, 0));
-            end;
+          end;  {case}
+          if (PosLRMax=0) or (aPosLRBtns<PosLRMax)
+            then if not bReversed
+                   then CalcBoundRectsVerH(0, aPosLRBtns, VisiTabsInRow[0].Count-1)
+                   else CalcBoundRectsVerHRev(Height, aPosLRBtns, VisiTabsInRow[0].Count-1)
+            else if not bReversed
+                   then CalcBoundRectsVerHLimit(RowWidth, VisiTabsInRow[0].Count-1, Math.max(aPosLRBtns-1, 0))
+                   else CalcBoundRectsVerHRevLimit(Height-RowWidth, VisiTabsInRow[0].Count-1, Math.max(aPosLRBtns-1, 0));
         end;
-    end;
   for aRow:=0 to RowCount-2 do
     begin  { calc inactive backgrounds }
       if TabPosition in [tpTop, tpBottom] then
@@ -1754,7 +1748,7 @@ begin
               for i:=1 to RowCount-1 do
                 aBound:=Math.max(aBound, VisibleTabs[VisiTabsInRow[i].From+VisiTabsInRow[i].Count-1].Tab.PaintRect.Right);
               i:=VisiTabsInRow[aRow].From+VisiTabsInRow[aRow].Count-1;
-              VisiTabsInRow[aRow].InactBkgnd:= ((VisibleTabs[i].Tab.PaintRect.Right)<aBound);
+              VisiTabsInRow[aRow].InactBkgnd:=((VisibleTabs[i].Tab.PaintRect.Right)<aBound);
               if VisiTabsInRow[aRow].InactBkgnd then
                 begin
                   aRect.Left:=VisibleTabs[i].Tab.PaintRect.Right-caSideLap[Style];
@@ -1776,7 +1770,7 @@ begin
               for i:=1 to RowCount-1 do
                 aBound:=Math.min(aBound, VisibleTabs[VisiTabsInRow[i].From+VisiTabsInRow[i].Count-1].Tab.PaintRect.Left);
               i:=VisiTabsInRow[aRow].From+VisiTabsInRow[aRow].Count-1;
-              VisiTabsInRow[aRow].InactBkgnd:= ((VisibleTabs[i].Tab.PaintRect.Left)>aBound);
+              VisiTabsInRow[aRow].InactBkgnd:=((VisibleTabs[i].Tab.PaintRect.Left)>aBound);
               if VisiTabsInRow[aRow].InactBkgnd then
                 begin
                   aRect.Right:=VisibleTabs[i].Tab.PaintRect.Left+caSideLap[Style];
@@ -1801,7 +1795,7 @@ begin
               for i:=1 to RowCount-1 do
                 aBound:=Math.max(aBound, VisibleTabs[VisiTabsInRow[i].From+VisiTabsInRow[i].Count-1].Tab.PaintRect.Bottom);
               i:=VisiTabsInRow[aRow].From+VisiTabsInRow[aRow].Count-1;
-              VisiTabsInRow[aRow].InactBkgnd:= ((VisibleTabs[i].Tab.PaintRect.Bottom)<aBound);
+              VisiTabsInRow[aRow].InactBkgnd:=((VisibleTabs[i].Tab.PaintRect.Bottom)<aBound);
               if VisiTabsInRow[aRow].InactBkgnd then
                 begin
                   aRect.Top:=VisibleTabs[i].Tab.PaintRect.Bottom-caSideLap[Style];
@@ -1823,7 +1817,7 @@ begin
               for i:=1 to RowCount-1 do
                 aBound:=Math.min(aBound, VisibleTabs[VisiTabsInRow[i].From+VisiTabsInRow[i].Count-1].Tab.PaintRect.Top);
               i:=VisiTabsInRow[aRow].From+VisiTabsInRow[aRow].Count-1;
-              VisiTabsInRow[aRow].InactBkgnd:= ((VisibleTabs[i].Tab.PaintRect.Top)>aBound);
+              VisiTabsInRow[aRow].InactBkgnd:=((VisibleTabs[i].Tab.PaintRect.Top)>aBound);
               if VisiTabsInRow[aRow].InactBkgnd then
                 begin
                   aRect.Bottom:=VisibleTabs[i].Tab.PaintRect.Top+caSideLap[Style];
@@ -1865,9 +1859,9 @@ begin
     end;
 end;
 
-procedure TCustomECTabCtrl.CalcVisibleTabsAnFlags;
-var i, j, aTabIndex: Integer;
+procedure TCustomECTabCtrl.CalcVisibleTabsAndFlags;
 const cCloseBtn = [etoCloseable, etoCloseBtn];
+var i, j, aTabIndex: Integer;
 begin
   j:=0;
   for i:=0 to Tabs.Count-1 do
@@ -1877,21 +1871,19 @@ begin
   FVisibleTabIndex:=-1;
   j:=0;
   for i:=0 to Tabs.Count-1  do
-    begin
-      if (etoVisible in Tabs[i].Options) and not (etfFolded in Tabs[i].Flags) then
-        begin
-          if i=aTabIndex then FVisibleTabIndex:=j;
-          FVisiTabs[j].Tab:=Tabs[i];
-          FVisiTabs[j].Index:=i;
-          Tabs[i].Flags:=[];
-          if Tabs[i].FontOptions.IsIdentical(Font) then include(Tabs[i].Flags, etfParentFont);
-          if assigned(Images) and (Tabs[i].ImageIndex>=0) then include(Tabs[i].Flags, etfHasImage);
-          if (not (etcoCloseBtnActiveOnly in Options) or (i=aTabIndex))
-            and ((cCloseBtn*Tabs[i].Options)=cCloseBtn)
-            then include(Tabs[i].Flags, etfHasCloseBtn);
-          inc(j);
-        end;
-    end;
+    if (etoVisible in Tabs[i].Options) and not (etfFolded in Tabs[i].Flags) then
+      begin
+        if i=aTabIndex then FVisibleTabIndex:=j;
+        FVisiTabs[j].Tab:=Tabs[i];
+        FVisiTabs[j].Index:=i;
+        Tabs[i].Flags:=[];
+        if Tabs[i].FontOptions.IsIdentical(Font) then include(Tabs[i].Flags, etfParentFont);
+        if assigned(Images) and (Tabs[i].ImageIndex>=0) then include(Tabs[i].Flags, etfHasImage);
+        if (not (etcoCloseBtnActiveOnly in Options) or (i=aTabIndex))
+          and ((cCloseBtn*Tabs[i].Options)=cCloseBtn)
+          then include(Tabs[i].Flags, etfHasCloseBtn);
+        inc(j);
+      end;
 end;
 
 function TCustomECTabCtrl.CalcVisiTabsInRow(ARow, AFrom, ARowWidth: Integer; ALRBtns: Boolean): Boolean;
@@ -1948,9 +1940,10 @@ begin
   inc(UpdateCount);
   aChanged:=0;
   aTab:=Tabs[AFolder];
+  include(Flags, ectfIgnoreFolded);
   for i:=aTab.FoldedTabs.Count-1 downto 0 do
     begin
-      bCanClose:= (etoCloseable in TECTab(aTab.FoldedTabs[i]).Options);
+      bCanClose:=(etoCloseable in TECTab(aTab.FoldedTabs[i]).Options);
       if bCanClose then
         begin
           aIndex:=Tabs.IDToIndex(TECTab(aTab.FoldedTabs[i]).ID);
@@ -1969,6 +1962,7 @@ begin
         end;
       if bCanClose or AUnfoldNonClosed then aTab.FoldedTabs.Delete(i);
     end;
+  exclude(Flags, ectfIgnoreFolded);
   dec(UpdateCount);
   if aChanged>0 then RecalcInvalidate;
 end;
@@ -1978,6 +1972,18 @@ begin
   DesignLeftRightBtns;
   include(Flags, ectfRealignButtons);
   RecalcInvalidate;
+end;
+
+procedure TCustomECTabCtrl.DblClick;
+var aPoint: TPoint;
+begin
+  inherited DblClick;
+  if (etcoDoubleClickClose in Options) and (Hovered>=0) and (etoCloseable in Tabs[Hovered].Options) then
+    begin
+      DoUserDeleteTab(Hovered);
+      aPoint:=ScreenToClient(Mouse.CursorPos);
+      CalcHoveredTab(aPoint.X, aPoint.Y);
+    end;
 end;
 
 procedure TCustomECTabCtrl.DeleteFromFoldedTabs(AFolder, ATabID: Integer);
@@ -2013,7 +2019,7 @@ begin
           BtnRightDown.GlyphDesign:=egdArrowLeft;
         end;
     end else
-    begin  { reversed }
+    begin
       if not (etcoReversed in Options) then
         begin
           BtnLeftUp.GlyphDesign:=egdArrowUp;
@@ -2031,36 +2037,35 @@ var i: Integer;
 begin
   Result:=False;
   if Message.Msg=LM_SYSCHAR then
-    begin
-      if IsEnabled and IsVisible then
-        begin
-          for i:=0 to high(VisibleTabs) do
-            if IsAccel(Message.CharCode, VisibleTabs[i].Tab.Text) then
-              begin
-                ActivateTab(VisibleTabs[i].Index);
-                Result:=True;
-                exit;  { Exit! }
-              end;
-          Result:=inherited DialogChar(Message);
-        end;
-    end;
+    if IsEnabled and IsVisible then
+      begin
+        for i:=0 to high(VisibleTabs) do
+          if IsAccel(Message.CharCode, VisibleTabs[i].Tab.Text) then
+            begin
+              include(Flags, ectfUserInitChange);
+              ActivateTab(VisibleTabs[i].Index);
+              exclude(Flags, ectfUserInitChange);
+              Result:=True;
+              exit;  { Exit! }
+            end;
+        Result:=inherited DialogChar(Message);
+      end;
 end;
 
 procedure TCustomECTabCtrl.DoBtnsEnabled;
 begin
-  BtnLeftUp.Enabled:= (PosLeftRight>0);
-  BtnRightDown.Enabled:= (PosLeftRight<PosLRMax);
+  BtnLeftUp.Enabled:=(PosLeftRight>0);
+  BtnRightDown.Enabled:=(PosLeftRight<PosLRMax);
 end;
 
 procedure TCustomECTabCtrl.DoContextPopup(MousePos: TPoint; var Handled: Boolean);
 begin
-  if IsEnabled and (Hovered>cECNoTabHovered) and (ClickedTabIndex=-1) then
-    begin
-      if assigned(Tabs[Hovered].PopupMenu) then
-        begin
-          Tabs[Hovered].PopupMenu.PopUp;
-          Handled:=True;
-        end else
+  if IsEnabled and (Hovered>=0) and (ClickedTabIndex=-1) then
+    if assigned(Tabs[Hovered].PopupMenu) then
+      begin
+        Tabs[Hovered].PopupMenu.PopUp;
+        Handled:=True;
+      end else
         if (etcoDropDownMenu in Options) and ((etoCloseable in Tabs[Hovered].Options) or
           ([etcoAddTabButton, etcoFixedPosition]*Options<>[etcoFixedPosition]) or
           (([etoCanBeFolded, etoCanFold]*Tabs[Hovered].Options)<>[])) then
@@ -2068,7 +2073,6 @@ begin
             ShowDropDownMenu(Hovered);
             Handled:=True;
           end;
-    end;
   inherited DoContextPopup(MousePos, Handled);
 end;
 
@@ -2127,26 +2131,28 @@ begin
                     TabIndex:=aPrevIndex;
                     Tabs[aPrevIndex].PreviousID:=APreviousID;
                   end else
-                  ActivateLeftNear(TabIndex);
+                    ActivateLeftNear(TabIndex);
               end;
-        end;  { case }
+        end;  {case}
       TabIndex:=j;
       exclude(Flags, ectfExDeletingTab);
     end else
-    if AIndex<FTabIndex then
-      begin
-        dec(FTabIndex);  { avoid OnChange event }
-        RecalcInvalidate;
-      end;
-  EndUpdate;  { BeginUpdate; called in DoInitDeletion; }
+      if AIndex<FTabIndex then
+        begin
+          dec(FTabIndex);  { avoid OnChange event }
+          RecalcInvalidate;
+        end;
 end;
 
 procedure TCustomECTabCtrl.DoInitDeletion(AIndex: Integer);
 var i, j: Integer;
 begin
-  BeginUpdate;  { EndUpdate; called in DoDeletion; }
-  if etfFolded in Tabs[AIndex].Flags then
+  if not (etfFolded in Tabs[AIndex].Flags) then
     begin
+      i:=Tabs[AIndex].ID;
+      CloseAllFoldedTabs(AIndex, True);
+      AIndex:=Tabs.IDToIndex(i);
+    end else
       for i:=0 to Tabs.Count-1 do
         for j:=0 to Tabs[i].FoldedTabs.Count-1 do
           if TECTab(Tabs[i].FoldedTabs[j])=Tabs[AIndex] then
@@ -2154,12 +2160,6 @@ begin
               Tabs[i].FoldedTabs.Delete(j);
               break;
             end;
-    end else
-    begin
-      i:=Tabs[AIndex].ID;
-      CloseAllFoldedTabs(AIndex, True);
-      AIndex:=Tabs.IDToIndex(i);
-    end;
 end;
 
 function TCustomECTabCtrl.DoMouseWheelDown(Shift: TShiftState; MousePos: TPoint): Boolean;
@@ -2168,10 +2168,10 @@ begin
   if not Dragging and not Result then
     begin
       if TabPosition in [tpTop, tpBottom]
-        then SelectNext
+        then DoSelectNext
         else if not (etcoReversed in Options)
-               then SelectNext
-               else SelectPrevious;
+               then DoSelectNext
+               else DoSelectPrev;
       Result:=True;
     end;
 end;
@@ -2182,12 +2182,40 @@ begin
   if not Dragging and not Result then
     begin
       if TabPosition in [tpTop, tpBottom]
-        then SelectPrevious
+        then DoSelectPrev
         else if not (etcoReversed in Options)
-               then SelectPrevious
-               else SelectNext;
+               then DoSelectPrev
+               else DoSelectNext;
       Result:=True;
     end;
+end;
+
+procedure TCustomECTabCtrl.DoSelectNext;
+begin
+  include(Flags, ectfUserInitChange);
+  SelectNext;
+  exclude(Flags, ectfUserInitChange);
+end;
+
+procedure TCustomECTabCtrl.DoSelectPrev;
+begin
+  include(Flags, ectfUserInitChange);
+  SelectPrevious;
+  exclude(Flags, ectfUserInitChange);
+end;
+
+procedure TCustomECTabCtrl.DoSelectRowDown;
+begin
+  include(Flags, ectfUserInitChange);
+  SelectRowDown;
+  exclude(Flags, ectfUserInitChange);
+end;
+
+procedure TCustomECTabCtrl.DoSelectRowUp;
+begin
+  include(Flags, ectfUserInitChange);
+  SelectRowUp;
+  exclude(Flags, ectfUserInitChange);
 end;
 
 procedure TCustomECTabCtrl.DoSwitchFoldedTab(AIndex, AFolder: Integer);
@@ -2202,6 +2230,13 @@ begin
   Tabs[AFolder].FoldedTabs.Clear;
 end;
 
+procedure TCustomECTabCtrl.DoUserDeleteTab(AIndex: Integer);
+begin
+  include(Flags, ectfUserInitChange);
+  DeleteTab(AIndex);
+  exclude(Flags, ectfUserInitChange);
+end;
+
 procedure TCustomECTabCtrl.DragDrop(Source: TObject; X, Y: Integer);
 var aHoveredTab: Integer;
 begin
@@ -2213,9 +2248,10 @@ begin
         begin
           if aHoveredTab<0 then aHoveredTab:=Tabs.Count-1;
           Tabs[ClickedTabIndex].Index:=aHoveredTab;
-          TabIndex:=aHoveredTab;
+          FTabIndex:=aHoveredTab;
+          RecalcInvalidate;
         end else
-        FoldTab(ClickedTabIndex, aHoveredTab);
+          FoldTab(ClickedTabIndex, aHoveredTab);
     end;
 end;
 
@@ -2224,13 +2260,12 @@ var aHoveredTab: Integer;
 begin
   inherited DragOver(Source, X, Y, State, Accept);
   aHoveredTab:=Hovered;
-  if not (ectfDragFolding in Flags) then
-    begin
-      if aHoveredTab>=0
-        then Accept:= (aHoveredTab<>ClickedTabIndex)
-        else Accept:= ((ClickedTabIndex>=0) and (ClickedTabIndex<(Tabs.Count-1)));
-    end else
-    Accept:= (aHoveredTab>=0) and (aHoveredTab<>ClickedTabIndex) and (etoCanFold in Tabs[aHoveredTab].Options);
+  if not (ectfDragFolding in Flags)
+    then if aHoveredTab>=0
+           then Accept:=(aHoveredTab<>ClickedTabIndex)
+           else Accept:=((ClickedTabIndex>=0) and (ClickedTabIndex<(Tabs.Count-1)))
+    else Accept:=((aHoveredTab>=0) and (aHoveredTab<>ClickedTabIndex)
+                   and (etoCanFold in Tabs[aHoveredTab].Options));
 end;
 
 procedure TCustomECTabCtrl.DropDownMenuClose(Sender: TObject);
@@ -2315,7 +2350,8 @@ function TCustomECTabCtrl.IndexOfTabAt(X, Y: Integer): Integer;
 var aPoint: TPoint;
     i, aTabIndex: Integer;
 begin
-  Result:=cECNoTabHovered;
+  Result:=-1;
+  if (UpdateCount=0) and (ectfCalculate in Flags) then Calculate;
   aTabIndex:=TabIndex;
   aPoint:=Point(X, Y);
   if (aTabIndex>=0) and PtInRect(Tabs[aTabIndex].BoundRect, aPoint)
@@ -2330,11 +2366,11 @@ end;
 
 class constructor TCustomECTabCtrl.InitializeClass;
 const cGlyphResName: array[TGlyphKind] of string =
-  ('addL', 'closeL', 'closenorm', 'closeinact', 'closehigh', 'closedis');
+        ('addL', 'closeL', 'closenorm', 'closeinact', 'closehigh', 'closedis');
 var aGlyphKind: TGlyphKind;
 begin
   DropDownRStrs:=TStringArray.Create(rsETCLeftmost, rsETCLeft, rsETCRight, rsETCRightmost,
-                                 rsETCTopmost, rsETCUp, rsETCDown, rsETCBottmomost);
+                                     rsETCTopmost, rsETCUp, rsETCDown, rsETCBottmomost);
   {$I ectabctrl.lrs}
   for aGlyphKind:=low(TGlyphKind) to high(TGlyphKind) do
     begin
@@ -2346,7 +2382,7 @@ end;
 function TCustomECTabCtrl.IsSameVisiRow(AVisiIndex, BVisiIndex: Integer): Boolean;
 var i, aLimit: Integer;
 begin
-  Result:= (RowCount=1);
+  Result:=(RowCount=1);
   if not Result then
     for i:=0 to high(VisiTabsInRow) do
       begin
@@ -2354,7 +2390,7 @@ begin
         if (AVisiIndex>=aLimit) and (BVisiIndex>=aLimit) then
           begin
             inc(aLimit, VisiTabsInRow[i].Count);
-            Result:= ((AVisiIndex<aLimit) and (BVisiIndex<aLimit));
+            Result:=(AVisiIndex<aLimit) and (BVisiIndex<aLimit);
             if Result then exit;  { Exit! }
           end;
       end;
@@ -2394,7 +2430,7 @@ begin
       Result:=((aTabsRect.Left<=Tabs[AIndex].BoundRect.Left) and (aTabsRect.Top<=Tabs[AIndex].BoundRect.Top) and
                (aTabsRect.Right>=Tabs[AIndex].BoundRect.Right) and (aTabsRect.Bottom>=Tabs[AIndex].BoundRect.Bottom));
     end else
-    Result:=False;
+      Result:=False;
   {$IFDEF DBGTAB} DebugLn('TCustomECTabCtrl.IsTabVisible '+booltostr(Result, 'T', 'F')); {$ENDIF}
 end;
 
@@ -2405,101 +2441,69 @@ begin
     VK_RETURN, VK_SPACE: if TabIndex>=0 then ShowDropDownMenu(TabIndex);
     VK_LEFT:
       begin
-        if TabPosition in [tpTop, tpBottom] then
-          begin
-            if not (ssCtrl in Shift) or (etcoFixedPosition in Options) then
-              begin
-                if not ((etcoReversed in Options) xor IsRightToLeft)
-                  then SelectPrevious
-                  else SelectNext;
-              end else
-              begin
-                if not ((etcoReversed in Options) xor IsRightToLeft)
-                  then MovePrevious
-                  else MoveNext;
-              end;
-          end else
-          begin
-            if RowCount>1 then
-              if TabPosition=tpLeft
-                then SelectRowUp
-                else SelectRowDown;
-          end;
+        if TabPosition in [tpTop, tpBottom]
+          then if not (ssModifier in Shift) or (etcoFixedPosition in Options)
+                 then if not ((etcoReversed in Options) xor IsRightToLeft)
+                        then DoSelectPrev
+                        else DoSelectNext
+                 else if not ((etcoReversed in Options) xor IsRightToLeft)
+                        then MovePrevious
+                        else MoveNext
+          else if RowCount>1 then
+                 if TabPosition=tpLeft
+                   then DoSelectRowUp
+                   else DoSelectRowDown;
         Key:=0;
       end;
     VK_UP:
       begin
-        if TabPosition in [tpLeft, tpRight] then
-          begin
-            if not (ssCtrl in Shift) or (etcoFixedPosition in Options) then
-              begin
-                if not (etcoReversed in Options)
-                  then SelectPrevious
-                  else SelectNext;
-              end else
-              begin
-                if not (etcoReversed in Options)
-                  then MovePrevious
-                  else MoveNext;
-              end;
-          end else
-          begin
-            if RowCount>1 then
-              if TabPosition=tpTop
-                then SelectRowUp
-                else SelectRowDown;
-          end;
+        if TabPosition in [tpLeft, tpRight]
+          then if not (ssModifier in Shift) or (etcoFixedPosition in Options)
+                 then if not (etcoReversed in Options)
+                        then DoSelectPrev
+                        else DoSelectNext
+                 else if not (etcoReversed in Options)
+                        then MovePrevious
+                        else MoveNext
+          else if RowCount>1 then
+                 if TabPosition=tpTop
+                   then DoSelectRowUp
+                   else DoSelectRowDown;
         Key:=0;
       end;
     VK_RIGHT:
       begin
-        if TabPosition in [tpTop, tpBottom] then
-          begin
-            if not (ssCtrl in Shift) or (etcoFixedPosition in Options) then
-              begin
-                if not ((etcoReversed in Options) xor IsRightToLeft)
-                  then SelectNext
-                  else SelectPrevious;
-              end else
-              begin
-                if not ((etcoReversed in Options) xor IsRightToLeft)
-                  then MoveNext
-                  else MovePrevious;
-              end;
-          end else
-          begin
-            if RowCount>1 then
-              if TabPosition=tpLeft
-                then SelectRowDown
-                else SelectRowUp;
-          end;
+        if TabPosition in [tpTop, tpBottom]
+          then if not (ssModifier in Shift) or (etcoFixedPosition in Options)
+                 then if not ((etcoReversed in Options) xor IsRightToLeft)
+                        then DoSelectNext
+                        else DoSelectPrev
+                 else if not ((etcoReversed in Options) xor IsRightToLeft)
+                        then MoveNext
+                        else MovePrevious
+          else if RowCount>1 then
+                 if TabPosition=tpLeft
+                   then DoSelectRowDown
+                   else DoSelectRowUp;
         Key:=0;
       end;
     VK_DOWN:
       begin
-        if TabPosition in [tpLeft, tpRight] then
-          begin
-            if not (ssCtrl in Shift) or (etcoFixedPosition in Options) then
-              begin
-                if not (etcoReversed in Options)
-                  then SelectNext
-                  else SelectPrevious;
-              end else
-              begin
-                if not (etcoReversed in Options)
-                  then MoveNext
-                  else MovePrevious;
-              end;
-          end else
-          begin
-            if RowCount>1 then
-              if TabPosition=tpTop
-                then SelectRowDown
-                else SelectRowUp;
-          end;
+        if TabPosition in [tpLeft, tpRight]
+          then if not (ssModifier in Shift) or (etcoFixedPosition in Options)
+                 then if not (etcoReversed in Options)
+                       then DoSelectNext
+                       else DoSelectPrev
+                 else if not (etcoReversed in Options)
+                        then MoveNext
+                        else MovePrevious
+          else if RowCount>1 then
+                 if TabPosition=tpTop
+                   then DoSelectRowDown
+                   else DoSelectRowUp;
         Key:=0;
       end;
-  end;
+  end;  {case}
 end;
 
 procedure TCustomECTabCtrl.MakeTabAvailable(AIndex: Integer; AActivate: Boolean);
@@ -2520,7 +2524,7 @@ begin
               AIndex:=aFolder;
             end;
           aRows:=1;
-          CalcVisibleTabsAnFlags;
+          CalcVisibleTabsAndFlags;
           CalcVisiTabsInRows(PrefRowWidth, BtnLeftUp.Visible, aRows);
         end;
       if BtnLeftUp.Visible then
@@ -2550,7 +2554,9 @@ end;
 
 procedure TCustomECTabCtrl.MIAddTab(Sender: TObject);
 begin
+  include(Flags, ectfUserInitChange);
   AddTab(NewTabPosition, etcoNewTabActive in Options);
+  exclude(Flags, ectfUserInitChange);
 end;
 
 procedure TCustomECTabCtrl.MICloseAllClick(Sender: TObject);
@@ -2566,12 +2572,14 @@ end;
 
 procedure TCustomECTabCtrl.MICloseTabClick(Sender: TObject);
 begin
-  DeleteTab(TMenuItem(Sender).Tag);
+  DoUserDeleteTab(TMenuItem(Sender).Tag);
 end;
 
 procedure TCustomECTabCtrl.MIFoldedTabClick(Sender: TObject);
 begin
+  include(Flags, ectfUserInitChange);
   SwitchFoldedTab(Tabs.IDToIndex(TMenuItem(Sender).Tag), DropDownMenu.Tag);
+  exclude(Flags, ectfUserInitChange);
 end;
 
 procedure TCustomECTabCtrl.MIFoldToClick(Sender: TObject);
@@ -2631,7 +2639,12 @@ begin
               (not BtnRightDown.Enabled and PtInRect(BtnRightDown.BoundsRect, Point(X, Y))) then exit;  { Exit! }
           if Hovered>=0 then
             case TabHovered of
-              ethTabCaption: TabIndex:=Hovered;
+              ethTabCaption:
+                begin
+                  include(Flags, ectfUserInitChange);
+                  TabIndex:=Hovered;
+                  exclude(Flags, ectfUserInitChange);
+                end;
               ethCloseButton:
                 begin
                   include(Flags, ectfCloseBtnDown);
@@ -2643,14 +2656,14 @@ begin
                   ShowDropDownMenu(Hovered);
                   exit;  { Exit! }
                 end;
-            end;  { case }
+            end;  {case}
         end else
-        if (etcoMiddleButtonClose in Options) and (Hovered>=0) and (etoCloseable in Tabs[Hovered].Options) then
-          begin
-            DeleteTab(Hovered);
-            CalcHoveredTab(X, Y);
-            exit;  { Exit! }
-          end;
+          if (etcoMiddleButtonClose in Options) and (Hovered>=0) and (etoCloseable in Tabs[Hovered].Options) then
+            begin
+              DoUserDeleteTab(Hovered);
+              CalcHoveredTab(X, Y);
+              exit;  { Exit! }
+            end;
       if (etcoAutoDragTabs in Options) and (length(VisibleTabs)>1) then
         begin
           if aTab>=0 then
@@ -2664,7 +2677,7 @@ begin
                         then include(Flags, ectfDragFolding)
                         else exclude(Flags, ectfDragFolding);
                     end else
-                    exclude(Flags, ectfDragFolding);
+                      exclude(Flags, ectfDragFolding);
                 end else
                 begin  { not movable }
                   if etoCanBeFolded in Tabs[aTab].Options
@@ -2675,7 +2688,7 @@ begin
               if ClickedTabIndex>=0 then BeginDrag(False, 8);
             end;
         end else
-        ClickedTabIndex:=-1;
+          ClickedTabIndex:=-1;
     end;
 end;
 
@@ -2704,15 +2717,15 @@ begin
           if assigned(OnCloseTabClicked) then OnCloseTabClicked(self);
           if etoCloseable in Tabs[Hovered].Options then
             begin
-              DeleteTab(Hovered);
+              DoUserDeleteTab(Hovered);
               CalcHoveredTab(X, Y);
             end;
           exclude(Flags, ectfCloseBtnDown);
         end else
-        if RowCount>1 then CalcHoveredTab(X, Y);
+          if RowCount>1 then CalcHoveredTab(X, Y);
       ClickedTabIndex:=-1;
     end else
-    if (Button=mbMiddle) and (ClickedTabIndex>=0) then EndDrag(True);
+      if (Button=mbMiddle) and (ClickedTabIndex>=0) then EndDrag(True);
 end;
 
 procedure TCustomECTabCtrl.MoveNext(AKeepVisible: Boolean);
@@ -2730,7 +2743,7 @@ begin
                 {$IFDEF DBGTAB} DebugLn('TCustomECTabCtrl.MoveNext/IsSameVisiRow'); {$ENDIF}
                 if (aNext<Tabs.Count) and not IsTabVisible(aNext) then ScrollRight;
               end else
-              MakeTabAvailable(aNext, False);
+                MakeTabAvailable(aNext, False);
         end;
       MoveTab(TabIndex, aNext);
       if AKeepVisible then EndUpdate;
@@ -2752,7 +2765,7 @@ begin
                 {$IFDEF DBGTAB} DebugLn('TCustomECTabCtrl.MovePrevious/IsSameVisiRow'); {$ENDIF}
                 if (aPrevious>=0) and not IsTabVisible(aPrevious) then ScrollLeft;
               end else
-              MakeTabAvailable(aPrevious, False);
+                MakeTabAvailable(aPrevious, False);
         end;
       MoveTab(TabIndex, aPrevious);
       if AKeepVisible then EndUpdate;
@@ -2780,6 +2793,7 @@ var aDetails: TThemedElementDetails;
 
   procedure PaintContent(AIndex: Integer);
   var aCloseDetails: TThemedElementDetails;
+      aGlyph: TPortableNetworkGraphic;
       aPos: SmallInt;
       aTab: TECTab;
   begin
@@ -2818,11 +2832,7 @@ var aDetails: TThemedElementDetails;
         Canvas.Font.Size:=Font.Size;
         Canvas.Font.Style:=Font.Style;
       end else
-      begin
-        Canvas.Font.Color:=aTab.FontOptions.FontColor;
-        Canvas.Font.Size:=aTab.FontOptions.FontSize;
-        Canvas.Font.Style:=aTab.FontOptions.FontStyles;
-      end;
+        aTab.FontOptions.ApplyTo(Canvas.Font, clBtnText);
     Canvas.Brush.Style:=bsClear;
     if (TabPosition in [tpTop, tpBottom]) or (etcoVertTabsHorizontal in Options)
       then ThemeServices.DrawText(Canvas, aDetails, aTab.Text, aTab.CaptionRect, aFlags, 0)
@@ -2836,36 +2846,27 @@ var aDetails: TThemedElementDetails;
       begin
         if bCloseImageList then
           begin
-            if bEnabled then
-              begin
-                if (VisibleTabs[AIndex].Index<>Hovered) or (TabHovered<>ethCloseButton) then
-                  begin
-                    if VisibleTabs[AIndex].Index<>TabIndex
-                      then aCloseDetails:=ThemeServices.GetElementDetails(tbPushButtonPressed)
-                      else aCloseDetails:=aDetails;
-                  end else
-                  aCloseDetails:=ThemeServices.GetElementDetails(tbPushButtonHot);
-              end else
-              aCloseDetails:=aDetails;
+            if bEnabled
+              then if (VisibleTabs[AIndex].Index<>Hovered) or (TabHovered<>ethCloseButton)
+                     then if VisibleTabs[AIndex].Index<>TabIndex
+                            then aCloseDetails:=ThemeServices.GetElementDetails(tbPushButtonPressed)
+                            else aCloseDetails:=aDetails
+                     else aCloseDetails:=ThemeServices.GetElementDetails(tbPushButtonHot)
+              else aCloseDetails:=aDetails;
             ThemeServices.DrawIcon(Canvas, aCloseDetails, Point(aTab.CloseBtnRect.Left+cCloseBtnBorder, aTab.CloseBtnRect.Top+cCloseBtnBorder), Images, ImageIndexClose);
           end else
           begin
             aPos:=aTab.CloseBtnRect.Left+cCloseBtnBorder;
-            if bEnabled then
-              begin
-                if (VisibleTabs[AIndex].Index=Hovered) and (TabHovered=ethCloseButton) then
-                  begin
-                    if not (ectfCloseBtnDown in Flags)
-                      then Canvas.Draw(aPos, aTab.CloseBtnRect.Top+cCloseBtnBorder, Glyphs[gkCloseHigh])
-                      else Canvas.Draw(aPos, aTab.CloseBtnRect.Top+cCloseBtnBorder, Glyphs[gkCloseNorm]);
-                  end else
-                  begin
-                    if AIndex<>VisibleTabIndex
-                      then Canvas.Draw(aPos, aTab.CloseBtnRect.Top+cCloseBtnBorder, Glyphs[gkCloseInact])
-                      else Canvas.Draw(aPos, aTab.CloseBtnRect.Top+cCloseBtnBorder, Glyphs[gkCloseNorm]);
-                  end;
-              end else
-              Canvas.Draw(aPos, aTab.CloseBtnRect.Top+cCloseBtnBorder, Glyphs[gkCloseDis]);
+            if bEnabled
+              then if (VisibleTabs[AIndex].Index=Hovered) and (TabHovered=ethCloseButton)
+                     then if not (ectfCloseBtnDown in Flags)
+                            then aGlyph:=Glyphs[gkCloseHigh]
+                            else aGlyph:=Glyphs[gkCloseNorm]
+                     else if AIndex<>VisibleTabIndex
+                            then aGlyph:=Glyphs[gkCloseInact]
+                            else aGlyph:=Glyphs[gkCloseNorm]
+              else aGlyph:=Glyphs[gkCloseDis];
+            Canvas.Draw(aPos, aTab.CloseBtnRect.Top+cCloseBtnBorder, aGlyph);
           end;
       end;
   end;
@@ -2880,14 +2881,14 @@ var aRect: TRect;
     dec(aRect.Bottom, ABottom);
   end;
 
-var i, aFrom, aRowCountM1: Integer;
-    aColor: TColor;
-    aRow: SmallInt;
-    b: Boolean;
-const caAlignment: array [Boolean, TAlignment] of Cardinal = ((DT_LEFT, DT_RIGHT, DT_CENTER),
+const caAlignment: array[Boolean, TAlignment] of Cardinal = ((DT_LEFT, DT_RIGHT, DT_CENTER),
         (DT_RIGHT or DT_RTLREADING, DT_LEFT or DT_RTLREADING, DT_CENTER or DT_RTLREADING));
       caDropDownGlyphs: array[0..3] of TGlyphDesign = (egdArrowDown, egdArrowsUD, egdArrowRight, egdArrowLeft);
-      cFocusIndent: SmallInt = 3;
+      cFocusIndent = 3;
+var aColor: TColor;
+    aRow: SmallInt;
+    b: Boolean;
+    i, aFrom, aRowCountM1: Integer;
 begin
   if ectfCalculate in Flags then Calculate;
   {$IFDEF DBGTAB} DebugLn('TCustomECTabCtrl.Paint'); {$ENDIF}
@@ -2900,16 +2901,14 @@ begin
   Canvas.Pen.Style:=psSolid;
   bR2L:=IsRightToLeft;
   bEnabled:=IsEnabled;
-  if bEnabled
-    then aDetails:=ThemeServices.GetElementDetails(tbPushButtonNormal)
-    else aDetails:=ThemeServices.GetElementDetails(tbPushButtonDisabled);
-  aFlags:= DT_VCENTER or DT_SINGLELINE or DT_END_ELLIPSIS or caAlignment[bR2L, Alignment];
+  aDetails:=ArBtnDetails[bEnabled, False];
+  aFlags:=DT_VCENTER or DT_SINGLELINE or DT_END_ELLIPSIS or caAlignment[bR2L, Alignment];
   Canvas.Clipping:=True;
   case TabPosition of
-    tpTop: Canvas.ClipRect:=Rect(0, 0, Width, Height-BottomSize-1);
+    tpTop:    Canvas.ClipRect:=Rect(0, 0, Width, Height-BottomSize-1);
     tpBottom: Canvas.ClipRect:=Rect(0, BottomSize+1, Width, Height);
-    tpLeft: Canvas.ClipRect:=Rect(0, 0, Width-BottomSize-1, Height);
-    tpRight: Canvas.ClipRect:=Rect(BottomSize+1, 0, Width, Height);
+    tpLeft:   Canvas.ClipRect:=Rect(0, 0, Width-BottomSize-1, Height);
+    tpRight:  Canvas.ClipRect:=Rect(BottomSize+1, 0, Width, Height);
   end;
   aRowCountM1:=RowCount-1;
   if length(VisibleTabs)>0 then
@@ -2917,7 +2916,7 @@ begin
       i:=ord(TabPosition);
       if (i>=2) and (etcoVertTabsHorizontal in Options) then i:=ord(etcoReversed in Options);
       aGlyphDesign:=caDropDownGlyphs[i];
-      bCloseImageList:= (assigned(Images) and (ImageIndexClose>=0));
+      bCloseImageList:=(assigned(Images) and (ImageIndexClose>=0));
     end;
   for aRow:=aRowCountM1 downto 0 do
     begin
@@ -2946,8 +2945,8 @@ begin
           begin
             aRect:=VisibleTabs[i].Tab.BoundRect;
             if TabPosition in [tpTop, tpBottom]
-              then b:= ((aRect.Right>0) and (aRect.Left<Width))
-              else b:= ((aRect.Bottom>0) and (aRect.Top<Height));
+              then b:=(aRect.Right>0) and (aRect.Left<Width)
+              else b:=(aRect.Bottom>0) and (aRect.Top<Height);
             if b then
               begin
                 case Style of
@@ -2981,8 +2980,8 @@ begin
     begin
       aRect:=Tabs[TabIndex].BoundRect;
       if TabPosition in [tpTop, tpBottom]
-        then b:= ((aRect.Right>0) and (aRect.Left<Width))
-        else b:= ((aRect.Bottom>0) and (aRect.Top<Height));
+        then b:=(aRect.Right>0) and (aRect.Left<Width)
+        else b:=(aRect.Bottom>0) and (aRect.Top<Height);
       if b then
         begin
           case Style of
@@ -2998,7 +2997,7 @@ begin
            eosFinePanel:
              begin
                aColor:=GetColorResolvingDefault(ColorActiveTab, cl3DLight);
-                if not bEnabled then aColor:=GetMonochromaticColor(aColor);
+               if not bEnabled then aColor:=GetMonochromaticColor(aColor);
                Canvas.DrawFinePanelBkgnd(Tabs[TabIndex].PaintRect, bvRaised, 3,
                  clDefault, clDefault, aColor, True);
              end;
@@ -3006,10 +3005,10 @@ begin
           if Focused then
             begin
               case TabPosition of
-               tpTop: DeflateFocusRect(cFocusIndent, cFocusIndent, cFocusIndent, 0);
+               tpTop:    DeflateFocusRect(cFocusIndent, cFocusIndent, cFocusIndent, 0);
                tpBottom: DeflateFocusRect(cFocusIndent, 0, cFocusIndent, cFocusIndent);
-               tpLeft: DeflateFocusRect(cFocusIndent, cFocusIndent, 0, cFocusIndent);
-               tpRight: DeflateFocusRect(0, cFocusIndent, cFocusIndent, cFocusIndent);
+               tpLeft:   DeflateFocusRect(cFocusIndent, cFocusIndent, 0, cFocusIndent);
+               tpRight:  DeflateFocusRect(0, cFocusIndent, cFocusIndent, cFocusIndent);
               end;
               LCLIntf.SetBkColor(Canvas.Handle, ColorToRGB(clBtnFace));
               LCLIntf.DrawFocusRect(Canvas.Handle, aRect);
@@ -3043,7 +3042,7 @@ begin
               Canvas.Line(i, 0, i, aRect.Top);
               Canvas.Line(i, aRect.Bottom, i, Height);
             end;
-        end;  { case }
+        end;  {case}
       if b then PaintContent(VisibleTabIndex);
     end else
     begin
@@ -3070,7 +3069,7 @@ begin
               i:=1+BottomSize;
               Canvas.Line(i, 0, i, Height);
             end;
-        end;  { case }
+        end;  {case}
     end;
   if BottomSize>=0 then
     begin
@@ -3088,7 +3087,7 @@ begin
             Canvas.Line(i, 0, i, Height);
           end;
         tpRight: Canvas.Line(0, 0, 0, Height);
-      end;  { case }
+      end;  {case}
     end;
   Canvas.Clipping:=True;
 end;
@@ -3099,7 +3098,7 @@ begin
   {$IFDEF DBGTAB} DebugLn('RecalcInv, UC=', intToStr(UpdateCount)); {$ENDIF}
   if UpdateCount=0 then
     begin
-      bLoading:= (csLoading in ComponentState);
+      bLoading:=(csLoading in ComponentState);
       if not bLoading then CalcLayoutAndTabSizes;
       if AutoSize and (ectfInvPrefSize in Flags) then
         begin
@@ -3146,29 +3145,27 @@ begin
   if VisibleTabIndex<high(VisibleTabs)
     then aNext:=VisibleTabs[VisibleTabIndex+1].Index
     else if etcoLoopTabSelection in Options then
-      begin
-        aNext:=VisibleTabs[0].Index;
-        bLoop:=True;
-      end;
+           begin
+             aNext:=VisibleTabs[0].Index;
+             bLoop:=True;
+           end;
   if aNext>=0 then
     begin
       if BtnLeftUp.Visible then
-        begin
-          if IsTabVisible(TabIndex) and IsSameVisiRow(VisibleTabIndex, aNext) then
-            begin
-              if not IsTabVisible(aNext) then
-                begin
-                  if not bLoop
-                    then FPosLeftRight:=Math.min(FPosLeftRight+1, PosLRMax)
-                    else FPosLeftRight:=0;
-                  DoBtnsEnabled;
-                end;
-            end else
-            begin
-              MakeTabAvailable(aNext, True);
-              exit;  { Exit! }
-            end;
-        end;
+        if IsTabVisible(TabIndex) and IsSameVisiRow(VisibleTabIndex, aNext) then
+          begin
+            if not IsTabVisible(aNext) then
+              begin
+                if not bLoop
+                  then FPosLeftRight:=Math.min(FPosLeftRight+1, PosLRMax)
+                  else FPosLeftRight:=0;
+                DoBtnsEnabled;
+              end;
+          end else
+          begin
+            MakeTabAvailable(aNext, True);
+            exit;  { Exit! }
+          end;
       TabIndex:=aNext;
     end;
 end;
@@ -3182,36 +3179,35 @@ begin
   if VisibleTabIndex>0
     then aPrevious:=VisibleTabs[VisibleTabIndex-1].Index
     else if etcoLoopTabSelection in Options then
-      begin
-        aPrevious:=VisibleTabs[high(VisibleTabs)].Index;
-        bLoop:=True;
-      end;
+           begin
+             aPrevious:=VisibleTabs[high(VisibleTabs)].Index;
+             bLoop:=True;
+           end;
   if aPrevious>=0 then
     begin
       if BtnLeftUp.Visible then
-        begin
-          if IsTabVisible(TabIndex) and IsSameVisiRow(VisibleTabIndex, aPrevious) then
-            begin
-              if not IsTabVisible(aPrevious) then
-                begin
-                  if not bLoop
-                    then FPosLeftRight:=Math.max(FPosLeftRight-1, 0)
-                    else FPosLeftRight:=PosLRMax;
-                  DoBtnsEnabled;
-                end;
-            end else
-            begin
-              MakeTabAvailable(aPrevious, True);
-              exit;  { Exit! }
-            end;
-        end;
+        if IsTabVisible(TabIndex) and IsSameVisiRow(VisibleTabIndex, aPrevious) then
+          begin
+            if not IsTabVisible(aPrevious) then
+              begin
+                if not bLoop
+                  then FPosLeftRight:=Math.max(FPosLeftRight-1, 0)
+                  else FPosLeftRight:=PosLRMax;
+                DoBtnsEnabled;
+              end;
+          end else
+          begin
+            MakeTabAvailable(aPrevious, True);
+            exit;  { Exit! }
+          end;
       TabIndex:=aPrevious;
     end;
 end;
 
 procedure TCustomECTabCtrl.SelectRowDown;
 begin
-  if RowIndex>0 then TabIndex:=Math.max(VisibleTabIndex-VisiTabsInRow[RowIndex].Count, VisibleTabs[0].Index);
+  if RowIndex>0 then
+    TabIndex:=Math.max(VisibleTabIndex-VisiTabsInRow[RowIndex].Count, VisibleTabs[0].Index);
 end;
 
 procedure TCustomECTabCtrl.SelectRowUp;
@@ -3248,10 +3244,10 @@ procedure TCustomECTabCtrl.ShowDropDownMenu(AIndex: Integer);
     DropDownMenu.Items.Add(aMI);
   end;
 
-var aMI: TMenuItem;
-    i, aVert, aVisiCountM1: Integer;
+var aDDPoint: TPoint;
+    aMI: TMenuItem;
     bRev, bSep: Boolean;
-    aDDPoint: TPoint;
+    i, aVert, aVisiCountM1: Integer;
 begin
   DropDownMenu.Items.Clear;
   DropDownMenu.BidiMode:=BiDiMode;
@@ -3308,7 +3304,7 @@ begin
                 DropDownMenu.Items.Add(CreateMIParams(rsETCCloseAll, -1, Tabs[AIndex].ID, True, @MICloseAllClick));
               bSep:=True;
             end else
-            aMI.Free;
+              aMI.Free;
         end;
     end;
   if etoCanBeFolded in Tabs[AIndex].Options then
@@ -3329,7 +3325,7 @@ begin
           DropDownMenu.Items.Add(aMI);
           bSep:=True;
         end else
-        aMI.Free;
+          aMI.Free;
     end;
   if not (etcoDropDownFoldingOnly in Options) then
     begin
@@ -3358,8 +3354,8 @@ begin
             inc(i);
           aVert:=0;
           if TabPosition in [tpLeft, tpRight] then aVert:=4;
-          bRev:= (etcoReversed in Options);
-          if aVert=0 then bRev:= (bRev xor IsRightToLeft);
+          bRev:=(etcoReversed in Options);
+          if aVert=0 then bRev:=(bRev xor IsRightToLeft);
           aMI:=TMenuItem.Create(DropDownMenu);
           aMI.Caption:=rsETCMoveTab;
           if not bRev then
@@ -3417,16 +3413,24 @@ begin
 end;
 
 procedure TCustomECTabCtrl.SwitchFoldedTab(AIndex, AFolder: Integer);
+var bAllow, bEvents: Boolean;
 begin
-  BeginUpdate;
-  DoSwitchFoldedTab(AIndex, AFolder);
-  if not (etcoKeepOrigPosFoldTab in Options) then
+  bAllow:=True;
+  bEvents:=not (etcoDontOnChangeOnCode in Options) or (ectfUserInitChange in Flags);
+  if bEvents and assigned(OnChanging) then OnChanging(self, bAllow);
+  if bAllow then
     begin
-      Tabs[AIndex].Index:=AFolder;
-      TabIndex:=AFolder;
-    end else
-    TabIndex:=AIndex;
-  EndUpdate;
+      BeginUpdate;
+      DoSwitchFoldedTab(AIndex, AFolder);
+      if not (etcoKeepOrigPosFoldTab in Options) then
+        begin
+          Tabs[AIndex].Index:=AFolder;
+          FTabIndex:=AFolder;
+        end else
+          FTabIndex:=AIndex;
+      if bEvents and assigned(OnChange) then OnChange(self);
+      EndUpdate;
+    end;
 end;
 
 procedure TCustomECTabCtrl.TabChanged(ARecalculate: Boolean);
@@ -3441,7 +3445,7 @@ begin
           then exclude(VisibleTabs[i].Tab.Flags, etfParentFont);
       Redraw;
     end else
-    RecalcInvalidate;
+      RecalcInvalidate;
 end;
 
 procedure TCustomECTabCtrl.UnfoldAllTabs(AFolder: Integer);
@@ -3570,7 +3574,7 @@ const cRecalcOpts = [etcoAddTabButton, etcoAutoSizeTabsHeight, etcoAutoSizeTabsW
                      etcoEnlargeTabsToFit, etcoReversed, etcoShrinkTabsToMin, etcoVertTabsHorizontal];
 var aChangedOpts: TECTabCtrlOptions;
 begin
-  aChangedOpts:= FOptions><AValue;
+  aChangedOpts:=FOptions><AValue;
   if FOptions=AValue then exit;
   FOptions:=AValue;
   if etcoAddTabButton in aChangedOpts then
@@ -3580,7 +3584,7 @@ begin
           BtnAdd:=TCustomECSpeedBtn.Create(self);
           with BtnAdd do
             begin
-              if IsColorDark(clBtnText)
+              if IsColorDark(ColorToRGB(clBtnText))
                 then GlyphColor:=$008B2F
                 else GlyphColor:=$2FF76D;
               GlyphDesign:=egdMathBigPlus;
@@ -3591,7 +3595,7 @@ begin
               Parent:=self;
             end;
         end else
-        FreeAndNil(BtnAdd);
+          FreeAndNil(BtnAdd);
     end;
   if (aChangedOpts*cRecalcOpts)<>[] then
     begin
@@ -3660,17 +3664,18 @@ begin
 end;
 
 procedure TCustomECTabCtrl.SetTabIndex(AValue: Integer);
-var bAllow: Boolean;
+var bAllow, bEvents: Boolean;
 begin
   if (FTabIndex=AValue) and not (ectfExDeletingTab in Flags) then exit;
   bAllow:=True;
-  if assigned(OnChanging) then OnChanging(self, bAllow);
+  bEvents:=not (etcoDontOnChangeOnCode in Options) or (ectfUserInitChange in Flags);
+  if bEvents and assigned(OnChanging) then OnChanging(self, bAllow);
   if bAllow then
     begin
       if (AValue>=0) and (FTabIndex>=0) and (FTabIndex<Tabs.Count-1)
         then Tabs[AValue].PreviousID:=Tabs[FTabIndex].ID;
       FTabIndex:=AValue;
-      if assigned(OnChange) then OnChange(self);
+      if bEvents and assigned(OnChange) then OnChange(self);
       exclude(Flags, ectfInvPrefSize);
       RecalcInvalidate;
     end;

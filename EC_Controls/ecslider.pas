@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,8 +34,8 @@ unit ECSlider;
 interface
 
 uses
-  Classes, SysUtils, Controls, ECScale, ECTypes, Forms, Graphics, ImgList, Math, LCLIntf,
-  {$IFDEF DBGSLIDER} LCLProc, {$ENDIF} LCLType, LMessages, Themes, Types;
+  Classes, SysUtils, Controls, Forms, Graphics, ImgList, LCLIntf, {$IFDEF DBGSLIDER} LCLProc, {$ENDIF}
+  LCLType, LMessages, Math, Themes, Types, ECScale, ECTypes;
 
 type
   {$PACKENUM 2}
@@ -43,8 +43,16 @@ type
   TProgressStyle = (epsSimple, epsAesthetic, epsGradient, epsReversedGrad, epsOrthogonal,
                     epsOrthoTwin, epsGradLines, epsRipple);
   TProgressVisibility = (epvNone, epvProgress, epvFull);
+  TSFlag = (esfCursorLock,
+            esfDragAreaEntered,
+            esfDragState,
+            esfPrevCTRLDown,         { wheter CTRL was pressed in previous MouseMove }
+            esfPrevInvRectPainted,
+            esfRealReversed,
+            esfWasEnabled);          { IsEnabled in previous Paint; }
+  TSFlags = set of TSFlag;
   TTickMarks = (etmBottomRight, etmTopLeft, etmBoth);
-  { Event }
+  { event }
   TOnDrawProgressBMP = procedure(Sender: TObject; AProgress: TBitmap) of object;
   
   { TBaseECSlider }
@@ -100,7 +108,7 @@ type
   protected const
     cDefProgParameter = 4;
   protected
-    FGrooveBevelWidth: SmallInt;  { GrooveBMP }
+    FGrooveBevelWidth: SmallInt;
     FGrooveInnerLength: SmallInt;  { FGrooveMax-FGrooveMin }
     FGrooveMax: SmallInt;  
     FGrooveMin: SmallInt; 
@@ -115,16 +123,14 @@ type
     FScale: TECScale;
   protected
     Background: TBitmap;
+    Flags: TSFlags;
     GrooveBMP: TBitmap;
     FGrooveRect: TRect;
     FMinL, FMaxL, FTLStart: Integer;
     FCaptionPoint: TPoint;
     FImagePoint: TPoint;
-    FPrevInvRectPainted: Boolean;
     RealCaptionPos: TObjectPos;  { RealXxxxx fields takes BiDiMode into account }
     RealImagePos: TObjectPos;
-    RealReversed: Boolean;
-    WasEnabled: Boolean;  { state of IsEnabled from previous Paint }         
     procedure CalcGrooveMiddle; virtual; abstract;
     procedure CalcInvalidRectDyn; virtual; abstract;
     procedure CalcInvalidRectStat; virtual; abstract;
@@ -142,7 +148,6 @@ type
     procedure DrawGroove; virtual;
     procedure FontChanged(Sender: TObject); override;
     function GetGrooveOverhang({%H-}AFullGrooveWidth: Integer): Integer; virtual;
-    function GetIndentedNonZeroWidth(AWidth: Integer): Integer;
     function GetKnobOverhangScale({%H-}AGrooveWidth: Integer): Integer; virtual; 
     function GetPosFromCoord(ACoord: Integer): Double;
     function GetRelGroovePos: Integer; virtual; abstract;
@@ -153,7 +158,8 @@ type
     procedure PaintSelf(AEnabled: Boolean); virtual; abstract;
     procedure RecalcRedraw; override;
     procedure Redraw3DColorAreas; override;
-    procedure SetGrooveBounds(x1, x2, y1, y2: Integer; AVert: Boolean); virtual;
+    procedure SetGrooveBoundsHorz(x1, x2, y1, y2: Integer); virtual; abstract;
+    procedure SetGrooveBoundsVert(x1, x2, y1, y2: Integer); virtual; abstract;
     procedure SetMax(const AValue: Double); virtual;
     procedure SetMin(const AValue: Double); virtual;
     procedure SetPosition(AValue: Double); virtual; abstract;
@@ -161,7 +167,7 @@ type
     procedure TextChanged; override;
     procedure WMSize(var Message: TLMSize); message LM_SIZE;
   public
-    constructor Create(TheOwner: TComponent); override;
+    constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     procedure BeginUpdate; override;
     procedure EndUpdate(Recalculate: Boolean=True); override;
@@ -196,7 +202,6 @@ type
     property ScaleTickPos: TTickMarks read FScaleTickPos write SetScaleTickPos default etmBottomRight;
     property ScaleValuePos: TTickMarks read FScaleValuePos write SetScaleValuePos default etmBottomRight;
     property Style default eosButton;
-    { Events }
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnDrawProgressBMP: TOnDrawProgressBMP read FOnDrawProgressBMP write FOnDrawProgressBMP; 
   end;
@@ -219,7 +224,6 @@ type
   { TCustomECSlider }
   TCustomECSlider = class(TBaseECSlider)
   private
-    FCursorLock: Boolean;
     FDiscreteChange: Double;
     FIncrement: Double;
     FKnob: TECSliderKnob;
@@ -262,12 +266,13 @@ type
     procedure PlaceKnob(AInvalidate: Boolean);
     procedure Redraw3DColorAreas; override;
     procedure SetCursor(Value: TCursor); override;
-    procedure SetGrooveBounds(x1, x2, y1, y2: Integer; AVert: Boolean); override;
+    procedure SetGrooveBoundsHorz(x1, x2, y1, y2: Integer); override;
+    procedure SetGrooveBoundsVert(x1, x2, y1, y2: Integer); override;
     procedure SetKnobBackground;
     procedure SetPosition(AValue: Double); override;
     procedure StyleChanged(AValue: TObjectStyle); override;
   public
-    constructor Create(TheOwner: TComponent); override;
+    constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     procedure BeginUpdate; override;
     procedure EndUpdate(Recalculate: Boolean=True); override;
@@ -375,16 +380,18 @@ type
 
 implementation
 
+const caRealPositions: array[TObjectPos, Boolean] of TObjectPos =
+        ((eopTop, eopTop), (eopRight, eopLeft), (eopBottom, eopBottom), (eopLeft, eopRight));
+
 { TBaseECSlider }
 
-constructor TBaseECSlider.Create(TheOwner : TComponent);
+constructor TBaseECSlider.Create(AOwner : TComponent);
 begin
-  inherited Create (TheOwner);
+  inherited Create(AOwner);
   ControlStyle:=ControlStyle+[csClickEvents, csDoubleClicks, csSetCaption];
-  DoubleBuffered:=True;
   Align:=alNone;
   AutoSize:=True;
-  WasEnabled:=True;
+  Flags:=[esfWasEnabled];
   FScaleFontOptions:=TFontOptions.Create(self);
   with FScaleFontOptions do
     begin
@@ -403,8 +410,7 @@ begin
   ParentFont:=True;
   FPosition:=0; 
   GrooveBMP:=TBitmap.Create;
-  with GrooveBMP do
-    Canvas.Brush.Style:=bsSolid;
+  GrooveBMP.Canvas.Brush.Style:=bsSolid;
   ProgressColor:=clDefault;
   ProgressColor2:=clDefault;
   FProgressMark:=epmTickSide;
@@ -435,12 +441,12 @@ begin
   inherited Destroy;
 end;
 
-procedure TBaseECSlider.CalculatePreferredSize(var PreferredWidth, 
-            PreferredHeight: Integer; WithThemeSpace: Boolean);
+procedure TBaseECSlider.CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer;
+            WithThemeSpace: Boolean);
 var aCaptionSize, aGrooveWidth, aImageSize, aKnobOverhang, aSize: Integer;
     bHorizontal: Boolean;	
 begin
-  bHorizontal:= (Orientation=eooHorizontal);
+  bHorizontal:=(Orientation=eooHorizontal);
   aGrooveWidth:=GrooveWidth+2*GrooveBevelWidth; 
   aKnobOverhang:=GetKnobOverhangScale(aGrooveWidth);
   Canvas.Font.Assign(Font);
@@ -450,16 +456,18 @@ begin
   inc(aSize, Math.max(FScale.GetPreferredSize(Canvas, bHorizontal, 
     ScaleTickPos<>etmBottomRight, ScaleValuePos<>etmBottomRight), aKnobOverhang));
   inc(aSize, Math.max(FScale.GetPreferredSize(Canvas, bHorizontal, 
-    ScaleTickPos<>etmTopLeft, ScaleValuePos<>etmTopLeft), aKnobOverhang)); 
-  Canvas.Font.Size:=self.Font.Size;
-  Canvas.Font.Style:=self.Font.Style;
-  if HasCaption 
-    then if bHorizontal
-           then aCaptionSize:=Canvas.TextHeight(Caption)
-           else aCaptionSize:=Canvas.TextWidth(Caption)
-    else aCaptionSize:=0;
+    ScaleTickPos<>etmTopLeft, ScaleValuePos<>etmTopLeft), aKnobOverhang));
+  if HasCaption then
+    begin
+      Canvas.Font.Size:=self.Font.Size;
+      Canvas.Font.Style:=self.Font.Style;
+      if bHorizontal
+        then aCaptionSize:=Canvas.TextHeight(Caption)
+        else aCaptionSize:=Canvas.TextWidth(Caption);
+    end else
+      aCaptionSize:=0;
   if bHorizontal then
-    begin  { Horizontal }
+    begin  { horizontal }
       if (ImageIndex>=0) and assigned(FImages) 
         then aImageSize:=FImages.Height
         else aImageSize:=0;
@@ -490,14 +498,14 @@ begin
             aSize:=Math.max(Math.max(aSize, aImageSize), aCaptionSize);
         end;
     end else 
-    begin  { Vertical }
+    begin  { vertical }
       if (ImageIndex>=0) and assigned(FImages) then
         begin
           if (ImagePos in [eopTop, eopBottom]) or (aCaptionSize>0)
             then aSize:=Math.max(aSize, Math.max(aCaptionSize, FImages.Width))
             else aSize:=Math.max(aSize, aCaptionSize+Indent+FImages.Width);
         end else 
-        aSize:=Math.max(aSize, aCaptionSize);
+          aSize:=Math.max(aSize, aCaptionSize);
     end;
   inc(aSize, 2*(Indent+GetBorderWidth)); 
   if bHorizontal then
@@ -521,19 +529,18 @@ procedure TBaseECSlider.Calculate;
 var aMax, aSize, hI, hK, wI, wK, sG, sV, tlS, brS, x1, x2, y1, y2: Integer;
     eC: TSize;
   { br - bottomright, e - extent, h - Height, tl - topleft,  s - Size, w - Width, 
-    C - Caption, G - Groove, I - Image, K - Knob, U - Units }
+    C - Caption, G - Groove, I - Image, K - Knob, U - Units, V - Values }
 
   function IndentCoord(AObjectCoord, AObjectSize: Integer): Integer;  inline;
   begin
-    if AObjectSize>0 
-      then Result:=AObjectCoord+AObjectSize+Indent
-      else Result:=AObjectCoord;
+    Result:=AObjectCoord;
+    if AObjectSize>0 then inc(Result, AObjectSize+Indent);
   end;
 
 begin
   {$IFDEF DBGSLIDER} DebugLn('TBaseECSlider.Calculate'); {$ENDIF}
   if assigned(FImages) and (ImageIndex>=0) and (ImageIndex<FImages.Count) then
-    begin  { Set size of Image }
+    begin  { set size of Image }
       wI:=FImages.Width;
       hI:=FImages.Height;
     end else
@@ -542,7 +549,7 @@ begin
       hI:=0;
     end;
   Background.Canvas.Font.Assign(Font);
-  if HasCaption  { Set size of Caption }
+  if HasCaption  { set size of Caption }
     then eC:=Background.Canvas.TextExtent(Caption)
     else eC:=Size(0, 0);
   if (FScale.ValueVisible>evvNone) and ((FScale.ValueFormat=esvfDate) or (FScale.ValueFormat=esvfTime)) then
@@ -555,7 +562,7 @@ begin
   y2:=Height-y1;
   x1:=y1;
   if Orientation=eooVertical then
-    begin  { Vertical }
+    begin  { vertical }
       aMax:=0;
       if wI>0 then
         case ImagePos of
@@ -572,10 +579,9 @@ begin
               FImagePoint.Y:=y2;
               y2:=y2-Indent;
             end;
-          eopLeft, eopRight: 
-            if eC.cx>0 
-              then aMax:=wI+Indent
-              else aMax :=wI;
+          otherwise
+            aMax:=wI;
+            if eC.cx>0 then inc(aMax, Indent);
         end;
       if (eC.cx+wI)>0 then
         begin           
@@ -592,10 +598,8 @@ begin
                 if eC.cx>0 then inc(FImagePoint.X, Indent);
               end;
             otherwise 
-              begin
-                FCaptionPoint.X:=(Width-eC.cx) div 2;
-                aMax:=eC.cy; 
-              end;
+              FCaptionPoint.X:=(Width-eC.cx) div 2;
+              aMax:=eC.cy;
           end;
           if ImagePos in [eopRight, eopLeft] then    
             begin
@@ -616,18 +620,17 @@ begin
               if (eC.cy>0) or (ImagePos in [eopRight, eopLeft]) then dec(y2, Indent);
             end;
         end;
-      sV:=0;  { Width of Values }
+      sV:=0;  { width of Values }
       if FScale.ValueVisible<>evvNone then
         begin
-          Background.Canvas.SetFontParams(FScale.FontOrientation, 
-            FScaleFontOptions.FontSize, FScaleFontOptions.FontStyles);
+          FScaleFontOptions.ApplyTo(Background.Canvas.Font, clBtnText);
           sV:=FScale.GetPreferredValuesWidth(Background.Canvas);
         end;
       CorrectGrooveLength(y1, y2, True);  { TECProgressBar.GetGrooveLength needs Scale.Font set }
       if FScale.TickVisible<>etvNone 
         then aSize:=FScale.TickIndent+FScale.TickLength 
         else aSize:=0;
-      wK:=GetGrooveOverhang(sG);  { Set Knob's overhang }
+      wK:=GetGrooveOverhang(sG);  { set Knob's overhang }
       if FScaleTickPos<>etmBottomRight  { width on the left }
         then tlS:=aSize 
         else tlS:=0;  
@@ -641,9 +644,9 @@ begin
       x1:=(Width-(tlS+brS+sG)) div 2 +tlS;
       x2:=x1+sG;
       FGrooveRect:=Rect(x1, y1, x2, y2);
-      SetGrooveBounds(x1, x2, y1, y2, True);
+      SetGrooveBoundsVert(x1, x2, y1, y2);
     end else
-    begin  { Horizontal }
+    begin  { horizontal }
       x2:=Width-x1;
       if RealCaptionPos in [eopTop, eopBottom] then
         begin
@@ -683,16 +686,14 @@ begin
         eopTop: 
           begin
             aMax:=eC.cy;
-            case RealImagePos of
-              eopRight, eopLeft:
-                begin
-                  if hI>aMax then aMax:=hI;
-                  FImagePoint.Y:=y1+(aMax-hI) div 2;
-                end;
-              eopTop, eopBottom: FImagePoint.Y:=(Height-hI) div 2;
-            end;
+            if RealImagePos in [eopRight, eopLeft] then
+              begin
+                if hI>aMax then aMax:=hI;
+                FImagePoint.Y:=y1+(aMax-hI) div 2;
+              end else
+                FImagePoint.Y:=(Height-hI) div 2;
             FCaptionPoint.Y:=y1+(aMax-eC.cy) div 2;
-            if aMax>0 then y1:=y1+aMax+FIndent;
+            if aMax>0 then inc(y1, aMax+FIndent);
           end;
         eopBottom: 
           begin
@@ -723,9 +724,8 @@ begin
                   FCaptionPoint.X:=x1+(aMax-eC.cx) div 2;
                   FImagePoint.X:=x1+(aMax-aSize) div 2;
                   if aMax>0 then inc(x1, aMax+Indent);
-                  if (hI=0) or (eC.cy=0) 
-                    then aSize:=hI+eC.cy
-                    else aSize:=hI+FScale.ValueIndent+eC.cy;
+                  aSize:=hI+eC.cy;
+                  if hI*eC.cy<>0 then inc(aSize, FScale.ValueIndent);
                   if RealImagePos=eopTop then
                     begin
                       FCaptionPoint.Y:=(Height+aSize) div 2 -eC.cy;
@@ -768,9 +768,8 @@ begin
                   FCaptionPoint.X:=x2+(aMax-eC.cx) div 2;
                   FImagePoint.X:=x2+(aMax-wI) div 2;
                   if aMax>0 then dec(x2, Indent);
-                  if (hI=0) or (eC.cy=0) 
-                    then aSize:=hI+eC.cy
-                    else aSize:=hI+FScale.ValueIndent+eC.cy;
+                  aSize:=hI+eC.cy;
+                  if hI*eC.cy<>0 then inc(aSize, FScale.ValueIndent);
                   if RealImagePos=eopTop then
                     begin
                       FCaptionPoint.Y:=(Height+aSize) div 2 -eC.cy;
@@ -804,16 +803,15 @@ begin
                 FCaptionPoint.Y:=(Height-eC.cy) div 2;
               end;
           end;
-      end;
+      end;  {case}
       CorrectGrooveLength(x1, x2, False);
       sV:=0;
       if FScale.ValueVisible<>evvNone then
         begin
-          Background.Canvas.SetFontParams(FScale.FontOrientation, 
-            FScaleFontOptions.FontSize, FScaleFontOptions.FontStyles);
+          FScaleFontOptions.ApplyTo(Background.Canvas.Font, clBtnText);
           sV:=FScale.GetPreferredValuesHeight(Background.Canvas);
         end;
-      hK:=GetGrooveOverhang(sG);    { Set Knob's overhang }
+      hK:=GetGrooveOverhang(sG);  { set Knob's overhang }
       if FScale.TickVisible<>etvNone 
         then aSize:=FScale.TickIndent+FScale.TickLength 
         else aSize:=0;
@@ -831,12 +829,12 @@ begin
       y2:=y1+sG;
       CorrectGrooveHorizontalLength(x1, x2);
       FGrooveRect:=Rect(x1, y1, x2, y2);
-      SetGrooveBounds(x1, x2, y1, y2, False);
-    end;  { Horizontal }
+      SetGrooveBoundsHorz(x1, x2, y1, y2);
+    end;  { horizontal }
   FGrooveInnerLength:=FGrooveMax-FGrooveMin;
   CalcGrooveMiddle;
   CalcInvalidRectStat;
-  FScale.CalcTickPosAndValues(FGrooveInnerLength, RealReversed);
+  FScale.CalcTickPosAndValues(FGrooveInnerLength, esfRealReversed in Flags);
 end;
 
 procedure TBaseECSlider.CMBiDiModeChanged(var Message: TLMessage);
@@ -868,155 +866,150 @@ end;
 
 procedure TBaseECSlider.DrawBackground;
 var aColor: TColor;
-    aDetail: TThemedElementDetails;          
-    aExtraValues: array of Double;
-    aProgressMark: TProgressMark;
-    aRect: TRect;
     bEnabled: Boolean;
-    i, j, x, y: Integer;
+
+  procedure DrawProgressMarks;
+  var aProgressMark: TProgressMark;
+      i, j, x, y: Integer;
+  begin
+    aProgressMark:=ProgressMark;
+    if aProgressMark>epmNone then
+      begin
+        aColor:=GetColorResolvingDefAndEnabled(FScale.TickColor, clBtnText, bEnabled);
+        j:=GrooveBevelWidth+FGrooveMiddle;
+        if Orientation=eooVertical then
+          begin  { vertical }
+            if not Reversed
+              then y:=j+FGrooveRect.Top
+              else y:=FGrooveRect.Bottom-j-1;
+            if (aProgressMark=epmBoth) or ((ScaleTickPos<>etmBottomRight) xor (aProgressMark=epmOpposite)) then
+              begin
+                x:=FGrooveRect.Left-1;
+                for i:=0 to ProgressMarkSize-1 do
+                  for j:=-i to i do
+                    Background.Canvas.Pixels[x-i, y+j]:=aColor;
+              end;
+            if (aProgressMark=epmBoth) or ((ScaleTickPos<>etmTopLeft) xor (aProgressMark=epmOpposite)) then
+              begin
+                x:=FGrooveRect.Right;
+                for i:=0 to ProgressMarkSize-1 do
+                  for j:=-i to i do
+                    Background.Canvas.Pixels[x+i, y+j]:=aColor;
+              end;
+          end else
+          begin  { horizontal }
+             if not (esfRealReversed in Flags)
+              then x:=j+FGrooveRect.Left
+              else x:=FGrooveRect.Right-j-1;
+            if (aProgressMark=epmBoth) or ((ScaleTickPos<>etmBottomRight) xor (aProgressMark=epmOpposite)) then
+              begin
+                y:=FGrooveRect.Top-1;
+                for j:=0 to ProgressMarkSize-1 do
+                  for i:=-j to j do
+                    Background.Canvas.Pixels[x+i, y-j]:=aColor;
+              end;
+            if (aProgressMark=epmBoth) or ((ScaleTickPos<>etmTopLeft) xor (aProgressMark=epmOpposite)) then
+              begin
+                y:=FGrooveRect.Bottom;
+                for j:=0 to ProgressMarkSize-1 do
+                  for i:=-j to j do
+                    Background.Canvas.Pixels[x+i, y+j]:=aColor;
+              end;
+          end;
+      end;
+  end;
+
+  procedure DrawScale;
+  var aExtraValues: array of Double;
+  begin
+    FScaleFontOptions.ApplyTo(Background.Canvas.Font, clBtnText);
+    if ProgressFromMiddle and (ProgressMiddlePos<>0) then
+      begin
+        SetLength(aExtraValues, 2);
+        aExtraValues[1]:=ProgressMiddlePos;
+      end else
+        SetLength(aExtraValues, 1);
+    aExtraValues[0]:=0;
+    if Orientation=eooVertical then
+      begin
+        if (ScaleTickPos<>etmTopLeft) or (ScaleValuePos<>etmTopLeft) then
+          FScale.Draw(Background.Canvas, ScaleTickPos<>etmTopLeft, ScaleValuePos<>etmTopLeft, eopRight,
+            Color3DDark, Color3DLight, Point(FGrooveRect.Right, FGrooveMin), aExtraValues);
+        if (ScaleTickPos<>etmBottomRight) or (FScaleValuePos<>etmBottomRight) then
+          FScale.Draw(Background.Canvas, ScaleTickPos<>etmBottomRight, ScaleValuePos<>etmBottomRight, eopLeft,
+            Color3DDark, Color3DLight, Point(FGrooveRect.Left, FGrooveMin), aExtraValues);
+      end else
+      begin
+        if (ScaleTickPos<>etmTopLeft) or (ScaleValuePos<>etmTopLeft) then
+          FScale.Draw(Background.Canvas, ScaleTickPos<>etmTopLeft, ScaleValuePos<>etmTopLeft, eopBottom,
+            Color3DDark, Color3DLight, Point(FGrooveMin, FGrooveRect.Bottom), aExtraValues);
+        if (ScaleTickPos<>etmBottomRight) or (ScaleValuePos<>etmBottomRight) then
+          FScale.Draw(Background.Canvas, ScaleTickPos<>etmBottomRight, ScaleValuePos<>etmBottomRight, eopTop,
+            Color3DDark, Color3DLight, Point(FGrooveMin, FGrooveRect.Top), aExtraValues);
+      end;
+  end;
+
+var aRect: TRect;
+    i: Integer;
 begin
   {$IFDEF DBGSLIDER} Debugln('TBaseECSlider.DrawBackground'); {$ENDIF}
   bEnabled:=IsEnabled;
   Background.SetSize(Width, Height);
   Background.Canvas.Brush.Style:=bsSolid;
-  aColor:=ColorToRGB(GetColorResolvingDefault(Color, Parent.Brush.Color));
-  if (aColor and $FF) > 0
+  aColor:=ColorToRGB(GetColorResolvingDefAndEnabled(Color, Parent.Brush.Color, bEnabled));
+  if (aColor and $FF)>0
     then dec(aColor)
     else inc(aColor);
   Background.TransparentColor:=aColor;
   Background.TransparentClear; 
   Background.BeginUpdate(True);
-  aRect:=Rect(0, 0, Width, Height);     
-  case Style of
-    eosButton: Background.Canvas.DrawButtonBackground(aRect, bEnabled);
-    eosPanel: Background.Canvas.DrawPanelBackground(aRect, BevelInner, BevelOuter, BevelSpace,
-                BevelWidth, Color3DDark, Color3DLight, 
-                GetColorResolvingDefault(Color, Parent.Brush.Color));
-    eosThemedPanel: Background.Canvas.DrawThemedPanelBkgnd(ARect);
-    eosFinePanel: Background.Canvas.DrawFinePanelBkgnd(aRect, BevelOuter, BevelWidth,
-                    Color3DDark, Color3DLight, GetColorResolvingDefault(Color, Parent.Brush.Color), False);
-  end;
+  aRect:=Rect(0, 0, Width, Height);
   with Background.Canvas do
     begin
-      aDetail:=ThemeServices.GetElementDetails(caThemedContent[caItemState[bEnabled]]);  
+      case Style of
+        eosButton:      DrawButtonBackground(aRect, caItemState[bEnabled]);
+        eosPanel:       DrawPanelBackground(aRect, BevelInner, BevelOuter, BevelSpace, BevelWidth, Color3DDark,
+                          Color3DLight, GetColorResolvingDefault(self.Color, Parent.Brush.Color), bEnabled);
+        eosThemedPanel: DrawThemedPanelBkgnd(ARect);
+        eosFinePanel:   DrawFinePanelBkgnd(aRect, BevelOuter, BevelWidth, Color3DDark, Color3DLight,
+                          GetColorResolvingDefault(self.Color, Parent.Brush.Color), False, bEnabled);
+      end;
       if assigned(FImages) and (ImageIndex>=0) and (ImageIndex<FImages.Count) then
-        ThemeServices.DrawIcon(Background.Canvas, aDetail, FImagePoint, FImages, ImageIndex);
+        ThemeServices.DrawIcon(Background.Canvas, ArBtnDetails[bEnabled, False], FImagePoint, FImages, ImageIndex);
       if HasCaption then
         begin
           Font.Assign(self.Font);
-          aRect.Left:=FCaptionPoint.X;
-          aRect.Top:=FCaptionPoint.Y;
-          ThemeServices.DrawText(Background.Canvas, aDetail, Caption, aRect, DT_NOPREFIX or DT_SINGLELINE, 0);
+          aRect.TopLeft:=FCaptionPoint;
+          ThemeServices.DrawText(Background.Canvas, ArBtnDetails[bEnabled, False], Caption, aRect,
+            DT_NOPREFIX or DT_SINGLELINE, 0);
         end;
-      if FScale.ValueVisible>evvNone then
-        begin
-          Font.Color:=GetColorResolvingDefault(FScaleFontOptions.FontColor, clBtnText);
-          Background.Canvas.SetFontParams(FScale.FontOrientation, 
-             FScaleFontOptions.FontSize, FScaleFontOptions.FontStyles);
-        end;
-      if (FScale.TickVisible>etvNone) or (FScale.ValueVisible>evvNone) then
-        begin
-          if ProgressFromMiddle and (ProgressMiddlePos<>0) then
-            begin
-              SetLength(aExtraValues, 2);
-              aExtraValues[0]:=0;
-              aExtraValues[1]:=ProgressMiddlePos;
-            end else
-            begin
-              SetLength(aExtraValues, 1);
-              aExtraValues[0]:=0;
-            end;
-          if Orientation=eooVertical then
-            begin
-              if (ScaleTickPos<>etmTopLeft) or (ScaleValuePos<>etmTopLeft) then
-                FScale.Draw(Background.Canvas, ScaleTickPos<>etmTopLeft, ScaleValuePos<>etmTopLeft, eopRight, 
-                Color3DDark, Color3DLight, Point(FGrooveRect.Right, FGrooveMin), aExtraValues);
-              if (ScaleTickPos<>etmBottomRight) or (FScaleValuePos<>etmBottomRight) then
-                FScale.Draw(Background.Canvas, ScaleTickPos<>etmBottomRight, ScaleValuePos<>etmBottomRight, eopLeft, 
-                Color3DDark, Color3DLight, Point(FGrooveRect.Left, FGrooveMin), aExtraValues);
-            end else
-            begin
-              if (ScaleTickPos<>etmTopLeft) or (ScaleValuePos<>etmTopLeft) then
-                FScale.Draw(Background.Canvas, ScaleTickPos<>etmTopLeft, ScaleValuePos<>etmTopLeft, eopBottom, 
-                Color3DDark, Color3DLight, Point(FGrooveMin, FGrooveRect.Bottom), aExtraValues);
-              if (ScaleTickPos<>etmBottomRight) or (ScaleValuePos<>etmBottomRight) then
-                FScale.Draw(Background.Canvas, ScaleTickPos<>etmBottomRight, ScaleValuePos<>etmBottomRight, eopTop, 
-                Color3DDark, Color3DLight, Point(FGrooveMin, FGrooveRect.Top), aExtraValues);
-            end;
-        end;
+      if (FScale.TickVisible>etvNone) or (FScale.ValueVisible>evvNone) then DrawScale;
       case GrooveStyle of
-        eosButton: ThemeServices.DrawElement(Handle, aDetail, FGrooveRect, nil); 
+        eosButton: ThemeServices.DrawElement(Handle, ArBtnDetails[bEnabled, False], FGrooveRect, nil);
         eosPanel:
           begin
             Pen.Width:=1;
             Pen.Style:=psSolid;
-            Pen.Color:=GetColorResolvingDefault(Color3DDark, clBtnShadow);
+            Pen.Color:=GetColorResolvingDefAndEnabled(Color3DDark, clBtnShadow, bEnabled);
             for i:=0 to GrooveBevelWidth-1 do
-              begin  { Draw Top & Left edge of GrooveBMP }
+              begin  { draw Top & Left edge of GrooveBMP }
                 Line(FGrooveRect.Left+i, FGrooveRect.Top+i, FGrooveRect.Right-i, FGrooveRect.Top+i);
                 Line(FGrooveRect.Left+i, FGrooveRect.Top+i, FGrooveRect.Left+i, FGrooveRect.Bottom-i);
               end;
-            Pen.Color:=GetColorResolvingDefault(Color3DLight, clBtnHilight);
+            Pen.Color:=GetColorResolvingDefAndEnabled(Color3DLight, clBtnHilight, bEnabled);
             for i:=0 to GrooveBevelWidth-1 do
-              begin  { Draw Bottom & Right edge of GrooveBMP }
+              begin  { draw Bottom & Right edge of GrooveBMP }
                 Line(FGrooveRect.Right-i-1, FGrooveRect.Top+i, FGrooveRect.Right-i-1, FGrooveRect.Bottom-i-1);
                 Line(FGrooveRect.Left+i, FGrooveRect.Bottom-i-1, FGrooveRect.Right-i, FGrooveRect.Bottom-i-1);
               end;
           end;
         eosThemedPanel:
-          begin
-            aDetail:=ThemeServices.GetElementDetails(ttPane);
-            ThemeServices.DrawElement(Handle, aDetail, FGrooveRect, nil);
-          end;
+          ThemeServices.DrawElement(Handle, ThemeServices.GetElementDetails(ttPane), FGrooveRect, nil);
         eosFinePanel:
           DrawFinePanelBkgnd(FGrooveRect, bvLowered, GrooveBevelWidth, Color3DDark,
-            Color3DLight, GetColorResolvingDefault(Color, Parent.Brush.Color), False);
+            Color3DLight, GetColorResolvingDefault(Color, Parent.Brush.Color), False, bEnabled);
       end;
-      aProgressMark:=ProgressMark;
-      if (aProgressMark>epmNone) and ProgressFromMiddle then
-        begin  { Draw ProgressMarks (Small Arrows) }
-          aColor:=GetColorResolvingDefault(FScale.TickColor, clBtnText);
-          j:=GrooveBevelWidth+FGrooveMiddle;
-          if Orientation=eooVertical then
-            begin  { Vertical }
-              if not Reversed 
-                then y:=j+FGrooveRect.Top
-                else y:=FGrooveRect.Bottom-j-1;
-              if (aProgressMark=epmBoth) or ((ScaleTickPos<>etmBottomRight) xor (aProgressMark=epmOpposite)) then
-                begin
-                  x:=FGrooveRect.Left-1;
-                  for i:=0 to ProgressMarkSize-1 do
-                    for j:=-i to i do
-                      Pixels[x-i, y+j]:=aColor;
-                end;
-              if (aProgressMark=epmBoth) or ((ScaleTickPos<>etmTopLeft) xor (aProgressMark=epmOpposite)) then
-                begin
-                  x:=FGrooveRect.Right;
-                  for i:=0 to ProgressMarkSize-1 do
-                    for j:=-i to i do
-                      Pixels[x+i, y+j]:=aColor;
-                end;
-            end else
-            begin  { Horizontal }
-               if not RealReversed 
-                then x:=j+FGrooveRect.Left
-                else x:=FGrooveRect.Right-j-1;
-              if (aProgressMark=epmBoth) or ((ScaleTickPos<>etmBottomRight) xor (aProgressMark=epmOpposite)) then
-                begin
-                  y:=FGrooveRect.Top-1;
-                  for j:=0 to ProgressMarkSize-1 do
-                    for i:=-j to j do
-                      Pixels[x+i, y-j]:=aColor;
-                end;
-              if (aProgressMark=epmBoth) or ((ScaleTickPos<>etmTopLeft) xor (aProgressMark=epmOpposite)) then
-                begin
-                  y:=FGrooveRect.Bottom;
-                  for j:=0 to ProgressMarkSize-1 do
-                    for i:=-j to j do
-                      Pixels[x+i, y+j]:=aColor;
-                end;
-            end;
-        end;
+      if ProgressFromMiddle then DrawProgressMarks;  { draw ProgressMarks (small arrows) }
     end;
   Background.EndUpdate(False);
 end;
@@ -1028,87 +1021,69 @@ var aOrientation: TGradientDirection;
   procedure DrawAestheticProgress(AFrom, ATo: TColor);
   var i, aPP, aStep: SmallInt;
   begin
+    aPP:=ProgressParameter;
+    aStep:=1;
+    if aPP<=1 then inc(aStep);  { correction; param. ARect of GradientFill must be wider then 1 }
     with GrooveBMP.Canvas do
-      begin
-        aPP:=ProgressParameter;
-        if aPP>1 
-          then aStep:=1 
-          else aStep:=2;  { Correction; param. ARect of GradientFill must be wider then 1 }
-        if aOrientation=gdVertical then
-          begin
-            for i:=aRect.Left div aPP to aRect.Right div aPP do
-              begin
-                if odd(i)
-                  then GradientFill(Rect(i*aPP, aRect.Top, (i+aStep)*aPP, aRect.Bottom), 
-                                    AFrom, ATo, aOrientation)
-                  else GradientFill(Rect(i*aPP, aRect.Top, (i+aStep)*aPP, aRect.Bottom),
-                                    ATo, AFrom, aOrientation);
-              end
-          end else
-          begin
-            for i:=aRect.Top div aPP to aRect.Bottom div aPP do
-              begin
-                if odd(i)
-                  then GradientFill(Rect(aRect.Left, i*aPP, aRect.Right, (i+aStep)*aPP), 
-                                    AFrom, ATo, aOrientation)
-                  else GradientFill(Rect(aRect.Left, i*aPP, aRect.Right, (i+aStep)*aPP),
-                                    ATo, AFrom, aOrientation);
-              end;
-          end;          
-      end;
+      if aOrientation=gdVertical
+        then for i:=aRect.Left div aPP to aRect.Right div aPP do
+               if odd(i)
+                 then GradientFill(Rect(i*aPP, aRect.Top, (i+aStep)*aPP, aRect.Bottom), AFrom, ATo, aOrientation)
+                 else GradientFill(Rect(i*aPP, aRect.Top, (i+aStep)*aPP, aRect.Bottom), ATo, AFrom, aOrientation)
+        else for i:=aRect.Top div aPP to aRect.Bottom div aPP do
+               if odd(i)
+                 then GradientFill(Rect(aRect.Left, i*aPP, aRect.Right, (i+aStep)*aPP), AFrom, ATo, aOrientation)
+                 else GradientFill(Rect(aRect.Left, i*aPP, aRect.Right, (i+aStep)*aPP), ATo, AFrom, aOrientation);
   end;
 
   procedure DrawOrthoTwinProgress(AFrom, ATo: TColor);
   var aHalfWidth: SmallInt;
   begin
     with GrooveBMP.Canvas do
-      begin
-        if aOrientation=gdVertical then
-          begin
-            aHalfWidth:=(aRect.Right-aRect.Left) div 2;
-            GradientFill(Rect(aRect.Left, aRect.Top, aRect.Left+aHalfWidth, aRect.Bottom),
-                         ATo, AFrom, gdHorizontal);
-            GradientFill(Rect(aRect.Left+aHalfWidth, aRect.Top, aRect.Right, aRect.Bottom),
-                         AFrom, ATo, gdHorizontal);
-          end else
-          begin
-            aHalfWidth:=(aRect.Bottom-aRect.Top) div 2;
-            GradientFill(Rect(aRect.Left, aRect.Top, aRect.Right, aRect.Top+aHalfWidth),
-                         ATo, AFrom, gdVertical);
-            GradientFill(Rect(aRect.Left, aRect.Top+aHalfWidth, aRect.Right, aRect.Bottom),
-                         AFrom, ATo, gdVertical);
-          end;
-      end;
+      if aOrientation=gdVertical then
+        begin
+          aHalfWidth:=(aRect.Right-aRect.Left) div 2;
+          GradientFill(Rect(aRect.Left, aRect.Top, aRect.Left+aHalfWidth, aRect.Bottom),
+                       ATo, AFrom, gdHorizontal);
+          GradientFill(Rect(aRect.Left+aHalfWidth, aRect.Top, aRect.Right, aRect.Bottom),
+                       AFrom, ATo, gdHorizontal);
+        end else
+        begin
+          aHalfWidth:=(aRect.Bottom-aRect.Top) div 2;
+          GradientFill(Rect(aRect.Left, aRect.Top, aRect.Right, aRect.Top+aHalfWidth),
+                       ATo, AFrom, gdVertical);
+          GradientFill(Rect(aRect.Left, aRect.Top+aHalfWidth, aRect.Right, aRect.Bottom),
+                       AFrom, ATo, gdVertical);
+        end;
   end;
 
   procedure DrawRippleProgress(AFrom, ATo: TColor);
   var i, aPP: SmallInt;
   begin
+    aPP:=ProgressParameter;
     with GrooveBMP.Canvas do
-      begin
-        aPP:=ProgressParameter;
-        if aOrientation=gdVertical then
-          begin
-            i:=aRect.Top;
-            repeat
-              GradientFill(Rect(aRect.Left, i, aRect.Right, i+aPP), ATo, AFrom, aOrientation);
-              inc(i, aPP);
-              GradientFill(Rect(aRect.Left, i, aRect.Right, i+aPP), AFrom, ATo, aOrientation);
-              inc(i, aPP);
-            until i>aRect.Bottom;
-          end else
-          begin
-            i:=aRect.Left;
-            repeat
-              GradientFill(Rect(i, aRect.Top, i+aPP, aRect.Bottom), AFrom, ATo, aOrientation);
-              inc(i, aPP);
-              GradientFill(Rect(i, aRect.Top, i+aPP, aRect.Bottom), ATo, AFrom, aOrientation);
-              inc(i, aPP);
-            until i>aRect.Right;
-          end;
-      end;
+      if aOrientation=gdVertical then
+        begin
+          i:=aRect.Top;
+          repeat
+            GradientFill(Rect(aRect.Left, i, aRect.Right, i+aPP), ATo, AFrom, aOrientation);
+            inc(i, aPP);
+            GradientFill(Rect(aRect.Left, i, aRect.Right, i+aPP), AFrom, ATo, aOrientation);
+            inc(i, aPP);
+          until i>aRect.Bottom;
+        end else
+        begin
+          i:=aRect.Left;
+          repeat
+            GradientFill(Rect(i, aRect.Top, i+aPP, aRect.Bottom), AFrom, ATo, aOrientation);
+            inc(i, aPP);
+            GradientFill(Rect(i, aRect.Top, i+aPP, aRect.Bottom), ATo, AFrom, aOrientation);
+            inc(i, aPP);
+          until i>aRect.Right;
+        end;
   end;
 
+const caColorThemeIsDark: array[Boolean] of TColor = (clHighlightText, clInactiveCaption);
 var aColor1, aColor2, aColorM: TColor;
     x: SmallInt;
 begin
@@ -1124,17 +1099,17 @@ begin
   with GrooveBMP.Canvas do
     begin
       aColor1:=GetColorResolvingDefault(ProgressColor, clHighlight);
-      aColor2:=GetColorResolvingDefault(ProgressColor2, clHighlightText); 
+      aColor2:=GetColorResolvingDefault(ProgressColor2, caColorThemeIsDark[IsColorDark(ColorToRGB(clBtnFace))]);
       if not IsEnabled then
         begin
           aColor1:=GetMonochromaticColor(aColor1);
           aColor2:=GetMonochromaticColor(aColor2);
         end;
-      if (Orientation=eooVertical) xor (ProgressStyle in [epsAesthetic, epsOrthogonal]) 
+      if (Orientation=eooVertical) xor (ProgressStyle in [epsAesthetic, epsOrthogonal])
         then aOrientation:=gdVertical
         else aOrientation:=gdHorizontal;
       if not ProgressFromMiddle then
-        begin  { Normal Progress }
+        begin  { normal progress }
           aRect:=Rect(0, 0, GrooveBMP.Width, GrooveBMP.Height);
           case ProgressStyle of
             epsSimple:
@@ -1145,45 +1120,42 @@ begin
             epsAesthetic: DrawAestheticProgress(aColor1, aColor2);
             epsOrthoTwin: DrawOrthoTwinProgress(aColor1, aColor2);
             epsGradLines: DrawAestheticProgress(aColor1, aColor2);
-            epsRipple: DrawRippleProgress(aColor1, aColor2);
+            epsRipple:    DrawRippleProgress(aColor1, aColor2);
             otherwise
-              if not RealReversed xor (ProgressStyle=epsReversedGrad) 
+              if not (esfRealReversed in Flags) xor (ProgressStyle=epsReversedGrad)
                 then GradientFill(aRect, aColor2, aColor1, aOrientation)
                 else GradientFill(aRect, aColor1, aColor2, aOrientation);
           end;
         end else
-        begin  { Progress from Middle }
-          if not RealReversed then
-            begin
-              if Orientation=eooVertical 
-                then aRect:=Rect(0, 0, GrooveBMP.Width, FGrooveMiddle)
-                else aRect:=Rect(0, 0, FGrooveMiddle, GrooveBMP.Height);
-            end else
-            begin
-              if Orientation=eooVertical
-                then aRect:=Rect(0, 0, GrooveBMP.Width, GrooveBMP.Height-FGrooveMiddle-1)
-                else aRect:=Rect(0, 0, GrooveBMP.Width-FGrooveMiddle-1, GrooveBMP.Height);
-            end;
+        begin  { ProgressFromMiddle }
+          if not (esfRealReversed in Flags)
+            then if Orientation=eooVertical
+                   then aRect:=Rect(0, 0, GrooveBMP.Width, FGrooveMiddle)
+                   else aRect:=Rect(0, 0, FGrooveMiddle, GrooveBMP.Height)
+            else if Orientation=eooVertical
+                   then aRect:=Rect(0, 0, GrooveBMP.Width, GrooveBMP.Height-FGrooveMiddle-1)
+                   else aRect:=Rect(0, 0, GrooveBMP.Width-FGrooveMiddle-1, GrooveBMP.Height);
           aColorM:=GetMergedColor(aColor1, aColor2, 0.7);
           case ProgressStyle of
             epsSimple: 
               begin
-                if not RealReversed
+                if not (esfRealReversed in Flags)
                   then Brush.Color:=aColor2
                   else Brush.Color:=aColor1;
                 FillRect(aRect);
               end;  
-            epsAesthetic: DrawAestheticProgress(aColorM, aColor2);
-            epsGradient, epsOrthogonal: GradientFill(aRect, aColorM, aColor2, aOrientation);
+            epsAesthetic:    DrawAestheticProgress(aColorM, aColor2);
+            epsGradient,
+            epsOrthogonal:   GradientFill(aRect, aColorM, aColor2, aOrientation);
             epsReversedGrad: GradientFill(aRect, aColor2, aColorM, aOrientation);
-            epsOrthoTwin: DrawOrthoTwinProgress(aColor2, aColorM);
-            epsGradLines: DrawAestheticProgress(aColor2, aColorM);
+            epsOrthoTwin:    DrawOrthoTwinProgress(aColor2, aColorM);
+            epsGradLines:    DrawAestheticProgress(aColor2, aColorM);
             epsRipple:
               begin
                 x:=2*ProgressParameter;
                 if aOrientation=gdVertical
-                  then dec(aRect.Top, x- aRect.Bottom mod x +1)
-                  else dec(aRect.Left, x- aRect.Right mod x +1);
+                  then dec(aRect.Top, x-(aRect.Bottom mod x)+1)
+                  else dec(aRect.Left, x-(aRect.Right mod x)+1);
                 DrawRippleProgress(aColor2, aColorM);
               end;
           end;
@@ -1194,16 +1166,18 @@ begin
           case ProgressStyle of
             epsSimple: 
               begin
-                if not RealReversed 
+                if not (esfRealReversed in Flags)
                   then Brush.Color:=aColor1
                   else Brush.Color:=aColor2;
                 FillRect(aRect);
               end;    
-            epsAesthetic: DrawAestheticProgress(aColor1, aColorM);
-            epsGradient, epsReversedGrad, epsOrthogonal: GradientFill(aRect, aColorM, aColor1, aOrientation);
-            epsOrthoTwin: DrawOrthoTwinProgress(aColor1, aColorM);
-            epsGradLines: DrawAestheticProgress(aColor1, aColorM);
-            epsRipple: DrawRippleProgress(aColor1, aColorM);
+            epsAesthetic:    DrawAestheticProgress(aColor1, aColorM);
+            epsGradient,
+            epsReversedGrad,
+            epsOrthogonal:   GradientFill(aRect, aColorM, aColor1, aOrientation);
+            epsOrthoTwin:    DrawOrthoTwinProgress(aColor1, aColorM);
+            epsGradLines:    DrawAestheticProgress(aColor1, aColorM);
+            epsRipple:       DrawRippleProgress(aColor1, aColorM);
           end;
         end;
     end;
@@ -1211,156 +1185,123 @@ begin
 end;
 
 procedure TBaseECSlider.DrawGroove;  { must be called from within Paint or PaintSelf ! }
-var aColor: TColor;
-    aGrooveRect: TRect;
-    aPosition, aLength, groovePos, aTop, aBttm, gTop, gBttm: Integer;
-    aVert: Boolean;
+var aGrooveRect: TRect;
+    bVert: Boolean;
 
-  procedure Fill_aRect;
+  procedure FillARect(AFrom, ATo: SmallInt);
   begin
-    if aVert 
-      then Canvas.FillRect(Rect(aGrooveRect.Left, aGrooveRect.Top+aTop, aGrooveRect.Right, aGrooveRect.Top+aBttm))
-      else Canvas.FillRect(Rect(aGrooveRect.Top+aTop, aGrooveRect.Left, aGrooveRect.Top+aBttm, aGrooveRect.Right));                                    				;
+    if bVert
+      then Canvas.FillRect(Rect(aGrooveRect.Left, aGrooveRect.Top+AFrom, aGrooveRect.Right, aGrooveRect.Top+ATo))
+      else Canvas.FillRect(Rect(aGrooveRect.Top+AFrom, aGrooveRect.Left, aGrooveRect.Top+ATo, aGrooveRect.Right));                                    				;
   end;
+
+var aTop, aBottom: Integer;
 
   procedure TrimAndCopyRects;
   var aRect, gRect: TRect;
   begin
-    if aVert then
-      begin
-        aRect:=Rect(aGrooveRect.Left, aTop+aGrooveRect.Top, aGrooveRect.Right, aBttm+aGrooveRect.Top);
-        gRect:=Rect(0, gTop, GrooveBMP.Width, gTop+aRect.Bottom-aRect.Top );
-      end else
-      begin
-        aRect:=Rect(aGrooveRect.Top+aTop, aGrooveRect.Left, aGrooveRect.Top+aBttm, aGrooveRect.Right);
-        gRect:=Rect(gTop, 0, gTop+aRect.Right-aRect.Left, GrooveBMP.Height);
-      end;
-    if RedrawMode<ermFreeRedraw then
-      if aVert then  { Trim Rects to not overlay FInvalidRect }
-        begin
-          if aRect.Top<FInvalidRect.Top then aRect.Top:=FInvalidRect.Top;
-          if (gRect.Top+aGrooveRect.Top)<FInvalidRect.Top then gRect.Top:=FInvalidRect.Top-aGrooveRect.Top;
-          if aRect.Bottom>FInvalidRect.Bottom then aRect.Bottom:=FInvalidRect.Bottom;
-          if (gRect.Bottom+aGrooveRect.Top)>FInvalidRect.Bottom then gRect.Bottom:=FInvalidRect.Bottom-aGrooveRect.Top;
-        end else
-        begin
-          if aRect.Left<FInvalidRect.Left then aRect.Left:=FInvalidRect.Left;
-          if (gRect.Left+aGrooveRect.Top)<FInvalidRect.Left then gRect.Left:=FInvalidRect.Left-aGrooveRect.Top;
-          if aRect.Right>FInvalidRect.Right then aRect.Right:=FInvalidRect.Right;
-          if (gRect.Right+aGrooveRect.Top)>FInvalidRect.Right then gRect.Right:=FInvalidRect.Right-aGrooveRect.Top;
-        end;    
-    Canvas.CopyRect(aRect, GrooveBMP.Canvas, gRect);  { Copy gRect of GrooveBMP.Canvas to aRect }
+    if RedrawMode<ermFreeRedraw
+      then  { trim rects to not overlay FInvalidRect }
+        if bVert then
+          begin
+            aRect:=Rect(aGrooveRect.Left, Math.max(aTop+aGrooveRect.Top, FInvalidRect.Top),
+                        aGrooveRect.Right, Math.min(aBottom+aGrooveRect.Top, FInvalidRect.Bottom));
+            gRect:=Rect(0, aRect.Top-aGrooveRect.Top, GrooveBMP.Width, aRect.Bottom-aGrooveRect.Top);
+          end else
+          begin
+            aRect:=Rect(Math.max(aTop+aGrooveRect.Top, FInvalidRect.Left), aGrooveRect.Left,
+                        Math.min(aBottom+aGrooveRect.Top, FInvalidRect.Right), aGrooveRect.Right);
+            gRect:=Rect(aRect.Left-aGrooveRect.Top, 0, aRect.Right-aGrooveRect.Top, GrooveBMP.Height);
+          end
+      else  { copy whole part of GrooveBMP to Canvas }
+        if bVert then
+          begin
+            aRect:=Rect(aGrooveRect.Left, aTop+aGrooveRect.Top, aGrooveRect.Right, aBottom+aGrooveRect.Top);
+            gRect:=Rect(0, aTop, GrooveBMP.Width, aTop+aRect.Height);
+          end else
+          begin
+            aRect:=Rect(aGrooveRect.Top+aTop, aGrooveRect.Left, aGrooveRect.Top+aBottom, aGrooveRect.Right);
+            gRect:=Rect(aTop, 0, aTop+aRect.Width, GrooveBMP.Height);
+          end;
+    Canvas.CopyRect(aRect, GrooveBMP.Canvas, gRect);  { copy gRect of GrooveBMP.Canvas to aRect }
   end;
 
+var aMiddle, aPosition: Integer;
 begin
   if (not GrooveTransparent) or (ProgressVisible>epvNone) then
     with Canvas do
-      begin  { GrooveBMP is calculated as Vertical }
-        aVert:= (Orientation=eooVertical);
-        if aVert or (ProgressVisible in [epvNone, epvFull]) 
+      begin  { GrooveBMP is calculated as vertical }
+        bVert:=(Orientation=eooVertical);
+        if bVert or (ProgressVisible in [epvNone, epvFull])
           then aGrooveRect:=FGrooveRect
           else aGrooveRect:=Rect(FGrooveRect.Top, FGrooveRect.Left, FGrooveRect.Bottom, FGrooveRect.Right);
         InflateRect(aGrooveRect, -GrooveBevelWidth, -GrooveBevelWidth);
+        Brush.Color:=GetColorResolvingDefAndEnabled(GrooveColor, cl3DDkShadow, IsEnabled);
         Brush.Style:=bsSolid;
-        aColor:=GetColorResolvingDefault(GrooveColor, cl3DDkShadow);
-        if IsEnabled 
-          then Brush.Color:=aColor
-          else Brush.Color:=GetMonochromaticColor(aColor);
         case ProgressVisible of
           epvNone: FillRect(aGrooveRect);									
           epvProgress:
             begin  
-              aLength:=aGrooveRect.Bottom-aGrooveRect.Top;
               aPosition:=GetRelGroovePos;
-              if not RealReversed 
-                then groovePos:=aPosition
-                else groovePos:=aLength-aPosition;
-              if not RealReversed then
-                begin  { Non Reversed }
+              if not (esfRealReversed in Flags) then
+                begin  { non Reversed }
                   if not ProgressFromMiddle then 
-                    begin  { Normal }
+                    begin  { normal }
                       aTop:=0;
-                      aBttm:=groovePos;
-                      gTop:=0;
-                      gBttm:=aPosition;
+                      aBottom:=aPosition;
                       TrimAndCopyRects;
-                      if not GrooveTransparent then
-                        begin
-                          aTop:=aBttm;
-                          aBttm:=aLength;
-                          Fill_aRect;
-                        end;
+                      if not GrooveTransparent then FillARect(aPosition, aGrooveRect.Height);
                     end else
                     begin  { ProgressFromMiddle }
-                      groovePos:=FGrooveMiddle;
-                      aPosition:=aPosition;
-                      if aPosition<groovePos then
+                      aMiddle:=FGrooveMiddle;
+                      if aPosition<aMiddle then
                         begin
-                          gTop:=aPosition;
-                          gBttm:=groovePos;
+                          aTop:=aPosition;
+                          aBottom:=aMiddle;
                         end else
                         begin
-                          gTop:=groovePos;
-                          gBttm:=aPosition;
+                          aTop:=aMiddle;
+                          aBottom:=aPosition;
                         end;
-                      aTop:=gTop;
-                      aBttm:=gBttm;
                       TrimAndCopyRects;
                       if not GrooveTransparent then
                         begin
-                          aBttm:=aTop;
-                          aTop:=0;
-                          Fill_aRect;
-                          aTop:=aTop+gBttm;
-                          aBttm:=aLength;
-                          Fill_aRect;
+                          FillARect(0, aTop);
+                          FillARect(aBottom, aGrooveRect.Height);
                         end;
                     end;
                 end else
                 begin  { Reversed }
                   if not ProgressFromMiddle then
-                    begin  { Normal }
-                      if not GrooveTransparent then
-                        begin
-                          aTop:=0;
-                          aBttm:=groovePos;
-                          Fill_aRect;
-                        end;
-                      aTop:=groovePos;
-                      aBttm:=aLength;
-                      gTop:=aLength-aPosition;
-                      gBttm:=aLength;
+                    begin  { normal }
+                      aTop:=aGrooveRect.Height-aPosition;
+                      aBottom:=aGrooveRect.Height;
                       TrimAndCopyRects;
+                      if not GrooveTransparent then FillARect(0, aTop);
                     end else
-                    begin  { Progress from Middle + Reversed }
-                      groovePos:=aLength-FGrooveMiddle-1;
-                      aPosition:=aLength-aPosition;
-                      if aPosition<groovePos then
+                    begin  { ProgressFromMiddle + Reversed }
+                      aMiddle:=aGrooveRect.Height-FGrooveMiddle-1;
+                      aPosition:=aGrooveRect.Height-aPosition;
+                      if aPosition<aMiddle then
                         begin
-                          gTop:=aPosition;
-                          gBttm:=groovePos;
+                          aTop:=aPosition;
+                          aBottom:=aMiddle;
                         end else
                         begin
-                          gTop:=groovePos;
-                          gBttm:=aPosition;
+                          aTop:=aMiddle;
+                          aBottom:=aPosition;
                         end;
-                      aTop:=gTop;
-                      aBttm:=gBttm;
                       TrimAndCopyRects;
                       if not GrooveTransparent then
                         begin
-                          aBttm:=aTop;
-                          aTop:=0;
-                          Fill_aRect;
-                          aTop:=aTop+gBttm;
-                          aBttm:=aLength;
-                          Fill_aRect;
+                          FillARect(0, aTop);
+                          FillARect(aBottom, aGrooveRect.Height);
                         end;
                     end;
                 end;
             end;
-          epvFull: Canvas.CopyRect(aGrooveRect, GrooveBMP.Canvas, Rect(0, 0, GrooveBMP.Width, GrooveBMP.Height));
-        end;
+          epvFull: CopyRect(aGrooveRect, GrooveBMP.Canvas, Rect(0, 0, GrooveBMP.Width, GrooveBMP.Height));
+        end;  {case}
       end;
 end;
 
@@ -1379,14 +1320,7 @@ end;
 function TBaseECSlider.GetGrooveOverhang(AFullGrooveWidth: Integer): Integer;
 begin
   Result:=0;
-end;   
-
-function TBaseECSlider.GetIndentedNonZeroWidth(AWidth: Integer): Integer;
-begin
-  if AWidth>0 
-    then Result:=AWidth+Indent
-    else Result:=0;
-end;   
+end;
 
 function TBaseECSlider.GetKnobOverhangScale(AGrooveWidth: Integer): Integer;
 begin
@@ -1416,9 +1350,11 @@ begin
       if RedrawMode<=ermFreeRedraw then RedrawMode:=ermMoveKnob;
       CalcInvalidRectDyn;
     end else
-    if RedrawMode=ermFreeRedraw then RedrawMode:=ermHoverKnob;     
-  if not (csLoading in ComponentState) then InvalidateRect(Handle, @FInvalidRect, False);
-  if not AMove then FPrevInvRectPainted:=False;
+    begin
+      if RedrawMode=ermFreeRedraw then RedrawMode:=ermHoverKnob;
+      exclude(Flags, esfPrevInvRectPainted);
+    end;
+  InvalidateRect(Handle, @FInvalidRect, False);
 end;
 
 procedure TBaseECSlider.OrientationChanged(AValue: TObjectOrientation);
@@ -1435,16 +1371,18 @@ begin
   {$IFDEF DBGSLIDER}
   inc(FRepaintCounter);
   WriteStr(aStr, RedrawMode);
-  DebugLn('TBaseECSlider.Paint '+inttostr(FRepaintCounter));
+  DebugLn('TBaseECSlider.Paint '+intToStr(FRepaintCounter));
   aDur:=Now;
   {$ENDIF}
   bEnabled:=IsEnabled;
   PaintSelf(bEnabled);
-  WasEnabled:=bEnabled;
+  if bEnabled
+    then include(Flags, esfWasEnabled)
+    else exclude(Flags, esfWasEnabled);
   RedrawMode:=ermFreeRedraw;
   {$IFDEF DBGSLIDER}
   aDur:=Now-aDur;
-  Debugln(inttostr(round(frac(aDur)*86400000))+ 'ms | Repaints: '+inttostr(FRepaintCounter));
+  Debugln(intToStr(round(frac(aDur)*86400000))+ 'ms | Repaints: '+intToStr(FRepaintCounter));
   {$ENDIF}
 end;
 
@@ -1477,45 +1415,17 @@ begin
     then Redraw;
 end;       
 
-procedure TBaseECSlider.SetGrooveBounds(x1, x2, y1, y2: Integer; AVert: Boolean);
-begin
-  if AVert then
-    begin
-      FGrooveMin:=y1+GrooveBevelWidth;
-      FGrooveMax:=y2-GrooveBevelWidth;
-    end else
-    begin
-      FGrooveMin:=x1+GrooveBevelWidth;    
-      FGrooveMax:=x2-GrooveBevelWidth;
-    end;
-end;          
-
 function TBaseECSlider.SetRealBiDiVariables: Boolean;
-var aCapPos, aImgPos: TObjectPos;
-    aReversed: Boolean;
+var bBiDi: Boolean;
 begin
-  aCapPos:=CaptionPos;
-  aImgPos:=ImagePos;  
-  aReversed:=Reversed;
-  if (Orientation=eooHorizontal) and IsRightToLeft then 
-    begin
-      aReversed:= not aReversed;
-      case aCapPos of
-        eopRight: aCapPos:=eopLeft;
-        eopLeft: aCapPos:=eopRight;
-      end;
-      case aImgPos of
-        eopRight: aImgPos:=eopLeft;
-        eopLeft: aImgPos:=eopRight;
-      end;
-    end;
-  Result:= aReversed<>RealReversed;
+  bBiDi:=((Orientation=eooHorizontal) and IsRightToLeft);
+  RealCaptionPos:=caRealPositions[CaptionPos, bBiDi];
+  RealImagePos:=caRealPositions[ImagePos, bBiDi];
+  Result:=((Reversed xor bBiDi)<>(esfRealReversed in Flags));
   if Result then
-    begin
-      RealCaptionPos:=aCapPos;
-      RealImagePos:=aImgPos;
-      RealReversed:=aReversed;
-    end;         
+    if not (esfRealReversed in Flags)
+      then include(Flags, esfRealReversed)
+      else exclude(Flags, esfRealReversed);
 end;      
 
 procedure TBaseECSlider.TextChanged;
@@ -1531,7 +1441,7 @@ begin
   if UpdateCount=0 then Invalidate;  
 end;
 
-{ Setters }
+{ Get/Setters }
 
 function TBaseECSlider.GetMax: Double;
 begin
@@ -1547,12 +1457,7 @@ procedure TBaseECSlider.SetCaptionPos(AValue: TObjectPos);
 begin
   if FCaptionPos=AValue then exit;
   FCaptionPos:=AValue;
-  if (Orientation=eooHorizontal) and IsRightToLeft then
-    case AValue of
-      eopRight: AValue:=eopLeft;
-      eopLeft: AValue:=eopRight;
-    end;    
-  RealCaptionPos:=AValue;
+  RealCaptionPos:=caRealPositions[AValue, (Orientation=eooHorizontal) and IsRightToLeft];
   if HasCaption then RecalcRedraw;
 end;
 
@@ -1602,12 +1507,7 @@ procedure TBaseECSlider.SetImagePos(AValue: TObjectPos);
 begin
   if FImagePos=AValue then exit;
   FImagePos:=AValue;
-  if (Orientation=eooHorizontal) and IsRightToLeft then
-    case AValue of
-      eopRight: AValue:=eopLeft;
-      eopLeft: AValue:=eopRight;
-    end;
-  RealImagePos:=AValue;
+  RealImagePos:=caRealPositions[AValue, (Orientation=eooHorizontal) and IsRightToLeft];
   if assigned(Images) and (ImageIndex>=0) and (ImageIndex<Images.Count) then RecalcRedraw;
 end;
 
@@ -1654,7 +1554,8 @@ begin
 end;
 
 procedure TBaseECSlider.SetProgressColor(const AValue: TColor);
-begin  if FProgressColor=AValue then exit;
+begin
+  if FProgressColor=AValue then exit;
   FProgressColor:=AValue;
   DrawGrooveBMP;
   if FProgressVisible>epvNone then InvalidateNonUpdated;
@@ -1704,8 +1605,8 @@ end;
 procedure TBaseECSlider.SetProgressParameter(AValue: SmallInt);
 begin
   if AValue<1 then AValue:=1;
-  if FProgressParameter = AValue then exit;
-  FProgressParameter := AValue;
+  if FProgressParameter=AValue then exit;
+  FProgressParameter:=AValue;
   if ProgressStyle in [epsAesthetic, epsGradLines, epsRipple] then
     begin
       DrawGrooveBMP;
@@ -1732,8 +1633,10 @@ procedure TBaseECSlider.SetReversed(AValue: Boolean);
 begin
   if FReversed=AValue then exit;
   FReversed:=AValue;
-  if (Orientation=eooHorizontal) and IsRightToLeft then AValue:= not AValue;
-  RealReversed:=AValue;
+  if (Orientation=eooHorizontal) and IsRightToLeft then AValue:=not AValue;
+  if AValue
+    then include(Flags, esfRealReversed)
+    else exclude(Flags, esfRealReversed);
   RecalcRedraw;
 end;
 
@@ -1753,9 +1656,9 @@ end;
 
 { TCustomECSlider }
 
-constructor TCustomECSlider.Create(TheOwner: TComponent);
+constructor TCustomECSlider.Create(AOwner: TComponent);
 begin
-  inherited Create(TheOwner);
+  inherited Create(AOwner);
   ControlStyle:=ControlStyle+[csCaptureMouse]
                             -[csNoFocus, csNoStdEvents];
   FCursorBkgnd:=crDefault;
@@ -1794,8 +1697,8 @@ begin
 end;
 
 procedure TCustomECSlider.CalcInvalidRectDyn;
-var aRect: TRect;
-    currPosition: Integer;
+var aCurrPosition: Integer;
+    aRect: TRect;
 begin
   {$IFDEF DBGSLIDER} DebugLn('TCustomECSlider.CalcInvalidRectDyn'); {$ENDIF}
   if Orientation=eooVertical 
@@ -1805,21 +1708,21 @@ begin
   if Orientation=eooVertical then
     begin
       if aRect.Top<Knob.Top then
-        begin  { Moves Down }
-          currPosition:=Knob.Top+Knob.Height;
-          if aRect.Bottom<currPosition then FInvalidRect.Bottom:=currPosition;
-        end else  { Moves Up }
-        FInvalidRect.Top:=Knob.Top;
+        begin  { moves down }
+          aCurrPosition:=Knob.Top+Knob.Height;
+          if aRect.Bottom<aCurrPosition then FInvalidRect.Bottom:=aCurrPosition;
+        end else  { moves up }
+          FInvalidRect.Top:=Knob.Top;
     end else
     begin
       if aRect.Left<Knob.Left then
-        begin  { Moves Right }
-          currPosition:=Knob.Left+Knob.Width;
-          if aRect.Right<currPosition then FInvalidRect.Right:=currPosition;
-        end else  { Moves Left }
-        FInvalidRect.Left:=Knob.Left;
+        begin  { moves right }
+          aCurrPosition:=Knob.Left+Knob.Width;
+          if aRect.Right<aCurrPosition then FInvalidRect.Right:=aCurrPosition;
+        end else  { moves left }
+          FInvalidRect.Left:=Knob.Left;
     end;
-  if not FPrevInvRectPainted then UnionRect(FInvalidRect, aRect, FInvalidRect);
+  if not (esfPrevInvRectPainted in Flags) then UnionRect(FInvalidRect, aRect, FInvalidRect);
   inc(FInvalidRect.Right, 1); 
   inc(FInvalidRect.Bottom, 1);
 end;
@@ -1856,11 +1759,11 @@ end;
 
 procedure TCustomECSlider.ChangeCursors(AMouseHoverKnob: Boolean);
 begin
-  FCursorLock:=True;
+  include(Flags, esfCursorLock);
   if AMouseHoverKnob 
     then Cursor:=Knob.Cursor
     else Cursor:=FCursorBkgnd;
-  FCursorLock:=False; 
+  exclude(Flags, esfCursorLock);
 end;
 
 procedure TCustomECSlider.CMColorChanged(var Message: TLMessage);
@@ -1882,7 +1785,7 @@ begin
 end;    
 
 procedure TCustomECSlider.CorrectGrooveLength(var z1, z2: Integer; AVert: Boolean);
-var aKnobEdge, aGrooveEdge, aLength: Integer;
+var aGrooveEdge, aKnobEdge, aLength: Integer;
 begin
   if AVert 
     then aKnobEdge:=Knob.Height div 2
@@ -1895,14 +1798,14 @@ begin
     end;
   if (FRelScaleLength>=0) and not AVert and
     ((RealCaptionPos in [eopRight, eopLeft]) and HasCaption) then
-      begin
-        aLength:=ClientWidth-2*(GetBorderWidth+Indent-aGrooveEdge+aKnobEdge); 
-        aLength:=round(0.01*RelativeScaleLength*aLength);
-        case RealCaptionPos of
-          eopRight: z2:=z1+aLength;
-          eopLeft: z1:=z2-aLength;
-        end;
+    begin
+      aLength:=ClientWidth-2*(GetBorderWidth+Indent-aGrooveEdge+aKnobEdge);
+      aLength:=round(0.01*RelativeScaleLength*aLength);
+      case RealCaptionPos of
+        eopRight: z2:=z1+aLength;
+        eopLeft:  z1:=z2-aLength;
       end;
+    end;
 end;                 
 
 procedure TCustomECSlider.DblClick;
@@ -1922,7 +1825,7 @@ begin
       if not (ssModifier in Shift)
         then d:=PageSize
         else d:=Increment;
-      if not RealReversed
+      if not (esfRealReversed in Flags)
         then Position:=FPosition+d
         else Position:=FPosition-d;
       Result:=True;
@@ -1938,7 +1841,7 @@ begin
       if not (ssModifier in Shift)
         then d:=PageSize
         else d:=Increment;
-      if not RealReversed
+      if not (esfRealReversed in Flags)
         then Position:=FPosition-d
         else Position:=FPosition+d;
       Result:=True;
@@ -1977,41 +1880,42 @@ end;
 procedure TCustomECSlider.KeyDown(var Key: Word; Shift: TShiftState);
 begin
   inherited KeyDown(Key, Shift);
-  case Key of
-    VK_SPACE: 
-      if ProgressFromMiddle 
-        then Position:=ProgressMiddlePos  
-        else Position:=0.5*(Max-abs(Min));
-    VK_PRIOR: 
-      if not RealReversed 
-        then Position:=FPosition-PageSize  
-        else Position:=FPosition+PageSize;
-    VK_NEXT: 
-      if not RealReversed 
-        then Position:=FPosition+PageSize  
-        else Position:=FPosition-PageSize;
-    VK_END: 
-      if not RealReversed 
-        then Position:=Max  
-        else Position:=Min;
-    VK_HOME: 
-      if not RealReversed 
-        then Position:=Min  
-        else Position:=Max;
-    VK_LEFT, VK_UP: 
-      if ssCtrl in Shift then  
-        if not RealReversed 
-          then Position:=FPosition-Increment
-          else Position:=FPosition+Increment;
-    VK_RIGHT, VK_DOWN: 
-      if ssCtrl in Shift then  
-        if not RealReversed 
-          then Position:=FPosition+Increment
-          else Position:=FPosition-Increment;
-    VK_0..VK_9: Position:=(Key-VK_0)*PageSize; 
-    VK_ADD: Position:=FPosition+Increment;  
-    VK_SUBTRACT: Position:=FPosition-Increment;  
-  end;
+  if [ssShift, ssAlt]*Shift=[] then
+    case Key of
+      VK_SPACE:
+        if ProgressFromMiddle
+          then Position:=ProgressMiddlePos
+          else Position:=0.5*(Max-abs(Min));
+      VK_PRIOR:
+        if not (esfRealReversed in Flags)
+          then Position:=FPosition-PageSize
+          else Position:=FPosition+PageSize;
+      VK_NEXT:
+        if not (esfRealReversed in Flags)
+          then Position:=FPosition+PageSize
+          else Position:=FPosition-PageSize;
+      VK_END:
+        if not (esfRealReversed in Flags)
+          then Position:=Max
+          else Position:=Min;
+      VK_HOME:
+        if not (esfRealReversed in Flags)
+          then Position:=Min
+          else Position:=Max;
+      VK_LEFT, VK_UP:
+        if ssModifier in Shift then
+          if not (esfRealReversed in Flags)
+            then Position:=FPosition-Increment
+            else Position:=FPosition+Increment;
+      VK_RIGHT, VK_DOWN:
+        if ssModifier in Shift then
+          if not (esfRealReversed in Flags)
+            then Position:=FPosition+Increment
+            else Position:=FPosition-Increment;
+      VK_0..VK_9:  Position:=(Key-VK_0)*PageSize;
+      VK_ADD:      Position:=FPosition+Increment;
+      VK_SUBTRACT: Position:=FPosition-Increment;
+    end;  {case}
 end;
 
 procedure TCustomECSlider.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
@@ -2024,34 +1928,30 @@ begin
       if Orientation=eooHorizontal
         then aMousePos:=GetPosFromCoord(X)
         else aMousePos:=GetPosFromCoord(Y);
-      if not RealReversed
+      if not (esfRealReversed in Flags)
         then aMousePos:=Min+aMousePos
         else aMousePos:=Max-aMousePos;
-      if Button=mbLeft then
-        begin  { Left click }
-          if Knob.MouseEntered then
-            begin  { over Knob }
-              FKnobDragState:=True;
-              FKnobDragPos.X:=X-Knob.Left-(Knob.Width div 2);
-              FKnobDragPos.Y:=Y-Knob.Top-(Knob.Height div 2);
-            end else
-            begin  { out of Knob }
-              if aMousePos<FPosition then
-                begin
-                  aHelp:=FPosition-PageSize;
-                  if aMousePos<aHelp 
-                    then Position:=aHelp
-                    else Position:=aMousePos;
-                end else
-                begin
-                  aHelp:=FPosition+PageSize;
-                  if aMousePos>aHelp 
-                    then Position:=aHelp
-                    else Position:=aMousePos;
-                end;
-            end;
-        end else  { Middle or Double click }
-        Position:=aMousePos;               
+      if Button=mbLeft
+        then if Knob.MouseInClient then  { left click }
+               begin  { over Knob }
+                 FKnobDragState:=True;
+                 FKnobDragPos.X:=X-Knob.Left-(Knob.Width div 2);
+                 FKnobDragPos.Y:=Y-Knob.Top-(Knob.Height div 2);
+               end else  { out of Knob }
+                 if aMousePos<FPosition then
+                   begin
+                     aHelp:=FPosition-PageSize;
+                     if aMousePos<aHelp
+                       then Position:=aHelp
+                       else Position:=aMousePos;
+                   end else
+                   begin
+                     aHelp:=FPosition+PageSize;
+                     if aMousePos>aHelp
+                       then Position:=aHelp
+                       else Position:=aMousePos;
+                   end
+        else Position:=aMousePos;  { middle or double click }
     end;
   SetFocus;
 end;
@@ -2059,28 +1959,28 @@ end;
 procedure TCustomECSlider.MouseLeave;
 begin                                                 
   inherited MouseLeave;
-  if Knob.MouseEntered then
+  if Knob.MouseInClient then
     begin
       ChangeCursors(True);
       InvalidateCustomRect(False);
-      Knob.MouseEntered:=False; 
+      Knob.MouseInClient:=False;
     end;
 end;
 
 procedure TCustomECSlider.MouseMove(Shift: TShiftState; X, Y: Integer);
 var aHelp: Double;
     aPosition: Integer;
-    bPrevKnobMouseEntered: Boolean;
+    bPrevKnobMouseInClient: Boolean;
 begin
   inherited MouseMove(Shift, X, Y);
   if IsEnabled then
     begin
-      bPrevKnobMouseEntered:=Knob.MouseEntered;
-      Knob.MouseEntered:= ((X>Knob.Left) and (X<(Knob.Left+Knob.Width))) 
-        and ((Y>Knob.Top) and (Y<(Knob.Top+Knob.Height)));
-      if (bPrevKnobMouseEntered<>Knob.MouseEntered) and not FKnobDragState then
+      bPrevKnobMouseInClient:=Knob.MouseInClient;
+      Knob.MouseInClient:=((X>Knob.Left) and (X<(Knob.Left+Knob.Width))
+        and ((Y>Knob.Top) and (Y<(Knob.Top+Knob.Height))));
+      if (bPrevKnobMouseInClient<>Knob.MouseInClient) and not FKnobDragState then
         begin
-          ChangeCursors(Knob.MouseEntered);
+          ChangeCursors(Knob.MouseInClient);
           InvalidateCustomRect(False);
         end;
       if FKnobDragState then
@@ -2089,7 +1989,7 @@ begin
             then aPosition:=X-FKnobDragPos.X
             else aPosition:=Y-FKnobDragPos.Y;            
           aHelp:=GetPosFromCoord(aPosition);
-          if not RealReversed 
+          if not (esfRealReversed in Flags)
             then Position:=Min+aHelp
             else Position:=Max-aHelp;
         end;
@@ -2103,7 +2003,7 @@ begin
   if FKnobDragState then
     begin
       FKnobDragState:=False;
-      if not Knob.MouseEntered then
+      if not Knob.MouseInClient then
         begin
           ChangeCursors(False);
           InvalidateCustomRect(False);
@@ -2114,7 +2014,7 @@ end;
 
 procedure TCustomECSlider.OrientationChanged(AValue: TObjectOrientation);
 begin
-  if not(csLoading in ComponentState) then
+  if not (csLoading in ComponentState) then
     begin
       SetBounds(Left, Top, Height, Width);
       Knob.SetSize(Knob.Height, Knob.Width);
@@ -2126,13 +2026,13 @@ procedure TCustomECSlider.PaintSelf(AEnabled: Boolean);
 var aHelp: Integer;
     aRect: TRect;
 begin
-  if WasEnabled<>AEnabled then
+  if (esfWasEnabled in Flags)<>AEnabled then
     begin
       if RedrawMode<ermRedrawBkgnd then RedrawMode:=ermRedrawBkgnd;
       if not AEnabled and FKnobDragState then
         begin
           FKnobDragState:=False;
-          MouseCapture := False;
+          MouseCapture:=False;
           ChangeCursors(False);    
         end;
     end;
@@ -2146,27 +2046,16 @@ begin
       DrawBackground;
       DrawGrooveBMP;
     end;
-  if RedrawMode>=ermFreeRedraw then
-    begin
-      Canvas.Draw(0, 0, Background);
-      DrawGroove;
-    end;
-  if RedrawMode=ermMoveKnob then
-    begin
-      Canvas.CopyRect(FInvalidRect, Background.Canvas, FInvalidRect);
-      DrawGroove;
-    end;
-  if RedrawMode=ermHoverKnob then
-    begin
-      Canvas.CopyRect(FInvalidRect, Background.Canvas, FInvalidRect);
-      DrawGroove;
-    end;
+  if RedrawMode>=ermFreeRedraw
+    then Canvas.Draw(0, 0, Background)
+    else Canvas.CopyRect(FInvalidRect, Background.Canvas, FInvalidRect);
+  DrawGroove;
   if not AEnabled
     then Canvas.Draw(Knob.Left, Knob.Top, Knob.KnobDisabled)
-    else if Knob.MouseEntered or FKnobDragState
+    else if Knob.MouseInClient or FKnobDragState
            then Canvas.Draw(Knob.Left, Knob.Top, Knob.KnobHighlighted)
            else Canvas.Draw(Knob.Left, Knob.Top, Knob.KnobNormal);
-  if Focused then  
+  if Focused then
     begin
       if Knob.Style=eosPanel 
         then aHelp:=Knob.BevelWidth+1 
@@ -2174,7 +2063,7 @@ begin
       aRect:=Rect(Knob.Left+aHelp, Knob.Top+aHelp, Knob.Left+Knob.Width-aHelp, Knob.Top+Knob.Height-aHelp);
       Canvas.DrawFocusRectNonThemed(aRect);
     end;
-  FPrevInvRectPainted:=True;
+  include(Flags, esfPrevInvRectPainted);
   if Orientation=eooHorizontal then
     begin
       FInvalidRect.Left:=Knob.Left;
@@ -2202,7 +2091,7 @@ begin
     end else
     begin
       aKnobPos:=Knob.Left;
-      if not RealReversed 
+      if not (esfRealReversed in Flags)
         then Knob.Left:=FGrooveMin+round(-0.5*Knob.Width+aHelp)
         else Knob.Left:=FGrooveMax-round(0.5*Knob.Width+aHelp)-1;
       if (aKnobPos<>Knob.Left) and AInvalidate then InvalidateCustomRect(True);
@@ -2214,7 +2103,7 @@ begin
   if assigned(FKnob) and (Knob.Style=eosPanel) then
     begin
       Knob.DrawKnobs;
-      InvalidateCustomRect(False);
+      if HandleAllocated then InvalidateCustomRect(False);//added, remove commented code in invrect...
     end;
   inherited Redraw3DColorAreas;
 end;
@@ -2222,7 +2111,46 @@ end;
 procedure TCustomECSlider.SetCursor(Value: TCursor);
 begin
   inherited SetCursor(Value);
-  if not FCursorLock then FCursorBkgnd:=Value;
+  if not (esfCursorLock in Flags) then FCursorBkgnd:=Value;
+end;
+
+procedure TCustomECSlider.SetGrooveBoundsHorz(x1, x2, y1, y2: Integer);
+begin
+  FGrooveMin:=x1+GrooveBevelWidth+cScaleIndent;
+  FGrooveMax:=x2-GrooveBevelWidth-cScaleIndent;
+  Knob.Top:=(y1+y2-Knob.Height) div 2;
+end;
+
+procedure TCustomECSlider.SetGrooveBoundsVert(x1, x2, y1, y2: Integer);
+begin
+  FGrooveMin:=y1+GrooveBevelWidth+cScaleIndent;
+  FGrooveMax:=y2-GrooveBevelWidth-cScaleIndent;
+  Knob.Left:=(x1+x2-Knob.Width) div 2;
+end;
+
+procedure TCustomECSlider.SetKnobBackground;
+var aColor: TColor;
+begin
+  if Style in [eosPanel, eosFinePanel]
+    then aColor:=GetColorResolvingDefault(Color, Parent.Brush.Color)
+    else aColor:=clBtnFace;
+  Knob.BackgroundColor:=ColorToRGB(aColor);
+end;
+
+procedure TCustomECSlider.SetPosition(AValue: Double);
+begin
+  if FMode=eimDiscrete then AValue:=DiscreteChange*round(AValue/DiscreteChange);
+  if ([csLoading, csDestroying]*ComponentState=[]) and (UpdateCount=0) then
+    if AValue<Min
+      then AValue:=Min
+      else if AValue>Max then AValue:=Max;
+  if FPosition=AValue then exit;
+  FPosition:=AValue;
+  if UpdateCount=0 then
+    begin
+      if HandleAllocated then PlaceKnob(True);
+      if assigned(FOnChange) then FOnChange(self);
+    end;
 end;
 
 procedure TCustomECSlider.StyleChanged(AValue: TObjectStyle);
@@ -2230,6 +2158,8 @@ begin
   SetKnobBackground;
   inherited;
 end;  
+
+{ G/Setters }
 
 function TCustomECSlider.GetRelScaleLength: Single;
 begin
@@ -2243,51 +2173,11 @@ begin
   if Mode=eimDiscrete then SetPosition(FPosition);
 end;   
 
-procedure TCustomECSlider.SetGrooveBounds(x1, x2, y1, y2: Integer; AVert: Boolean);
-begin
-  if AVert then
-    begin
-      FGrooveMin:=y1+GrooveBevelWidth+cScaleIndent;
-      FGrooveMax:=y2-GrooveBevelWidth-cScaleIndent;
-      Knob.Left:=(x1+x2-Knob.Width) div 2;
-    end else
-    begin
-      FGrooveMin:=x1+GrooveBevelWidth+cScaleIndent;
-      FGrooveMax:=x2-GrooveBevelWidth-cScaleIndent;
-      Knob.Top:=(y1+y2-Knob.Height) div 2;
-    end;
-end;
-
-procedure TCustomECSlider.SetKnobBackground;
-var aColor: TColor;
-begin
-  if Style in [eosPanel, eosFinePanel]
-    then aColor:=GetColorResolvingDefault(Color, Parent.Brush.Color)
-    else aColor:=clBtnFace;
-  Knob.BackgroundColor:=ColorToRGB(aColor);
-end;     
-
 procedure TCustomECSlider.SetMode(const AValue: TIncrementalMode);
 begin
   if FMode=AValue then exit;
   FMode:=AValue;
   if AValue=eimDiscrete then SetPosition(Position);
-end;
-
-procedure TCustomECSlider.SetPosition(AValue: Double);
-begin
-  if FMode=eimDiscrete then AValue:=DiscreteChange*round(AValue/DiscreteChange);
-  if ([csLoading, csDestroying]*ComponentState=[]) and (UpdateCount=0) then
-    if AValue<Min 
-      then AValue:=Min
-      else if AValue>Max then AValue:=Max;
-  if FPosition=AValue then exit;
-  FPosition:=AValue;       
-  if UpdateCount=0 then
-    begin
-      PlaceKnob(True);
-      if assigned(FOnChange) then FOnChange(self);
-    end;
 end;
 
 procedure TCustomECSlider.SetRelScaleLength(AValue: Single);

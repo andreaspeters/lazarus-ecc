@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2016, 2017 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2016-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -32,10 +32,10 @@ unit ECDesignTime;
 interface
 
 uses
-  Classes, SysUtils, ComponentEditors, PropEdits, Menus, Controls, LResources, ImgList,
-  GraphPropEdits, typinfo, ECBevel, ECLink, ECImageMenu, ECSpinCtrls, ECSwitch,
-  ECEditBtns, ECHeader, ECCheckListBox, ECSlider, ECProgressBar, ECRuler, ECGroupCtrls,
-  ECConfCurve, ECScheme, ECTabCtrl, ECAccordion, ECTriangle, ECGrid;
+  Classes, SysUtils, ComponentEditors, Controls, GraphPropEdits, ImgList, LResources, Menus, PropEdits,
+  typinfo, ECAccordion, ECBevel, ECCheckListBox, ECConfCurve, ECEditBtns, ECGrid, ECGroupCtrls, ECHeader,
+  ECLightView, ECLink, ECImageMenu, ECProgressBar, ECRuler, ECScheme, ECSlider, ECSpinCtrls, ECSwitch,
+  ECTabCtrl, ECTriangle;
 
 type
   { TECGridEditor }
@@ -80,7 +80,6 @@ type
   end;
 
   { TECImageIndexPropEdit }
-
   TECImageIndexPropEdit = class(TImageIndexPropertyEditor)
   protected
     function GetImageList: TCustomImageList; override;
@@ -120,45 +119,41 @@ resourcestring
 { TECGridEditor }
 
 procedure TECGridEditor.ExecuteVerb(Index: Integer);
-var i: Integer;
-    aECG: TECGrid;
+var aECG: TECGrid;
     aECGCol: TECGColumn;
     aHook: TPropertyEditorHook;
+    i: Integer;
 begin
   if Component is TECGrid
     then aECG:=TECGrid(Component)
     else exit;  { Exit! }
-    begin
-      aHook:=nil;
-      if not GetHook(aHook) then exit;  { Exit! }
-      case Index of
-        0: begin
-             aECGCol:=aECG.Columns.Add;
-             aHook.PersistentAdded(aECGCol, True);
-             aHook.SelectOnlyThis(aECGCol);
-           end;
-        1: begin
-             aECGCol:=TECGColumn(aECG.Columns.Insert(0));
-             aHook.PersistentAdded(aECGCol, True);
-             aHook.SelectOnlyThis(aECGCol);
-           end;
-        2: begin
-             aECGCol:=aECG.Columns[0];
-             aHook.DeletePersistent(TPersistent(aECGCol));
-           end;
-        3: begin
-             aECGCol:=aECG.Columns[aECG.ColCount-1];
-             aHook.DeletePersistent(TPersistent(aECGCol));
-           end;
-        4: begin
-             for i:=aECG.ColCount-1 downto 0 do
-               begin
-                 aECGCol:=aECG.Columns[i];
-                 aHook.DeletePersistent(TPersistent(aECGCol));
-               end;
-           end;
-      end;
-    end;
+  aHook:=nil;
+  if not GetHook(aHook) then exit;  { Exit! }
+  case Index of
+    0: begin
+         aECGCol:=aECG.Columns.Add;
+         aHook.PersistentAdded(aECGCol, True);
+         aHook.SelectOnlyThis(aECGCol);
+       end;
+    1: begin
+         aECGCol:=TECGColumn(aECG.Columns.Insert(0));
+         aHook.PersistentAdded(aECGCol, True);
+         aHook.SelectOnlyThis(aECGCol);
+       end;
+    2: begin
+         aECGCol:=aECG.Columns[0];
+         aHook.DeletePersistent(TPersistent(aECGCol));
+       end;
+    3: begin
+         aECGCol:=aECG.Columns[aECG.ColCount-1];
+         aHook.DeletePersistent(TPersistent(aECGCol));
+       end;
+    4: for i:=aECG.ColCount-1 downto 0 do
+         begin
+           aECGCol:=aECG.Columns[i];
+           aHook.DeletePersistent(TPersistent(aECGCol));
+         end;
+  end;
 end;
 
 function TECGridEditor.GetVerb(Index: Integer): string;
@@ -180,8 +175,8 @@ end;
 
 procedure TECGridEditor.PrepareItem(Index: Integer; const AnItem: TMenuItem);
 var aECG: TECGrid;
-    i: Integer;
     aMI: TMenuItem;
+    i: Integer;
 begin
   inherited PrepareItem(Index, AnItem);
   if Index>0 then
@@ -201,10 +196,10 @@ begin
 end;
 
 procedure TECGridEditor.ShowColumnTabMenuItemClick(Sender: TObject);
-var aECG: TECGrid;
+var aCol: Integer;
+    aECG: TECGrid;
     aHook: TPropertyEditorHook;
     aMI: TMenuItem;
-    aCol: Integer;
 begin
   aECG:=TECGrid(GetComponent);
   aMI:=TMenuItem(Sender);
@@ -231,28 +226,26 @@ begin
   if Component is TECTabCtrl
     then aECTC:=TECTabCtrl(Component)
     else exit;  { Exit! }
-    begin
-      aHook:=nil;
-      if not GetHook(aHook) then exit;  { Exit! }
-      case Index of
-        0: begin
-             aECTab:=aECTC.AddTab(etaLast, True);
-             aHook.PersistentAdded(aECTab, True);
-             aHook.SelectOnlyThis(aECTab);
-           end;
-        1: begin
-             aECTab:=aECTC.AddTab(etaBeside, True);
-             aHook.PersistentAdded(aECTab, True);
-             aHook.SelectOnlyThis(aECTab);
-           end;
-        2: begin
-            aECTab:=aECTC.Tabs[aECTC.TabIndex];
-            aHook.DeletePersistent(TPersistent(aECTab));
-           end;
-        3: aECTC.MovePrevious();
-        4: aECTC.MoveNext();
-      end;
-    end;
+  aHook:=nil;
+  if not GetHook(aHook) then exit;  { Exit! }
+  case Index of
+    0: begin
+         aECTab:=aECTC.AddTab(etaLast, True);
+         aHook.PersistentAdded(aECTab, True);
+         aHook.SelectOnlyThis(aECTab);
+       end;
+    1: begin
+         aECTab:=aECTC.AddTab(etaBeside, True);
+         aHook.PersistentAdded(aECTab, True);
+         aHook.SelectOnlyThis(aECTab);
+       end;
+    2: begin
+        aECTab:=aECTC.Tabs[aECTC.TabIndex];
+        aHook.DeletePersistent(TPersistent(aECTab));
+       end;
+    3: aECTC.MovePrevious();
+    4: aECTC.MoveNext();
+  end;
 end;
 
 function TECTabCtrlEditor.GetVerb(Index: Integer): string;
@@ -274,28 +267,27 @@ end;
 
 procedure TECTabCtrlEditor.PrepareItem(Index: Integer; const AnItem: TMenuItem);
 var aECTC: TECTabCtrl;
-    i: Integer;
     aMI: TMenuItem;
+    i: Integer;
 begin
   inherited PrepareItem(Index, AnItem);
   aECTC:=TECTabCtrl(GetComponent);
   case Index of
-    1: AnItem.Enabled:= (aECTC.Tabs.Count>0);
-    2: AnItem.Enabled:= (aECTC.TabIndex>=0);
-    3: AnItem.Enabled:= (aECTC.TabIndex>0);
-    4: AnItem.Enabled:= (aECTC.TabIndex<(aECTC.Tabs.Count-1));
-    5:
-      begin
-        AnItem.Enabled:= (aECTC.Tabs.Count>0);
-        for i:=0 to aECTC.Tabs.Count-1 do
-          begin
-            aMI:=TMenuItem.Create(AnItem);
-            aMI.Name:='ShowECTab'+intToStr(i);
-            aMI.Caption:='Tab'+intToStr(i)+': '+aECTC.Tabs[i].Text;
-            aMI.OnClick:=@ShowTabMenuItemClick;
-            AnItem.Add(aMI);
-          end;
-      end;
+    1: AnItem.Enabled:=(aECTC.Tabs.Count>0);
+    2: AnItem.Enabled:=(aECTC.TabIndex>=0);
+    3: AnItem.Enabled:=(aECTC.TabIndex>0);
+    4: AnItem.Enabled:=(aECTC.TabIndex<(aECTC.Tabs.Count-1));
+    5: begin
+         AnItem.Enabled:= (aECTC.Tabs.Count>0);
+         for i:=0 to aECTC.Tabs.Count-1 do
+           begin
+             aMI:=TMenuItem.Create(AnItem);
+             aMI.Name:='ShowECTab'+intToStr(i);
+             aMI.Caption:='Tab'+intToStr(i)+': '+aECTC.Tabs[i].Text;
+             aMI.OnClick:=@ShowTabMenuItemClick;
+             AnItem.Add(aMI);
+           end;
+       end;
   end;
 end;
 
@@ -323,8 +315,7 @@ end;
 { TECAccordionEditor }
 
 procedure TECAccordionEditor.ExecuteVerb(Index: Integer);
-var aECAcc: TECAccordion;
-    aAccItem: TAccordionItem;
+var aAccItem: TAccordionItem;
     aHook: TPropertyEditorHook;
 
   procedure AddHelper;
@@ -334,27 +325,25 @@ var aECAcc: TECAccordion;
     aHook.PersistentAdded(aAccItem, True);
   end;
 
+var aECAcc: TECAccordion;
 begin
   aECAcc:=GetAccordion;
   aHook:=nil;
   if not GetHook(aHook) then exit;  { Exit! }
   case Index of
-    0:
-      begin
-        aAccItem:=aECAcc.AddItem(Designer.Form);
-        AddHelper;
-      end;
-    1:
-      begin
-        aAccItem:=aECAcc.InsertItem(Designer.Form, aECAcc.ItemIndex);
-        AddHelper;
-      end;
-    2:
-      begin
-        aAccItem:=aECAcc.ActiveItem;
-        aHook.PersistentDeleting(aAccItem);
-        aECAcc.DeleteItem(aAccItem);
-      end;
+    0: begin
+         aAccItem:=aECAcc.AddItem(aECAcc.Owner);
+         AddHelper;
+       end;
+    1: begin
+         aAccItem:=aECAcc.InsertItem(aECAcc.Owner, aECAcc.ItemIndex);
+         AddHelper;
+       end;
+    2: begin
+         aAccItem:=aECAcc.ActiveItem;
+         aHook.PersistentDeleting(aAccItem);
+         aECAcc.DeleteItem(aAccItem);
+       end;
     3: aECAcc.FindPreviousItem;
     4: aECAcc.FindNextItem;
     5: aECAcc.MoveItemUp;
@@ -399,35 +388,34 @@ end;
 
 procedure TECAccordionEditor.PrepareItem(Index: Integer; const AnItem: TMenuItem);
 var aECAcc: TECAccordion;
-    i: Integer;
     aMI: TMenuItem;
+    i: Integer;
 begin
   inherited PrepareItem(Index, AnItem);
   aECAcc:=GetAccordion;
   case Index of
-    1, 2: AnItem.Enabled:= (aECAcc.ItemIndex>=0);
-    3, 5: AnItem.Enabled:= (aECAcc.ItemIndex>0);
-    4, 6: AnItem.Enabled:= (aECAcc.ItemIndex<(aECAcc.Count-1));
-    7:
-      begin
-        AnItem.Enabled:= (aECAcc.Count>0);
-        for i:=0 to aECAcc.Count-1 do
-          begin
-            aMI:=TMenuItem.Create(AnItem);
-            aMI.Name:='ShowAccItem'+intToStr(i);
-            aMI.Caption:='Item'+intToStr(i)+': '+aECAcc.Item[i].Caption;
-            aMI.OnClick:=@ShowAccItemMenuItemClick;
-            AnItem.Add(aMI);
-          end;
-      end;
+    1, 2: AnItem.Enabled:=(aECAcc.ItemIndex>=0);
+    3, 5: AnItem.Enabled:=(aECAcc.ItemIndex>0);
+    4, 6: AnItem.Enabled:=(aECAcc.ItemIndex<(aECAcc.Count-1));
+    7: begin
+         AnItem.Enabled:=(aECAcc.Count>0);
+         for i:=0 to aECAcc.Count-1 do
+           begin
+             aMI:=TMenuItem.Create(AnItem);
+             aMI.Name:='ShowAccItem'+intToStr(i);
+             aMI.Caption:='Item'+intToStr(i)+': '+aECAcc.Items[i].Caption;
+             aMI.OnClick:=@ShowAccItemMenuItemClick;
+             AnItem.Add(aMI);
+           end;
+       end;
   end;
 end;
 
 procedure TECAccordionEditor.ShowAccItemMenuItemClick(Sender: TObject);
 var aECAcc: TECAccordion;
     aHook: TPropertyEditorHook;
-    aMI: TMenuItem;
     aIndex: Integer;
+    aMI: TMenuItem;
 begin
   aECAcc:=GetAccordion;
   aMI:=TMenuItem(Sender);
@@ -439,7 +427,7 @@ begin
           aHook:=nil;
           if not GetHook(aHook) then exit;  { Exit! }
           aECAcc.ItemIndex:=aIndex;
-          aHook.SelectOnlyThis(aECAcc.Item[aIndex]);
+          aHook.SelectOnlyThis(aECAcc.Items[aIndex]);
         end;
     end;
 end;
@@ -447,18 +435,16 @@ end;
 { THookAccItemSelection }
 
 procedure THookAccItemSelection.HookSelection(const ASelection: TPersistentSelectionList);
-var i, aIndex: Integer;
-    aAccItem: TAccordionItem;
+var aAccItem: TAccordionItem;
+    i, aIndex: Integer;
 
   procedure SearchAccItemInclParents(APersistent: TPersistent);
   begin
-    if APersistent is TControl then
-      begin
-        if APersistent is TAccordionItem
-          then aAccItem:=TAccordionItem(APersistent)
-          else SearchAccItemInclParents(TControl(APersistent).Parent);
-      end else
-      aAccItem:=nil;
+    if APersistent is TControl
+      then if APersistent is TAccordionItem
+             then aAccItem:=TAccordionItem(APersistent)
+             else SearchAccItemInclParents(TControl(APersistent).Parent)
+      else aAccItem:=nil;
   end;
 
 begin
@@ -480,25 +466,25 @@ end;
 { TECImageIndexPropEdit }
 
 function TECImageIndexPropEdit.GetImageList: TCustomImageList;
-var aPersistent: TPersistent;
+var aObj: TObject;
+    aPersistent: TPersistent;
     aPropInfo: PPropInfo;
-    aObj: TObject;
 begin
   Result:=nil;
   aPersistent:=GetComponent(0);
   if aPersistent=nil then exit;  { Exit! }
-  if (aPersistent is TCustomECSpeedBtn) or (aPersistent is TBaseECSlider) then
+  if (aPersistent is TCustomECSpeedBtn) or (aPersistent is TCustomECBitBtn) or (aPersistent is TBaseECSlider) then
     begin
       aPropInfo:=TypInfo.GetPropInfo(TComponent(aPersistent), 'Images');
       if aPropInfo=nil then exit;  { Exit! }
       aObj:=GetObjectProp(TComponent(aPersistent), aPropInfo);
       if aObj is TCustomImageList then Result:=TCustomImageList(aObj);
     end else
-    if aPersistent is TSingleSpinBtn then
+    if TObject(aPersistent) is TSingleSpinBtn then
       begin
-        aPropInfo:=TypInfo.GetPropInfo(TSingleSpinBtn(aPersistent).Parent, 'Images');
+        aPropInfo:=TypInfo.GetPropInfo(TSingleSpinBtn(TObject(aPersistent)).Parent, 'Images');
         if aPropInfo=nil then exit;  { Exit! }
-        aObj:=GetObjectProp(TSingleSpinBtn(aPersistent).Parent, aPropInfo);
+        aObj:=GetObjectProp(TSingleSpinBtn(TObject(aPersistent)).Parent, aPropInfo);
         if aObj is TCustomImageList then Result:=TCustomImageList(aObj);
       end;
 end;
@@ -519,18 +505,24 @@ begin
   {$I ecaccordion.lrs}
   {$I ectriangle.lrs}
   {$I ecgrid.lrs}
+  {$I eclightview.lrs}
   {$I ecconfcurve.lrs}
   {$I ecscheme.lrs}
   RegisterComponents('EC-C', [TECBevel, TECLink, TECImageMenu, TECSpinBtns, TECSpinEdit,
-    TECSpinController, TECTimer, TECSwitch, TECSpeedBtn, TECEditBtn, TECColorBtn, TECComboBtn,
-    TECColorCombo, TECHeader, TECCheckListBox, TECSlider, TECProgressBar, TECPositionBar,
-    TECSpinPosition, TECRuler, TECRadioGroup, TECCheckGroup, TECTabCtrl, TECAccordion,
-    TECTriangle, TECGrid, TECConfCurve, TECScheme]);
-  RegisterPropertyEditor(TypeInfo(TCaption), TCustomECSpeedBtn, 'Caption', TStringMultilinePropertyEditor);
+    TECSpinController, TECTimer, TECSwitch, TECSpeedBtn, TECBitBtn, TECEditBtn, TECColorBtn,
+    TECComboBtn, TECColorCombo, TECHeader, TECCheckListBox, TECSlider, TECProgressBar,
+    TECPositionBar, TECSpinPosition, TECRuler, TECRadioGroup, TECCheckGroup, TECTabCtrl,
+    TECAccordion, TECTriangle, TECGrid, TECLightView, TECConfCurve, TECScheme]);
+  RegisterPropertyEditor(TypeInfo(TCaption), TECSpeedBtn, 'Caption', TStringMultilinePropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TCaption), TECBitBtn, 'Caption', TStringMultilinePropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TCaption), TImageMenuItem, 'Description', TStringMultilinePropertyEditor);
+  RegisterPropertyEditor(TypeInfo(string), TECLightView, 'TextData', TStringMultilinePropertyEditor);
   RegisterPropertyEditor(TypeInfo(TImageIndex), TSingleSpinBtn, 'ImageIndex', TECImageIndexPropEdit);
   RegisterPropertyEditor(TypeInfo(TImageIndex), TBaseECSlider, 'ImageIndex', TECImageIndexPropEdit);
-  RegisterPropertyEditor(TypeInfo(TImageIndex), TCustomECSpeedBtn, 'ImageIndex', TECImageIndexPropEdit);
-  RegisterPropertyEditor(TypeInfo(TImageIndex), TCustomECSpeedBtn, 'ImageIndexChecked', TECImageIndexPropEdit);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TECSpeedBtn, 'ImageIndex', TECImageIndexPropEdit);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TECSpeedBtn, 'ImageIndexChecked', TECImageIndexPropEdit);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TECBitBtn, 'ImageIndex', TECImageIndexPropEdit);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TECBitBtn, 'ImageIndexChecked', TECImageIndexPropEdit);
   RegisterComponentEditor(TECTabCtrl, TECTabCtrlEditor);
   RegisterNoIcon([TAccordionItem]);
   RegisterComponentEditor(TECAccordion, TECAccordionEditor);

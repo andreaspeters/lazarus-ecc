@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2020  Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,13 +34,14 @@ unit ECGroupCtrls;
 interface
 
 uses
-  Classes, SysUtils, Controls, Forms, Graphics, ImgList, LCLIntf,
-  LCLProc, LCLType, LMessages, Math, Themes, Types, ECTypes;
+  Classes, SysUtils, Controls, Forms, Graphics, ImgList, LCLIntf, LCLProc, LCLType, LMessages,
+  Math, Themes, Types, ECTypes;
 
 type 
   {$PACKENUM 2}
   TGCOption = (egoAllowAllUp,        { all radio items can be unselected }
-               egoCaptionBy,         { main caption is by the items (left or right, depends on BiDiMode }
+               egoCaptionBy,         { main Caption is by the items (left or right, depends on BiDiMode }
+               egoCaptionCentered,   { Caption is hor. or vert. centered, depends on Orientation & egoCaptionBy }
                egoCentered,          { item captions and glyphs are centered }
                egoColumnThenRow,     { multi-row layout }
                egoHighlightPanels,   { eosPanel and eosFinePanel change color when highlighted, pushed etc. }
@@ -51,11 +52,11 @@ type
   { TGroupCtrlItem }   
   TGroupCtrlItem = class(TCollectionItem)
   private
-    FCaption: TTranslateString;
+    FCaption: TCaption;
     FChecked: Boolean;
     FImageIndex: SmallInt;
     FImageIndexChecked: SmallInt;
-    procedure SetCaption(const AValue: TTranslateString);
+    procedure SetCaption(const AValue: TCaption);
     procedure SetChecked(AValue: Boolean);
     procedure SetImageIndex(AValue: SmallInt);
     procedure SetImageIndexChecked(AValue: SmallInt);
@@ -67,12 +68,12 @@ type
   public 
     constructor Create(ACollection: TCollection); override;
   published
-    property Caption: TTranslateString read FCaption write SetCaption;
+    property Caption: TCaption read FCaption write SetCaption;
     property Checked: Boolean read FChecked write SetChecked default False;
     property ImageIndex: SmallInt read FImageIndex write SetImageIndex default -1;
     property ImageIndexChecked: SmallInt read FImageIndexChecked write SetImageIndexChecked default -1;
   end; 
-  
+
   TBaseECGroupCtrl = class;
   
   { TGroupCtrlItems }
@@ -127,9 +128,9 @@ type
     cDefCheckedFontStyles = [fsBold];
     cDefIndent = 3;
     cDefSpacing = 5;
-    cFocusRectIndent: SmallInt = 2;
+    cFocusRectIndent = 2;
   protected
-    Bitmaps: array [low(TItemState)..high(TItemState)] of TBitmap;
+    Bitmaps: array[low(TItemState)..high(TItemState)] of TBitmap;
     FBlockRect: TRect;
     FCaptionRect: TRect;
     FColWidth, FRowHeight: Single;
@@ -383,12 +384,12 @@ end;
 function TGroupCtrlItem.GetDisplayName: string;
 begin
   Result:=Caption;
-  if Result='' then Result:=cDefCaption+inttostr(ID);
+  if Result='' then Result:=cDefCaption+intToStr(ID);
 end;
 
 { TGroupCtrlItem.Setters }
 
-procedure TGroupCtrlItem.SetCaption(const AValue: TTranslateString);
+procedure TGroupCtrlItem.SetCaption(const AValue: TCaption);
 begin
   if FCaption=AValue then exit;
   FCaption:=AValue;
@@ -456,7 +457,7 @@ begin
   inherited Notify(Item, Action);
   if Action=cnAdded then
     if not (csLoading in (Owner as TBaseECGroupCtrl).ComponentState) then
-      TGroupCtrlItem(Item).FCaption:=TGroupCtrlItem.cDefCaption+inttostr(Item.ID);  
+      TGroupCtrlItem(Item).FCaption:=TGroupCtrlItem.cDefCaption+intToStr(Item.ID);
 end;
 
 procedure TGroupCtrlItems.Reset;
@@ -510,18 +511,18 @@ end;
 destructor TBaseECGroupCtrl.Destroy;
 var aIState: TItemState;
 begin
-  for aIState:=low(TItemState) to high(TItemState) do
+  for aIState in TItemState do
     if assigned(Bitmaps[aIState]) then FreeAndNil(Bitmaps[aIState]);
   FreeAndNil(FItems);
   inherited Destroy;
 end;
 
 procedure TBaseECGroupCtrl.Calculate(AEnabled: Boolean);
-var aIState: TItemState;
-    aExtent: TSize;
+var aExtent: TSize;
+    aIState: TItemState;
     i, aCount: Integer;
 begin
-  if HasCaption then
+  if Caption<>'' then
     begin  
       aExtent:=Canvas.TextExtent(Caption);
       i:=2*cFocusRectIndent;
@@ -530,46 +531,91 @@ begin
       if Orientation=eooHorizontal then
         begin
           if not IsRightToLeft then
-            begin  { Horizontal }
-              FCaptionRect:=Rect(0, 0, aExtent.cx, aExtent.cy);
+            begin  { horizontal }
+              if egoCaptionCentered in Options then
+                begin
+                  if not (egoCaptionBy in Options) then
+                    begin
+                      i:=(Width-aExtent.cx) div 2;
+                      FCaptionRect:=Rect(i, 0, i+aExtent.cx, aExtent.cy);
+                    end else
+                    begin
+                      i:=(Height-aExtent.cy) div 2;
+                      FCaptionRect:=Rect(0, i, aExtent.cx, i+aExtent.cy);
+                    end;
+                end else
+                  FCaptionRect:=Rect(0, 0, aExtent.cx, aExtent.cy);
               if not (egoCaptionBy in Options)
                 then FBlockRect:=Rect(0, aExtent.cy+Indent-cFocusRectIndent, Width, Height)
                 else FBlockRect:=Rect(aExtent.cx+Indent-cFocusRectIndent, 0, Width, Height);
             end else
             begin
-              FCaptionRect:=Rect(Width-aExtent.cx+1, 0, Width, aExtent.cy);
+              if egoCaptionCentered in Options then
+                begin
+                  if not (egoCaptionBy in Options) then
+                    begin
+                      i:=(Width-aExtent.cx) div 2;
+                      FCaptionRect:=Rect(i, 0, i+aExtent.cx, aExtent.cy);
+                    end else
+                    begin
+                      i:=(Height-aExtent.cy) div 2;
+                      FCaptionRect:=Rect(Width-aExtent.cx+1, i, Width, i+aExtent.cy);
+                    end;
+                end else
+                  FCaptionRect:=Rect(Width-aExtent.cx+1, 0, Width, aExtent.cy);
               if not (egoCaptionBy in Options)
                 then FBlockRect:=Rect(0, aExtent.cy+Indent-cFocusRectIndent, Width, Height)
                 else FBlockRect:=Rect(0, 0, Width-aExtent.cx-Indent+cFocusRectIndent+2, Height);
             end;
         end else
-        begin  { Vertical }
+        begin  { vertical }
           if not IsRightToLeft then
             begin
-              FCaptionRect:=Rect(0, 0, aExtent.cy, aExtent.cx);
+              if egoCaptionCentered in Options then
+                begin
+                  if not (egoCaptionBy in Options) then
+                    begin
+                      i:=(Height-aExtent.cx) div 2;
+                      FCaptionRect:=Rect(0, i, aExtent.cy, i+aExtent.cx);
+                    end else
+                    begin
+                      i:=(Width-aExtent.cy) div 2;
+                      FCaptionRect:=Rect(i, 0, i+aExtent.cy, aExtent.cx);
+                    end;
+                end else
+                  FCaptionRect:=Rect(0, 0, aExtent.cy, aExtent.cx);
               if not (egoCaptionBy in Options)
                 then FBlockRect:=Rect(aExtent.cy+Indent-cFocusRectIndent, 0, Width, Height)
                 else FBlockRect:=Rect(0, aExtent.cx+Indent-cFocusRectIndent, Width, Height);
             end else
             begin
-              FCaptionRect:=Rect(Width-aExtent.cy, 0, Width, aExtent.cx);
+              if egoCaptionCentered in Options then
+                begin
+                  if not (egoCaptionBy in Options) then
+                    begin
+                      i:=(Height-aExtent.cx) div 2;
+                      FCaptionRect:=Rect(Width-aExtent.cy, i, Width, i+aExtent.cx);
+                    end else
+                    begin
+                      i:=(Width-aExtent.cy) div 2;
+                      FCaptionRect:=Rect(i, 0, i+aExtent.cy, aExtent.cx);
+                    end;
+                end else
+                  FCaptionRect:=Rect(Width-aExtent.cy, 0, Width, aExtent.cx);
               if not (egoCaptionBy in Options)
                 then FBlockRect:=Rect(0, 0, Width-aExtent.cy-Indent+cFocusRectIndent, Height)
                 else FBlockRect:=Rect(0, aExtent.cx+Indent-cFocusRectIndent, Width, Height); 
             end;
         end;
     end else
-    FBlockRect:=ClientRect;
+      FBlockRect:=ClientRect;
   aExtent.cx:=FBlockRect.Right-FBlockRect.Left;  
   aExtent.cy:=FBlockRect.Bottom-FBlockRect.Top;
-  if AEnabled then
-    for aIState:=eisHighlighted to eisPushedHihlighted do
-      Bitmaps[aIState].SetSize(aExtent.cx, aExtent.cy)
-    else
-    begin
-      Bitmaps[eisDisabled].SetSize(aExtent.cx, aExtent.cy);
-      Bitmaps[eisPushedDisabled].SetSize(aExtent.cx, aExtent.cy);
-    end;
+  if AEnabled
+    then for aIState in caEnabledStates do
+           Bitmaps[aIState].SetSize(aExtent.cx, aExtent.cy)
+    else for aIState in caDisabledStates do
+           Bitmaps[aIState].SetSize(aExtent.cx, aExtent.cy);
   aCount:=Items.Count;
   aExtent.cy:=Math.max(1, Math.min(FRowCount, aCount));
   aExtent.cx:=aCount div aExtent.cy;
@@ -579,17 +625,15 @@ begin
   FRealColCount:=aExtent.cx;
   FRealRowCount:=aExtent.cy;
   if aCount>0 then 
-    begin
-      if Orientation=eooHorizontal then
-        begin  { Horizontal }
-          FColWidth:=(Bitmaps[caItemState[AEnabled]].Width)/aExtent.cx;
-          FRowHeight:=(Bitmaps[caItemState[AEnabled]].Height)/aExtent.cy;
-        end else
-        begin  { Vertical }
-          FColWidth:=(Bitmaps[caItemState[AEnabled]].Height)/aExtent.cx;
-          FRowHeight:=(Bitmaps[caItemState[AEnabled]].Width)/aExtent.cy;   
-        end;
-    end;
+    if Orientation=eooHorizontal then
+      begin  { horizontal }
+        FColWidth:=(Bitmaps[caItemState[AEnabled]].Width)/aExtent.cx;
+        FRowHeight:=(Bitmaps[caItemState[AEnabled]].Height)/aExtent.cy;
+      end else
+      begin  { vertical }
+        FColWidth:=(Bitmaps[caItemState[AEnabled]].Height)/aExtent.cx;
+        FRowHeight:=(Bitmaps[caItemState[AEnabled]].Width)/aExtent.cy;
+      end;
 end;
 
 procedure TBaseECGroupCtrl.CMBiDiModeChanged(var Message: TLMessage);
@@ -623,15 +667,15 @@ begin
       aWidth:=Bitmaps[eisEnabled].Width;
       aHeight:=Bitmaps[eisEnabled].Height; 
     end else
-    if assigned(Bitmaps[eisDisabled]) then
-      begin
-        aWidth:=Bitmaps[eisDisabled].Width;
-        aHeight:=Bitmaps[eisDisabled].Height;  
-      end else
-      begin
-        aWidth:=0;
-        aHeight:=0;        
-      end;
+      if assigned(Bitmaps[eisDisabled]) then
+        begin
+          aWidth:=Bitmaps[eisDisabled].Width;
+          aHeight:=Bitmaps[eisDisabled].Height;
+        end else
+        begin
+          aWidth:=0;
+          aHeight:=0;
+        end;
   for aIState in ValidStates do  
     FreeAndNil(Bitmaps[aIState]);
   if AEnabled 
@@ -666,25 +710,26 @@ begin
 end;    
 
 procedure TBaseECGroupCtrl.DrawBlocks(AEnabled: Boolean);
-var i, j, aBorder, aCount, aIndex, aLeft, aTop: Integer;
-    aColor: TColor;
-    aColWidth, aRowHeight, aText1Top: Single;
-    aFlags: Cardinal;
-    aGlyphSize, aImageSize: TSize;
-    aRect: TRect;
-    aIState: TItemState;
-    bGlyphs, bHasImages, bHorizontal, bR2L: Boolean;
-    
+
   procedure IncIndent(var AResult: Integer; AIncrement: Integer);
   begin
-    if AResult<>0 then 
+    if AResult<>0 then
       begin
         inc(AResult, AIncrement);
         if AIncrement<>0 then inc(AResult, Spacing);
-      end
-      else AResult:=AIncrement
-  end;         
+      end else
+        AResult:=AIncrement
+  end;
 
+var i, j, aBorder, aCount, aIndex, aLeft, aTop: Integer;
+    aColor: TColor;
+    aColWidth, aRowHeight, aTextTop: Single;
+    aFlags: Cardinal;
+    aGlyphSize, aImageSize: TSize;
+    aIState: TItemState;
+    aRect: TRect;
+    bGlyphs, bHasImages, bHorizontal, bR2L: Boolean;
+    
   procedure DrawGlyphImageText;
   var aCaption: string;
       aElementRect: TRect;
@@ -703,29 +748,25 @@ var i, j, aBorder, aCount, aIndex, aLeft, aTop: Integer;
     if bGlyphs 
       then w:=aGlyphSize.cx
       else w:=0;
-    bImages:= ((aImgCh>=0) and ((aIState>=eisPushed) or not (egoCentered in Options))) 
-                 or ((aImage>=0) and (aIState<=eisEnabled)); 
+    bImages:=((aImgCh>=0) and ((aIState>=eisPushed) or not (egoCentered in Options)))
+               or ((aImage>=0) and (aIState<=eisEnabled));
     if bImages then IncIndent(w, aImageSize.cx); 
     aCaption:=Items[aIndex].Caption;
     if bHorizontal then DeleteAmpersands(aCaption);
     aTextWidth:=Bitmaps[aIState].Canvas.TextWidth(aCaption);
     IncIndent(w, aTextWidth);
     aLeft:=round(i*aColWidth); 
-    if bHorizontal then
-      begin
-        Items[aIndex].FItemRect:=Rect(FBlockRect.Left+aLeft, FBlockRect.Top+round(j*aRowHeight),
-          FBlockRect.Left+round((i+1)*aColWidth), FBlockRect.Top+round((j+1)*aRowHeight));
-      end else
-      begin
-        Items[aIndex].FItemRect:=Rect(FBlockRect.Left+round(j*aRowHeight), FBlockRect.Top+aLeft,
-          FBlockRect.Left+round((j+1)*aRowHeight), FBlockRect.Top+round((i+1)*aColWidth));  
-      end;
+    if bHorizontal
+      then Items[aIndex].FItemRect:=Rect(FBlockRect.Left+aLeft, FBlockRect.Top+round(j*aRowHeight),
+             FBlockRect.Left+round((i+1)*aColWidth), FBlockRect.Top+round((j+1)*aRowHeight))
+      else Items[aIndex].FItemRect:=Rect(FBlockRect.Left+round(j*aRowHeight), FBlockRect.Top+aLeft,
+            FBlockRect.Left+round((j+1)*aRowHeight), FBlockRect.Top+round((i+1)*aColWidth));
     if not (egoCentered in Options) then
       begin
         x:=aBorder+Spacing;
         if bR2L and bHorizontal then x:=round(FColWidth-w-x);        
       end else
-      x:=round(0.5*(aColWidth-w));
+        x:=round(0.5*(aColWidth-w));
     if bGlyphs then
       begin
         if bHorizontal then
@@ -746,8 +787,7 @@ var i, j, aBorder, aCount, aIndex, aLeft, aTop: Integer;
             aElementRect:=Rect(y, aLeft+x, y+aGlyphSize.cx, aLeft+x+aGlyphSize.cy);
             inc(x, aGlyphSize.cy+Spacing);                             
           end;    
-        ThemeServices.DrawElement(Bitmaps[aIState].Canvas.Handle, 
-          GetElementDetails(aIState), aElementRect, nil);
+        ThemeServices.DrawElement(Bitmaps[aIState].Canvas.Handle, GetElementDetails(aIState), aElementRect, nil);
       end;
     if bImages then
       begin
@@ -769,10 +809,9 @@ var i, j, aBorder, aCount, aIndex, aLeft, aTop: Integer;
           end;  
         if aIState>=eisPushed then aImage:=aImgCh;
         if aImage>=0 then       
-          ThemeServices.DrawIcon(Bitmaps[aIState].Canvas, GetElementDetails(aIState), 
-            aPoint, Images, aImage); 
+          ThemeServices.DrawIcon(Bitmaps[aIState].Canvas, GetElementDetails(aIState), aPoint, Images, aImage);
       end;
-    aElementRect.Top:=round(aText1Top+j*aRowHeight);
+    aElementRect.Top:=round(aTextTop+j*aRowHeight);
     aElementRect.Right:=Bitmaps[aIState].Width;
     aElementRect.Bottom:=Bitmaps[aIState].Height;
     if not bR2L or not bHorizontal
@@ -781,15 +820,13 @@ var i, j, aBorder, aCount, aIndex, aLeft, aTop: Integer;
     if bHorizontal then
       begin
         Bitmaps[aIState].Canvas.Font.Orientation:=0;
-        ThemeServices.DrawText(Bitmaps[aIState].Canvas,
-          ThemeServices.GetElementDetails(caThemedContent[aIState]),
+        ThemeServices.DrawText(Bitmaps[aIState].Canvas, ThemeServices.GetElementDetails(caThemedContent[aIState]),
           Items[aIndex].Caption, aElementRect, aFlags, 0);
       end else
       begin
         Bitmaps[aIState].Canvas.Brush.Style:=bsClear;
         Bitmaps[aIState].Canvas.Font.Orientation:=900;
-        Bitmaps[aIState].Canvas.TextOut(aElementRect.Top, 
-          aElementRect.Left+aTextWidth, Items[aIndex].Caption);
+        Bitmaps[aIState].Canvas.TextOut(aElementRect.Top, aElementRect.Left+aTextWidth, Items[aIndex].Caption);
       end;      
   end;
   
@@ -799,16 +836,16 @@ begin
   aCount:=Items.Count;
   aRowHeight:=FRowHeight;
   aBorder:=GetBorderWidth;
-  aText1Top:=round(0.5*(aRowHeight-Bitmaps[caItemState[AEnabled]].Canvas.TextHeight('É,9j')));   
+  aTextTop:=round(0.5*(aRowHeight-Bitmaps[caItemState[AEnabled]].Canvas.TextHeight('É,9j')));
   aRect:=Rect(0, 0, Bitmaps[caItemState[AEnabled]].Width, Bitmaps[caItemState[AEnabled]].Height);
-  bGlyphs:= egoNativeGlyphs in Options;
-  bHasImages:= assigned(Images);
-  bHorizontal:= Orientation=eooHorizontal;
-  bR2L:= IsRightToLeft;
+  bGlyphs:=(egoNativeGlyphs in Options);
+  bHasImages:=assigned(Images);
+  bHorizontal:=(Orientation=eooHorizontal);
+  bR2L:=IsRightToLeft;
   aFlags:=DT_SINGLELINE;
   if bR2L then aFlags:=aFlags+DT_RTLREADING;
   { set Glyphs size if needed; assumes that disabled/enables/pushed/hot have the same size }
-  if bGlyphs then aGlyphSize:=ThemeServices.GetDetailSize(GetElementDetails(caItemState[AEnabled]));
+  if bGlyphs then aGlyphSize:=ThemeServices.GetDetailSize(GetElementDetails(eisEnabled));
   if bHasImages then aImageSize:=Size(Images.Width, Images.Height);  { set Images size if needed }  
   aColor:=ColorToRGB(GetColorResolvingDefault(Color, Parent.Brush.Color));  
   if (aColor and $FF)>0
@@ -821,28 +858,28 @@ begin
     end;
   for aIState in ValidStates do
     begin 
-      { Draw Background }
+      { draw background }
       aColor:=ColorToRGB(GetColorResolvingDefault(BlockColor, Parent.Brush.Color));
       if egoHighlightPanels in Options then
         case aIState of
-          eisDisabled: aColor:=GetMonochromaticColor(aColor);
-          eisHighlighted: aColor:=ModifyBrightness(GetMergedColor(aColor, clHighlight, 0.85), 1.07);
-          eisPushed: aColor:=ModifyBrightness(aColor, 0.93);
-          eisPushedHihlighted: aColor:=ModifyBrightness(GetMergedColor(aColor, clHighlight, 0.85), 0.96);
-          eisPushedDisabled: aColor:=GetMonochromaticColor(ModifyBrightness(aColor, 0.93));
+          eisDisabled:        aColor:=GetMonochromaticColor(aColor);
+          eisHighlighted:     aColor:=ModifyBrightness(GetMergedColor(aColor, clHighlight, 0.85), 1.07);
+          eisPushed:          aColor:=ModifyBrightness(aColor, 0.93);
+          eisPushedHilighted: aColor:=ModifyBrightness(GetMergedColor(aColor, clHighlight, 0.85), 0.96);
+          eisPushedDisabled:  aColor:=GetMonochromaticColor(ModifyBrightness(aColor, 0.93));
         end;
       case Style of
-        eosButton: Bitmaps[aIState].Canvas.DrawButtonBackground(aRect, aIState);
-        eosPanel: Bitmaps[aIState].Canvas.DrawPanelBackground(aRect, BevelInner, BevelOuter,
-                    BevelSpace, BevelWidth, Color3DDark, Color3DLight, aColor);
+        eosButton:      Bitmaps[aIState].Canvas.DrawButtonBackground(aRect, aIState);
+        eosPanel:       Bitmaps[aIState].Canvas.DrawPanelBackground(aRect, BevelInner, BevelOuter,
+                          BevelSpace, BevelWidth, Color3DDark, Color3DLight, aColor, AEnabled);
         eosThemedPanel: Bitmaps[aIState].Canvas.DrawThemedPanelBkgnd(aRect);
-        eosFinePanel: Bitmaps[aIState].Canvas.DrawFinePanelBkgnd(aRect, BevelOuter, BevelWidth,
-                        Color3DDark, Color3DLight, aColor, True);
+        eosFinePanel:   Bitmaps[aIState].Canvas.DrawFinePanelBkgnd(aRect, BevelOuter, BevelWidth,
+                          Color3DDark, Color3DLight, aColor, True, AEnabled);
       end;
-      { Draw Spliters }
+      { draw spliters }
       if egoSplitted in Options then  
         if bHorizontal then
-          begin  { Horizontal }
+          begin  { horizontal }
             for i:=1 to FRealColCount-1 do  
               begin
                 aLeft:=round(i*aColWidth)-1;
@@ -868,7 +905,7 @@ begin
                   end; 
               end;
           end else
-          begin  { Vertical }
+          begin  { vertical }
             for i:=1 to FRealColCount-1 do  
               begin
                 aTop:=round(i*aColWidth)-1;
@@ -894,7 +931,7 @@ begin
                   end; 
               end;  
           end;
-      { Draw Glyphs, Images and Captions }
+      { draw Glyphs, Images and Captions }
       if aIState<eisPushed then  
         begin
           Bitmaps[aIState].Canvas.Font.Color:=GetColorResolvingDefault(UncheckedFontColor, clBtnText);
@@ -907,7 +944,7 @@ begin
       if not (egoColumnThenRow in Options) then  
         begin  
           if not bR2L xor not bHorizontal then
-            begin  { Horizontal then Vertical, Left to Right } 
+            begin  { horizontal then vertical, left to right }
               for j:=0 to FRealRowCount-1 do  
                 for i:=0 to FRealColCount-1 do  
                   begin
@@ -916,7 +953,7 @@ begin
                     DrawGlyphImageText;
                   end;
             end else
-            begin  { Horizontal then Vertical, Right to Left }
+            begin  { horizontal then vertical, right to left }
               for j:=0 to FRealRowCount-1 do  
                 for i:=FRealColCount-1 downto 0 do  
                   begin
@@ -928,7 +965,7 @@ begin
         end else
         begin
           if not bR2L xor not bHorizontal then
-            begin  { Vertical then Horizontal, Left to Right }  
+            begin  { vertical then horizontal, left to right }
               for i:=0 to FRealColCount-1 do 
                 for j:=0 to FRealRowCount-1 do  
                   begin
@@ -937,7 +974,7 @@ begin
                     DrawGlyphImageText;
                   end;   
             end else
-            begin  { Vertical then Horizontal, Right to Left } 
+            begin  { vertical then horizontal, right to left }
               for i:=FRealColCount-1 downto 0 do 
                 for j:=0 to FRealRowCount-1 do  
                   begin
@@ -971,7 +1008,7 @@ begin
         else IncludeRectangle(FInvalidRect, Items[AIndex].FItemRect);
       InvalidateCustomRect(False);
     end else
-    InvalidateNonUpdated;
+      InvalidateNonUpdated;
 end;                                              
 
 procedure TBaseECGroupCtrl.ItemsChanged(ARecalculate: Boolean);
@@ -1037,15 +1074,14 @@ begin
         end;
       if aIndex>=aCount then aIndex:=-1;
     end else
-    aIndex:=-1;
+      aIndex:=-1;
   Highlighted:=aIndex;
 end;                       
 
 procedure TBaseECGroupCtrl.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
-  if Button=mbLeft then
-    if (FPushedBtn=Highlighted) and (Highlighted>=0) then Items.Click(Highlighted);
+  if (Button=mbLeft) and (FPushedBtn=Highlighted) and (Highlighted>=0) then Items.Click(Highlighted);
 end;                       
 
 procedure TBaseECGroupCtrl.OrientationChanged(AValue: TObjectOrientation);
@@ -1067,23 +1103,20 @@ var aCount, aIndex, i, j: Integer;
       begin
         if bEnabled then
           begin
-            if not Items[aIndex].Checked then 
-              begin
-                if not (Highlighted=aIndex)
-                  then Result:=eisEnabled
-                  else Result:=eisHighlighted;
-              end else 
-              begin
-                if not (Highlighted=aIndex)
-                  then Result:=eisPushed
-                  else Result:=eisPushedHihlighted;
-              end                                  
+            if not Items[aIndex].Checked
+              then if not (Highlighted=aIndex)
+                     then Result:=eisEnabled
+                     else Result:=eisHighlighted
+              else
+                   if not (Highlighted=aIndex)
+                     then Result:=eisPushed
+                     else Result:=eisPushedHilighted
           end else
-          if not Items[aIndex].Checked 
-            then Result:=eisDisabled
-            else Result:=eisPushedDisabled;
+            if not Items[aIndex].Checked
+              then Result:=eisDisabled
+              else Result:=eisPushedDisabled;
       end else
-      Result:=caItemState[bEnabled];
+        Result:=caItemState[bEnabled];
   end;
     
 begin
@@ -1101,7 +1134,7 @@ begin
     end;  
   if RedrawMode=ermRecalcRedraw then Calculate(bEnabled);
   if RedrawMode>=ermRedrawBkgnd then DrawBlocks(bEnabled);
-  { Paint Body }
+  { paint body }
   aCount:=Items.Count;
   if aCount=0 then
     begin
@@ -1110,11 +1143,11 @@ begin
     end else
     begin
       if Orientation=eooHorizontal then
-        begin  { Horizontal }
+        begin  { horizontal }
           if not IsRightToLeft then
             begin
               if not (egoColumnThenRow in Options) then
-                begin  { Horizontal then Vertical, Left to Right }
+                begin  { horizontal then vertical, left to right }
                   for j:=0 to FRealRowCount-1 do
                     begin
                       aRect.Top:=round(j*FRowHeight);
@@ -1134,7 +1167,7 @@ begin
                         end;
                     end;
                 end else
-                begin  { Vertical then Horizontal, Left to Right } 
+                begin  { vertical then horizontal, left to right }
                   for i:=0 to FRealColCount-1 do
                     begin
                       aRect.Left:=round(i*FColWidth);
@@ -1157,7 +1190,7 @@ begin
             end else
             begin
               if not (egoColumnThenRow in Options) then
-                begin  { Horizontal then Vertical, Right to Left }
+                begin  { horizontal then vertical, right to left }
                   for j:=FRealRowCount-1 downto 0 do
                     begin
                       aRect.Top:=round(j*FRowHeight);
@@ -1177,7 +1210,7 @@ begin
                         end;
                     end;
                 end else
-                begin  { Vertical then Horizontal, Right to Left }
+                begin  { vertical then horizontal, right to left }
                   for i:=FRealColCount-1 downto 0 do
                     begin
                       aRect.Left:=round(i*FColWidth);
@@ -1199,11 +1232,11 @@ begin
                 end;                     
             end;  
        end else
-       begin  { Vertical }
+       begin  { vertical }
          if not IsRightToLeft then
             begin
               if not (egoColumnThenRow in Options) then
-                begin  { Horizontal then Vertical, Left to Right }
+                begin  { horizontal then vertical, left to right }
                   for j:=0 to FRealRowCount-1 do
                     begin
                       aRect.Left:=round(j*FRowHeight);
@@ -1223,7 +1256,7 @@ begin
                         end;
                     end;
                 end else
-                begin  { Vertical then Horizontal, Left to Right } 
+                begin  { vertical then horizontal, left to right }
                   for i:=0 to FRealColCount-1 do
                     begin
                       aRect.Top:=round(i*FColWidth);
@@ -1246,7 +1279,7 @@ begin
             end else
             begin
               if not (egoColumnThenRow in Options) then
-                begin  { Horizontal then Vertical, Right to Left }
+                begin  { horizontal then vertical, right to left }
                   for j:=FRealRowCount-1 downto 0 do
                     begin
                       aRect.Left:=round(j*FRowHeight);
@@ -1266,7 +1299,7 @@ begin
                         end;
                     end;
                 end else
-                begin  { Vertical then Horizontal, Right to Left }
+                begin  { vertical then horizontal, right to left }
                   for i:=FRealColCount-1 downto 0 do
                     begin
                       aRect.Top:=round(i*FColWidth);
@@ -1289,20 +1322,18 @@ begin
             end;       
        end;     
     end;
-  { Paint Caption and FocusRect }
-  if HasCaption then
+  { paint Caption and FocusRect }
+  if Caption<>'' then
     begin
       if RedrawMode>=ermFreeRedraw then
         begin
           if Focused then
-            begin
-              if Orientation=eooHorizontal then
-                begin
-                  LCLIntf.SetBkColor(Canvas.Handle, ColorToRGB(clForm));
-                  LCLIntf.DrawFocusRect(Canvas.Handle, FCaptionRect);
-                end else
+            if Orientation=eooHorizontal then
+              begin
+                LCLIntf.SetBkColor(Canvas.Handle, ColorToRGB(clForm));
+                LCLIntf.DrawFocusRect(Canvas.Handle, FCaptionRect);
+              end else
                 Canvas.DrawFocusRectNonThemed(FCaptionRect);
-            end;
           aRect:=FCaptionRect;
           InflateRect(aRect, -cFocusRectIndent, -cFocusRectIndent);
           Canvas.Brush.Style:=bsClear;
@@ -1311,9 +1342,7 @@ begin
               Canvas.Font.Orientation:=0;
               aFlags:=DT_SINGLELINE+DT_NOPREFIX;
               if IsRightToLeft then aFlags:=aFlags+DT_RTLREADING;
-              with ThemeServices do
-                DrawText(Canvas, GetElementDetails(caThemedContent[caItemState[bEnabled]]), 
-                  Caption, aRect, aFlags, 0)
+              ThemeServices.DrawText(Canvas, ArBtnDetails[bEnabled, False], Caption, aRect, aFlags, 0);
             end else
             begin
               Canvas.Font.Orientation:=900;
@@ -1321,13 +1350,11 @@ begin
             end;
         end;
     end else
-    begin
       if Focused then
         begin
           aRect:=Rect(3, 3, ClientWidth-3, ClientHeight-3);
           Canvas.DrawFocusRectNonThemed(aRect);
-        end
-    end; 
+        end;
   FInvalidRect:=Rect(-1, -1, -1, -1);
   RedrawMode:=ermFreeRedraw;
 end;
@@ -1362,7 +1389,7 @@ end;
 
 procedure TBaseECGroupCtrl.Redraw3DColorAreas;
 begin
-  if (Style=eosPanel) and (RedrawMode<ermRedrawBkgnd) then RedrawMode:=ermRedrawBkgnd; 
+  if (Style in [eosPanel, eosFinePanel]) and (RedrawMode<ermRedrawBkgnd) then RedrawMode:=ermRedrawBkgnd;
   if UpdateCount=0 then Invalidate;
 end;
 
@@ -1370,7 +1397,7 @@ procedure TBaseECGroupCtrl.TextChanged;
 begin
   inherited TextChanged;
   RecalcInvalidate;              
-end;    
+end;
 
 procedure TBaseECGroupCtrl.WMSize(var Message: TLMSize);
 begin
@@ -1421,7 +1448,7 @@ begin
           else IncludeRectangle(FInvalidRect, Items[AValue].FItemRect);
       InvalidateCustomRect(False);
     end else
-    Invalidate;
+      Invalidate;
 end;
 
 procedure TBaseECGroupCtrl.SetImages(AValue: TCustomImageList);
@@ -1435,7 +1462,7 @@ procedure TBaseECGroupCtrl.SetIndent(AValue: SmallInt);
 begin
   if FIndent=AValue then exit;
   FIndent:=AValue;
-  if HasCaption then RecalcInvalidate;
+  if Caption<>'' then RecalcInvalidate;
 end;
 
 procedure TBaseECGroupCtrl.SetItems(AValue: TGroupCtrlItems);
@@ -1495,9 +1522,9 @@ begin
 end;
 
 function TCustomECRadioGroup.GetElementDetails(AIState: TItemState): TThemedElementDetails;
-const caElements: array [low(TItemState)..high(TItemState)] of TThemedButton = 
-  (tbRadioButtonUncheckedDisabled, tbRadioButtonUncheckedHot, tbRadioButtonUncheckedNormal,
-   tbRadioButtonCheckedNormal, tbRadioButtonCheckedHot, tbRadioButtonCheckedDisabled);
+const caElements: array[TItemState] of TThemedButton = (tbRadioButtonUncheckedDisabled,
+        tbRadioButtonUncheckedHot, tbRadioButtonUncheckedNormal, tbRadioButtonCheckedNormal,
+        tbRadioButtonCheckedNormal, tbRadioButtonCheckedHot, tbRadioButtonCheckedDisabled);
 begin
   Result:=ThemeServices.GetElementDetails(caElements[AIState]);    
 end;
@@ -1513,22 +1540,21 @@ begin
         TGroupCtrlItem(Items[i]).FChecked:=False;
       ItemIndex:=AIndex;
     end else
-    ItemIndex:=-1;  
+      ItemIndex:=-1;
 end;
 
 procedure TCustomECRadioGroup.GroupCtrlItemClick(AIndex: Integer);
 begin
   if not (egoAllowAllUp in Options)
     then Items[AIndex].Checked:=True  { default }
-    else Items[AIndex].Checked:= not Items[AIndex].Checked;
+    else Items[AIndex].Checked:=not Items[AIndex].Checked;
 end;
 
 procedure TCustomECRadioGroup.SetItemIndex(AValue: SmallInt);
 var anOldIndex: SmallInt;
 begin
   anOldIndex:=FItemIndex;
-  if (anOldIndex=AValue) or (AValue>=Items.Count) 
-    or ((anOldIndex<0) and (AValue<0)) then exit;
+  if (anOldIndex=AValue) or (AValue>=Items.Count) or ((anOldIndex<0) and (AValue<0)) then exit;
   FItemIndex:=AValue;
   if anOldIndex>=0 then 
     begin
@@ -1549,7 +1575,7 @@ begin
       RedrawMode:=ermMoveKnob;
       InvalidateCustomRect(False);
     end else
-    InvalidateNonUpdated;
+      InvalidateNonUpdated;
   if assigned(OnSelectionChange) then OnSelectionChange(self);
 end;
      
@@ -1575,7 +1601,7 @@ var i: Integer;
 begin
   bValue:=Items[AIndex].Checked;
   if (egoAllowAllUp in Options) or not bValue
-    then Items[AIndex].Checked:= not bValue  { default }
+    then Items[AIndex].Checked:=not bValue  { default }
     else                                        
     begin  { at least one checkbox must stay Checked }
       bFound:=False;
@@ -1592,14 +1618,14 @@ begin
               bFound:=True;
               break; 
             end;
-      if bFound then Items[AIndex].Checked:= not bValue;
+      if bFound then Items[AIndex].Checked:=not bValue;
     end;    
 end;       
 
 function TCustomECCheckGroup.GetElementDetails(AIState: TItemState): TThemedElementDetails;
-const caElements: array [low(TItemState)..high(TItemState)] of TThemedButton = 
-  (tbCheckBoxUncheckedDisabled, tbCheckBoxUncheckedHot, tbCheckBoxUncheckedNormal,
-   tbCheckBoxCheckedNormal, tbCheckBoxCheckedHot, tbCheckBoxCheckedDisabled);
+const caElements: array[TItemState] of TThemedButton = (tbCheckBoxUncheckedDisabled,
+        tbCheckBoxUncheckedHot, tbCheckBoxUncheckedNormal, tbCheckBoxCheckedNormal,
+        tbCheckBoxCheckedNormal, tbCheckBoxCheckedHot, tbCheckBoxCheckedDisabled);
 begin
   Result:=ThemeServices.GetElementDetails(caElements[AIState]);
 end;

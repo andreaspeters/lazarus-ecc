@@ -10,7 +10,7 @@ interface
 uses
   ECTypes, ECScale, ECBevel, ECLink, ECImageMenu, ECSpinCtrls, ECSwitch, ECEditBtns, ECHeader, ECCheckListBox, 
   ECSlider, ECProgressBar, ECRuler, ECGroupCtrls, ECTabCtrl, ECAccordion, ECTriangle, ECGrid, ECConfCurve, ECScheme, 
-  ECDesignTime, LazarusPackageIntf;
+  ECLightView, ECDesignTime, LazarusPackageIntf;
 
 implementation
 

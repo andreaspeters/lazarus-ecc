@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -32,13 +32,12 @@ unit ECConfCurve;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, LMessages, Math, ECTypes, Themes, Types;
+  Classes, SysUtils, Controls, Graphics, LMessages, Math, Themes, Types, ECTypes;
 
 type
   {$PACKENUM 2}
-  TCurveOption = (ecoAllowOverdraw, ecoAntiAliasing, ecoFixedMin, ecoFixedMax,
-                  ecoGuidelines, ecoReadOnly, ecoReversed, ecoShowGrid,
-                  ecoSnapToGrid, ecoWheelShifts);
+  TCurveOption = (ecoAllowOverdraw, ecoAntiAliasing, ecoFixedMin, ecoFixedMax, ecoGuidelines,
+                  ecoReadOnly, ecoReversed, ecoShowGrid, ecoSnapToGrid, ecoWheelShifts);
   TCurveOptions = set of TCurveOption;
   TCurveStyle = (ecsLinear, ecsBezier);
   TPointOption = (epoFixedX, epoFixedY);
@@ -96,8 +95,8 @@ type
     cDefPointSize = 7;
     cMinHovered = -1;
     cMaxHovered = -2;
-  protected
-    type TPointPos = (eppMiddle, eppLeftSide, eppRightSide);
+  protected type
+    TPointPos = (eppMiddle, eppLeftSide, eppRightSide);
   protected
     FCursorBkgnd: TCursor;
     FCursorLock: Boolean;
@@ -109,8 +108,7 @@ type
     FXHelp, FYHelp: Single;
     class function GetControlClassDefaultSize: TSize; override;
     procedure Calculate;
-    procedure ChangeBounds(ALeft, ATop, AWidth, AHeight: integer; KeepBase: boolean);
-      override;
+    procedure ChangeBounds(ALeft, ATop, AWidth, AHeight: integer; KeepBase: boolean); override;
     procedure ChangeCursor(ADrag: Boolean);
     procedure CMBiDiModeChanged(var Message: TLMessage); message CM_BIDIMODECHANGED;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
@@ -280,8 +278,7 @@ begin
   FYHelp:=(Height-1)/(MaxY-MinY);
 end;
 
-procedure TCustomECConfCurve.ChangeBounds(ALeft, ATop, AWidth,
-  AHeight: integer; KeepBase: boolean);
+procedure TCustomECConfCurve.ChangeBounds(ALeft, ATop, AWidth, AHeight: integer; KeepBase: boolean);
 begin
   inherited ChangeBounds(ALeft, ATop, AWidth, AHeight, KeepBase);
   Calculate;
@@ -305,7 +302,7 @@ end;
 procedure TCustomECConfCurve.CMBiDiModeChanged(var Message: TLMessage);
 begin
   inherited CMBiDiModeChanged(Message);
-  FRealRevered:= IsRightToLeft xor (ecoReversed in Options);
+  FRealRevered:=(IsRightToLeft xor (ecoReversed in Options));
 end;
 
 function TCustomECConfCurve.CoordToValueX(AX: Integer): Single;
@@ -397,79 +394,79 @@ begin
 end;
 
 function TCustomECConfCurve.GetValueAtX(AX: Single): Single;
-var X1, X2, Y1, Y2: Single;
-    aCount, i: Integer;
+var aCount, i: Integer;
+    x1, x2, y1, y2: Single;
 begin
   aCount:=length(Points);
-  X1:=MinX;
-  Y1:=ValueAtMin;
+  x1:=MinX;
+  y1:=ValueAtMin;
   if aCount>0 then
     begin
-      X2:=Points[0].X;
-      Y2:=Points[0].Y;
+      x2:=Points[0].X;
+      y2:=Points[0].Y;
     end else
     begin
-      X2:=MaxX;
-      Y2:=ValueAtMax;
+      x2:=MaxX;
+      y2:=ValueAtMax;
     end;
-  if AX>=X1 then
+  if AX>=x1 then
     begin
       i:=1;
-      while (i<=aCount) and (AX>X2) do
+      while (i<=aCount) and (AX>x2) do
         begin
-          X1:=X2;
-          Y1:=Y2;
+          x1:=x2;
+          y1:=y2;
           if i<aCount then
             begin
-              X2:=Points[i].X;
-              Y2:=Points[i].Y;
+              x2:=Points[i].X;
+              y2:=Points[i].Y;
             end else
             begin
-              X2:=MaxX;
-              Y2:=ValueAtMax;
+              x2:=MaxX;
+              y2:=ValueAtMax;
             end;
           inc(i);
         end;
     end;
-  Result:=Y1+(Y2-Y1)*(AX-X1)/(X2-X1);
+  Result:=y1+(y2-y1)*(AX-x1)/(x2-x1);
 end;
 
 function TCustomECConfCurve.GetXForValue(AValue: Single): Single;
-var X1, X2, Y1, Y2: Single;
-    aCount, i: Integer;
+var aCount, i: Integer;
+    x1, x2, y1, y2: Single;
 begin
   Result:=Nan;
   aCount:=length(Points);
-  X1:=MinX;
-  Y1:=ValueAtMin;
+  x1:=MinX;
+  y1:=ValueAtMin;
   if aCount>0 then
     begin
-      X2:=Points[0].X;
-      Y2:=Points[0].Y;
+      x2:=Points[0].X;
+      y2:=Points[0].Y;
     end else
     begin
-      X2:=MaxX;
-      Y2:=ValueAtMax;
+      x2:=MaxX;
+      y2:=ValueAtMax;
     end;
-  if AValue>=Y1 then
+  if AValue>=y1 then
     begin
       i:=1;
-      while (i<=aCount) and (AValue>Y2) do
+      while (i<=aCount) and (AValue>y2) do
         begin
-          X1:=X2;
-          Y1:=Y2;
+          x1:=x2;
+          y1:=y2;
           if i<aCount then
             begin
-              X2:=Points[i].X;
-              Y2:=Points[i].Y;
+              x2:=Points[i].X;
+              y2:=Points[i].Y;
             end else
             begin
-              X2:=MaxX;
-              Y2:=ValueAtMax;
+              x2:=MaxX;
+              y2:=ValueAtMax;
             end;
           inc(i);
         end;
-      if AValue<=Y2 then Result:=X1+(X2-X1)*(AValue-Y1)/(Y2-Y1);
+      if AValue<=y2 then Result:=x1+(x2-x1)*(AValue-y1)/(y2-y1);
     end;
 end;
 
@@ -521,8 +518,8 @@ begin
     begin
       FDragging:=True;
       case FHovered of
-        cMaxHovered: aPoint:=GetCanvasPoint(MaxX, ValueAtMax);
-        cMinHovered: aPoint:=GetCanvasPoint(MinX, ValueAtMin);
+        cMaxHovered:       aPoint:=GetCanvasPoint(MaxX, ValueAtMax);
+        cMinHovered:       aPoint:=GetCanvasPoint(MinX, ValueAtMin);
         0..high(SmallInt): aPoint:=GetCanvasPoint(Points[FHovered].X, Points[FHovered].Y);
       end;
       FInitPoint.X:=aPoint.X-X;
@@ -537,11 +534,11 @@ begin
 end;
 
 procedure TCustomECConfCurve.MouseMove(Shift: TShiftState; X, Y: Integer);
-var i: Integer;
-    f, aLeftBound, aRightBound: Single;
-    b: Boolean;
+var aLeftBound, aRightBound, f: Single;
     aPoint: TPoint;
     aRect: TRect;
+    b: Boolean;
+    i: Integer;
 begin
   inherited MouseMove(Shift, X, Y);
   if not FDragging then
@@ -590,7 +587,7 @@ begin
           ChangeCursor(False);
         end;
     end else
-    begin  { Dragging }
+    begin  { dragging }
       case FHovered of
         cMaxHovered:
           begin
@@ -625,26 +622,25 @@ begin
                       then f:=aLeftBound
                       else if f>aRightBound then f:=aRightBound;
                   end;
-                b:= Points[FHovered].X<>f;
+                b:=(Points[FHovered].X<>f);
                 Points[FHovered].X:=f;
               end;
             if not (epoFixedY in Points[FHovered].Options) then
               begin
                 f:=CoordToValueY(Y+FInitPoint.Y);
                 if ecoSnapToGrid in Options then f:=round(f/SnapGrid)*SnapGrid;
-                b:= b or (Points[FHovered].Y<>f);
+                b:=(b or (Points[FHovered].Y<>f));
                 Points[FHovered].Y:=f;
               end;
             if b and assigned(OnChange) then OnChange(self);
           end;
-      end;
+      end;  {case}
       InvalidateNonUpdated;
     end;
   if ecoGuidelines in Options then InvalidateNonUpdated;
 end;
 
-procedure TCustomECConfCurve.MouseUp(Button: TMouseButton; Shift: TShiftState;
-  X, Y: Integer);
+procedure TCustomECConfCurve.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
   if FDragging then
@@ -655,15 +651,13 @@ begin
 end;
 
 procedure TCustomECConfCurve.Paint;
-const cDetails: array[Boolean] of TThemedButton = (tbPushButtonDisabled, tbPushButtonNormal);
-var i, k: Integer;
-    bEnabled: Boolean;
-    aBackColor, aColor, aFPColor: TColor;
-    aDetails: TThemedElementDetails;
+var aBackColor, aColor, aFPColor: TColor;
     aPoint: TPoint;
     aPoints: array of TPoint;
     aRect: TRect;
     aSmoothX, aSmoothY: Single;
+    bEnabled: Boolean;
+    i, k: Integer;
 begin
   inherited Paint;
   bEnabled:=IsEnabled;
@@ -677,18 +671,17 @@ begin
       Canvas.Brush.Color:=aBackColor;
       Canvas.FillRect(ClientRect);
     end else
-    aBackColor:=Parent.Brush.Color;
+      aBackColor:=Parent.Brush.Color;
   { draw grid }
   if ecoShowGrid in Options then
     begin
-      aColor:=GridColor;
-      if aColor=clDefault then aColor:=clBtnText;
+      aColor:=GetColorResolvingDefault(GridColor, clBtnText);
       if not bEnabled then
         begin
           aColor:=GetMonochromaticColor(aColor);
           aColor:=GetMergedColor(aColor, aBackColor, 0.5);
         end else
-        aColor:=GetMergedColor(aColor, aBackColor, 0.8);
+          aColor:=GetMergedColor(aColor, aBackColor, 0.8);
       Canvas.Pen.Color:=aColor;
       Canvas.Pen.Style:=psDot;
       Canvas.Pen.Width:=1;
@@ -738,30 +731,25 @@ begin
           aSmoothY:=-Smoothness;
         end;
       for i:=0 to high(aPoints) do
-        begin
-          case i mod 3 of
-            1:
-              begin
-                 aPoints[i].X:=round(aPoints[i-1].X*(1-aSmoothX))+round(aPoints[i+2].X*aSmoothX);
-                 aPoints[i].Y:=round(aPoints[i-1].Y*(1-aSmoothY))+round(aPoints[i+2].Y*aSmoothY);
-              end;
-            2:
-              begin
-                aPoints[i].X:=round(aPoints[i+1].X*(1-aSmoothX))+round(aPoints[i-2].X*aSmoothX);
-                aPoints[i].Y:=round(aPoints[i+1].Y*(1-aSmoothY))+round(aPoints[i-2].Y*aSmoothY);
-              end;
-          end;
+        case i mod 3 of
+          1: begin
+                aPoints[i].X:=round(aPoints[i-1].X*(1-aSmoothX))+round(aPoints[i+2].X*aSmoothX);
+               aPoints[i].Y:=round(aPoints[i-1].Y*(1-aSmoothY))+round(aPoints[i+2].Y*aSmoothY);
+             end;
+          2: begin
+               aPoints[i].X:=round(aPoints[i+1].X*(1-aSmoothX))+round(aPoints[i-2].X*aSmoothX);
+               aPoints[i].Y:=round(aPoints[i+1].Y*(1-aSmoothY))+round(aPoints[i-2].Y*aSmoothY);
+             end;
         end;
       Canvas.PolyBezier(aPoints, False, True);
     end;
   Canvas.AntialiasingMode:=amOff;
   { draw guidelines }
-  if bEnabled and MouseEntered and (ecoGuidelines in Options) then
+  if bEnabled and MouseInClient and (ecoGuidelines in Options) then
     begin
       aPoint:=Mouse.CursorPos;
       aPoint:=ScreenToControl(aPoint);
-      aColor:=GuideColor;
-      if aColor=clDefault then aColor:=clBtnText;
+      aColor:=GetColorResolvingDefault(GuideColor, clBtnText);
       Canvas.Pen.Color:=aColor;
       Canvas.Pen.Style:=psDot;
       Canvas.Pen.Width:=1;
@@ -771,15 +759,14 @@ begin
   { draw caption }
   if Caption<>'' then
     begin
-      aDetails:=ThemeServices.GetElementDetails(cDetails[bEnabled]);
-      aRect:=ThemeServices.GetTextExtent(Canvas.Handle, aDetails, Caption, 0, nil);
+      aRect:=ThemeServices.GetTextExtent(Canvas.Handle, ArBtnDetails[bEnabled, False], Caption, 0, nil);
       OffsetRect(aRect, 2, 2);
       if IsRightToLeft then
         begin
           aRect.Left:=Width-aRect.Right;
           aRect.Right:=Width-2;
         end;
-      ThemeServices.DrawText(Canvas, aDetails, Caption, aRect, 0, 0);
+      ThemeServices.DrawText(Canvas, ArBtnDetails[bEnabled, False], Caption, aRect, 0, 0);
     end;
   { draw points }
   aColor:=PointColor;
@@ -905,9 +892,9 @@ const cVisibleOpts = [ecoAntiAliasing, ecoFixedMin, ecoFixedMax, ecoReversed, ec
 var bInv: Boolean;
 begin
   if FOptions=AValue then exit;
-  bInv:= ((FOptions*cVisibleOpts)<>(AValue*cVisibleOpts));
+  bInv:=(FOptions*cVisibleOpts)<>(AValue*cVisibleOpts);
   FOptions:=AValue;
-  FRealRevered:= IsRightToLeft xor (ecoReversed in AValue);
+  FRealRevered:=(IsRightToLeft xor (ecoReversed in AValue));
   if bInv then InvalidateNonUpdated;
 end;
 

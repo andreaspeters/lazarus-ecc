@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,7 +34,7 @@ unit ECScale;
 interface
 
 uses
-  Classes, SysUtils, Controls, ECTypes, Graphics, {$IFDEF DBGSCALE} LCLProc, {$ENDIF} LCLType, Math, Themes;
+  Classes, SysUtils, Controls, Graphics, {$IFDEF DBGSCALE} LCLProc, {$ENDIF} LCLType, Math, Themes, ECTypes;
 
 type
   {$PACKENUM 2}
@@ -48,11 +48,13 @@ type
   TTicksVisible = (etvNone, etvLongOnly, etvLongShort, etvAll);
   TValueDisplay = (evdNormal, evdTopLeft, evdBottomRight, evdTopLeftInside,
                    evdBttmRightInside, evdCompactTopLeft, evdCompactBttmRight);
-  TScaleValueFormat = (esvfAutoRound, esvfFixedRound, esvfSmartRound, esvfExponential, esvfHexadecimal,
-                       esvfMarkHexadec, esvfOctal, esvfMarkOctal, esvfBinary, esvfDate, esvfTime,
-                       esvfText);
+  TScaleValueFormat = (esvfAutoRound, esvfFixedRound, esvfSmartRound, esvfSIPrefix,esvfExponential,
+                       esvfHexadecimal, esvfMarkHexadec, esvfOctal, esvfMarkOctal, esvfBinary, esvfDate,
+                       esvfTime, esvfText);
 									                       
 const
+  cDefDateTimeFormat = 'hh:nn:ss';
+  cDefLogarithmBase: Double = 10.0;
   cDefTickAlign = etaOuter;
   cDefTickIndent = 5;
   cDefTickLength = 20;
@@ -72,7 +74,6 @@ type
     procedure SetCorrection(AValue: Double);
     procedure SetDateTimeFormat(const AValue: string);
     procedure SetDigits(const AValue: SmallInt);
-    procedure SetFontOrientation(const AValue: Integer);
     procedure SetLogarithmBase(const AValue: Double);
     procedure SetMax(const AValue: Double);
     procedure SetMin(const AValue: Double);
@@ -96,7 +97,6 @@ type
     FCorrection: Double;
     FDateTimeFormat: string;
     FDigits: SmallInt;
-    FFontOrientation: Integer;
     FLogarithmBase: Double;   
     FScaleType: TScaleType;
     FTickAlign: TTickAlign;
@@ -120,6 +120,8 @@ type
     procedure CalcTicksValuesLinear(ALength: Integer; AReversed: Boolean);
     procedure CalcTicksValuesLogarithmic(ALength: Integer; AReversed: Boolean);
     function GetStringValue(AIndex: Integer): string; overload;
+    function IsDateTimeFormatStored: Boolean;
+    function IsLogarithmBaseStored: Boolean;
     procedure Redraw; virtual;
     procedure RecalcRedraw; virtual;
   public
@@ -135,9 +137,8 @@ type
     procedure CalcTickPosAndValues(ALength: Integer; AReversed: Boolean);
     procedure Draw(ACanvas: TCanvas; ATicks, AValues: Boolean; AScalePos: TObjectPos;
                 ATickStart: TPoint; AExtraValues: array of Double); overload;
-    procedure Draw(ACanvas: TCanvas; ATicks, AValues: Boolean;
-                AScalePos: TObjectPos; AColor3DDark, AColor3DLight: TColor;
-                ATickStart: TPoint; AExtraValues: array of Double);
+    procedure Draw(ACanvas: TCanvas; ATicks, AValues: Boolean; AScalePos: TObjectPos;
+                AColor3DDark, AColor3DLight: TColor; ATickStart: TPoint; AExtraValues: array of Double);
     procedure EndUpdate;
     function GetPreferredSize(ACanvas: TCanvas; AHorizontal: Boolean;
                ATicks: Boolean = True; AValues: Boolean = True): Integer;
@@ -147,13 +148,12 @@ type
     function GetStringMin: string;
     function GetStringPosition(APosition: Double): string; overload;
     function GetStringPosition(APosition: Double; ARound: SmallInt): string; overload;
-    function GetStringValue(AValue: Double; ARound: Integer): string; overload;
+    function GetStringValue(AValue: Double; ARound: SmallInt): string; overload;
     function GetTextSize(ACanvas: TCanvas; const AStrVal: string; AHorizontal: Boolean): Integer;
     property Correction: Double read FCorrection write SetCorrection;
-    property DateTimeFormat: string read FDateTimeFormat write SetDateTimeFormat;
+    property DateTimeFormat: string read FDateTimeFormat write SetDateTimeFormat stored IsDateTimeFormatStored;
     property Digits: SmallInt read FDigits write SetDigits default 0;
-    property FontOrientation: Integer read FFontOrientation write SetFontOrientation default 0;
-    property LogarithmBase: Double read FLogarithmBase write SetLogarithmBase;
+    property LogarithmBase: Double read FLogarithmBase write SetLogarithmBase stored IsLogarithmBaseStored;
     property Max: Double read FMax write SetMax;
     property Min: Double read FMin write SetMin;
     property ScaleType: TScaleType read FScaleType write SetScaleType default estLinear;
@@ -180,9 +180,8 @@ type
   published
     property DateTimeFormat;
     property Digits;
-   { property FontOrientation; }
     property LogarithmBase;
-    property Max;
+    property Max nodefault;
     property Min;
     property ScaleType;
     property Text;
@@ -215,7 +214,7 @@ begin
   FCorrection:=0;
   FDateTimeFormat:='hh:nn:ss';
   DTFormat.LongTimeFormat:=FDateTimeFormat;
-  FLogarithmBase:=10;
+  FLogarithmBase:=cDefLogarithmBase;
   FMin:=0;
   FMax:=100;
   FText:=TStringList.Create;
@@ -267,7 +266,8 @@ var aDistPx, aShift, pxlsPerUnit: Double;
     aFrac:=frac(aHighest);
     aCorrection:=Correction/ATickValue;
     Result:=trunc(aHighest);
-    if aFrac>(1-aCorrection) then inc(Result)
+    if aFrac>(1-aCorrection)
+      then inc(Result)
       else if aFrac<-aCorrection then dec(Result);
   end;
 
@@ -283,21 +283,19 @@ var aDistPx, aShift, pxlsPerUnit: Double;
         inc(Result);
         aShift:=1-abs(aFrac);
       end else
-      begin
         if aFrac<(-1+aCorrection) then
           begin
             dec(Result);
             aShift:=0;
           end else
-          aShift:=abs(aFrac);
-      end;
+            aShift:=abs(aFrac);
   end;
 
 begin
   pxlsPerUnit:=(ALength-0.99)/(Max-Min);
-  aDistPx:=TickShortValue*pxlsPerUnit;  { distance between Short Ticks }
+  aDistPx:=TickShortValue*pxlsPerUnit;  { distance between short Ticks }
   if (TickVisible>etvLongOnly) and (aDistPx>0.5) then
-    begin  { Calc. Small Ticks }
+    begin  { calc. short ticks }
       tMin:=GetValueMin(TickShortValue);
       tMax:=GetValueMax(TickShortValue);
       SetLength(TickArray, tMax-tMin+1);
@@ -308,9 +306,9 @@ begin
         end;
     end;
   bAddedTick:=False;
-  aDistPx:=TickMiddleValue*pxlsPerUnit;  { distance between Middle Ticks }
+  aDistPx:=TickMiddleValue*pxlsPerUnit;  { distance between middle ticks }
   if (TickVisible=etvAll) and (aDistPx>0.5) then
-    begin  { Calc. Middle Ticks }
+    begin  { calc. middle ticks }
       lLim:=0;
       hLim:=trunc(TickMiddleValue/TickShortValue);
       tMin:=GetValueMin(TickMiddleValue);
@@ -320,15 +318,13 @@ begin
           aPos:=trunc((aShift+i)*aDistPx);
           bTickInserted:=False;
           for j:=lLim to high(TickArray) do
-            begin
-              if (TickArray[j].Pos=aPos) or (TickArray[j].Pos=(aPos+1)) then
-                begin
-                  TickArray[j].Size:=etsMiddle;
-                  bTickInserted:=True;
-                  lLim:=j+hLim;
-                  break;
-                end;
-            end;
+            if (TickArray[j].Pos=aPos) or (TickArray[j].Pos=(aPos+1)) then
+              begin
+                TickArray[j].Size:=etsMiddle;
+                bTickInserted:=True;
+                lLim:=j+hLim;
+                break;
+              end;
           if not bTickInserted then
             begin
               SetLength(TickArray, high(TickArray)+2);
@@ -338,8 +334,8 @@ begin
             end;
         end;
     end;
-  { Calc. Long Ticks }
-  aDistPx:=TickLongValue*pxlsPerUnit;  { distance between Long Ticks }
+  { calc. long ticks }
+  aDistPx:=TickLongValue*pxlsPerUnit;  { distance between long ticks }
   if aDistPx>0.5 then
     begin
       aMinL:=high(Integer);
@@ -348,13 +344,13 @@ begin
       hLim:=trunc(TickLongValue/TickShortValue);
       tMin:=GetValueMin(TickLongValue);
       tMax:=GetValueMax(TickLongValue);
-      if (tMax-tMin)>=0 then
-        for i:=0 to tMax-tMin do
-          begin
-            aPos:=trunc((aShift+i)*aDistPx);
-            bTickInserted:=False;
-            for j:=lLim to high(TickArray) do
-              begin
+      if (tMax-tMin)>=0
+        then
+          for i:=0 to tMax-tMin do
+            begin
+              aPos:=trunc((aShift+i)*aDistPx);
+              bTickInserted:=False;
+              for j:=lLim to high(TickArray) do
                 if (TickArray[j].Pos=aPos) or (TickArray[j].Pos=(aPos+1)) then
                  begin
                    myPos:=TickArray[j].Pos;
@@ -363,17 +359,16 @@ begin
                    if not bAddedTick then lLim:=j+hLim;  { ensure to search whole array when at least one tick was added }
                    break;
                  end;
-              end;
-            if not bTickInserted then
-              begin
-                SetLength(TickArray, high(TickArray)+2);
-                TickArray[high(TickArray)].Pos:=aPos;
-                TickArray[high(TickArray)].Size:=etsLong;
-                myPos:=aPos;
-              end;
-            if myPos<aMinL then aMinL:=myPos;
-            if myPos>aMaxL then aMaxL:=myPos;
-          end
+              if not bTickInserted then
+                begin
+                  SetLength(TickArray, high(TickArray)+2);
+                  TickArray[high(TickArray)].Pos:=aPos;
+                  TickArray[high(TickArray)].Size:=etsLong;
+                  myPos:=aPos;
+                end;
+              if myPos<aMinL then aMinL:=myPos;
+              if myPos>aMaxL then aMaxL:=myPos;
+            end
         else
         begin
           aMinL:=0;
@@ -402,11 +397,11 @@ begin
 end;
 
 procedure TCustomECScale.CalcTicksValuesLogarithmic(ALength: Integer; AReversed: Boolean);
+const caTick: array[Boolean] of TTickSize = (etsShort, etsMiddle);
 var aHelp, aMin, aMax, fracMin, pxlsPerUnit: Double;
-    aMinHasFrac: SmallInt;
     aHiTick, aMiddlePos, i, j, k, aLogBaseMinus1, lowTicks, hiTicks, truncMin, truncMax: Integer;
+    aMinHasFrac: SmallInt;
     bMiddleMark: Boolean;
-const caTick: array[False..True] of TTickSize = (etsShort, etsMiddle);
 begin
   aLogBaseMinus1:=trunc(LogarithmBase)-1;
   aMin:=Min;
@@ -414,13 +409,13 @@ begin
   if aMin>0 
     then aMin:=logn(LogarithmBase, aMin) 
     else aMin:=0;
-  truncMin:=trunc(AMin);
-  fracMin:=frac(AMin);
+  truncMin:=trunc(aMin);
+  fracMin:=frac(aMin);
   if fracMin<0.0 then dec(truncMin);
   if aMax>0 
     then aMax:=logn(LogarithmBase, aMax) 
     else aMax:=0;
-  truncMax:=trunc(AMax);
+  truncMax:=trunc(aMax);
   if frac(aMax)<0.0 then dec(truncMax);
   if aMin<aMax then
     begin
@@ -429,7 +424,7 @@ begin
         then aMinHasFrac:=1 
         else aMinHasFrac:=0; 
       if TickVisible>etvLongOnly then
-        begin  { All Ticks }
+        begin  { all ticks }
           hiTicks:=trunc(Max/power(LogarithmBase, truncMax));
           aHelp:=Min/power(LogarithmBase, truncMin);
           lowTicks:=trunc(LogarithmBase)-trunc(aHelp);
@@ -453,7 +448,7 @@ begin
           bMiddleMark:=(TickVisible=etvAll) and (frac(LogarithmBase)=0.0) and (trunc(LogarithmBase) mod 2 =0);
           aMiddlePos:=trunc(LogarithmBase) div 2;
           if aMinHasFrac=1 then
-            begin  { Small ticks in front of the very first long tick }
+            begin  { short ticks in front of the very first long tick }
               lowTicks:=trunc(LogarithmBase)-lowTicks;
               for j:=lowTicks to aHiTick do
                 begin
@@ -490,7 +485,7 @@ begin
               MaxL:=TickArray[lowTicks+i*aLogBaseMinus1].Pos;
             end;
         end else
-        begin  { LongTicks only }
+        begin  { etvLongTicks }
           aHelp:=Min/power(LogarithmBase, truncMin);
           j:=truncMax-truncMin;
           SetLength(ValueArray, j+1-aMinHasFrac);
@@ -517,32 +512,32 @@ begin
           dec(i);
           MaxL:=TickArray[i].Pos;
         end;
-      if not AReversed then
-        for i:=0 to high(ValueArray) do
-          ValueArray[i]:=power(LogarithmBase, truncMin+i+aMinHasFrac)
-        else
+      for i:=0 to high(ValueArray) do
+        ValueArray[i]:=power(LogarithmBase, truncMin+i+aMinHasFrac);
+      if AReversed then
         begin
-          j:=high(ValueArray);
-          for i:=0 to j do
-            ValueArray[i]:=power(LogarithmBase, truncMin+i+aMinHasFrac);
+          j:=MaxL;
+          MaxL:=LengthPx-MinL;
+          MinL:=LengthPx-j;
         end;
     end;
 end;
 
-procedure TCustomECScale.Draw(ACanvas: TCanvas; ATicks, AValues: Boolean; 
-  AScalePos: TObjectPos; ATickStart: TPoint; AExtraValues: array of Double);
+procedure TCustomECScale.Draw(ACanvas: TCanvas; ATicks, AValues: Boolean; AScalePos: TObjectPos;
+            ATickStart: TPoint; AExtraValues: array of Double);
 begin
   Draw(ACanvas, ATicks, AValues, AScalePos, clDefault, clDefault, ATickStart, AExtraValues);  
 end; 
 
 procedure TCustomECScale.Draw(ACanvas: TCanvas; ATicks, AValues: Boolean; AScalePos: TObjectPos; 
-  AColor3DDark, AColor3DLight: TColor; ATickStart: TPoint; AExtraValues: array of Double);
-var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integer;
+            AColor3DDark, AColor3DLight: TColor; ATickStart: TPoint; AExtraValues: array of Double);
+var arTStart, arTEnd: array[TTickSize] of Integer;
+    aStart: Integer;
     {$IFDEF DBGSCALE} td: TDateTime; {$ENDIF}
 
   procedure CalcTickPoints(AEdge, ARight: Integer);
   var aTLSize, aTMSize, aTSSize: Integer;
-  begin  { Calculates Start end End points of Ticks }
+  begin  { calculates start and end points of ticks }
     aTLSize:=TickLength;
     if FValueDisplay<=evdBottomRight then
       begin  { evdNormal, evdTopLeft, evdBottomRight }
@@ -553,82 +548,77 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
         aTMSize:=round(aTLSize*0.5);
         aTSSize:=round(aTLSize*0.3);
       end;
-    aTLEnd:=AEdge+ARight*TickIndent;
-    aTLStart:=aTLEnd+ARight*aTLSize;
+    arTEnd[etsLong]:=AEdge+ARight*TickIndent;
+    arTStart[etsLong]:=arTEnd[etsLong]+ARight*aTLSize;
     case TickAlign of
       etaOuter:
         begin
-          aTMStart:=aTLStart;
-          aTSStart:=aTLStart;
-          aTMEnd:=aTMStart-ARight*aTMSize;
-          aTSEnd:=aTSStart-ARight*aTSSize;
+          arTStart[etsMiddle]:=arTStart[etsLong];
+          arTStart[etsShort]:=arTStart[etsLong];
+          arTEnd[etsMiddle]:=arTStart[etsMiddle]-ARight*aTMSize;
+          arTEnd[etsShort]:=arTStart[etsShort]-ARight*aTSSize;
         end;
       etaInner:
         begin
-          aTMEnd:=aTLEnd;
-          aTSEnd:=aTLEnd;
-          aTMStart:=aTMEnd+ARight*aTMSize;
-          aTSStart:=aTSEnd+ARight*aTSSize;
+          arTEnd[etsMiddle]:=arTEnd[etsLong];
+          arTEnd[etsShort]:=arTEnd[etsLong];
+          arTStart[etsMiddle]:=arTEnd[etsMiddle]+ARight*aTMSize;
+          arTStart[etsShort]:=arTEnd[etsShort]+ARight*aTSSize;
         end;
       etaCenter:
         begin
-          aTMEnd:=aTLEnd+ARight*(aTLSize-aTMSize) div 2;
-          aTMStart:=aTMEnd+ARight*aTMSize;
-          aTSEnd:=aTLEnd+ARight*(aTLSize-aTSSize) div 2;
-          aTSStart:=aTSEnd+ARight*aTSSize;
+          arTEnd[etsMiddle]:=arTEnd[etsLong]+ARight*(aTLSize-aTMSize) div 2;
+          arTStart[etsMiddle]:=arTEnd[etsMiddle]+ARight*aTMSize;
+          arTEnd[etsShort]:=arTEnd[etsLong]+ARight*(aTLSize-aTSSize) div 2;
+          arTStart[etsShort]:=arTEnd[etsShort]+ARight*aTSSize;
         end;
     end;
   end;
 
   procedure DrawTicks;
-  var aTickColor: TColor;
 
     procedure nDrawTicks(AOffSet: Integer);
-    var aPos, i: Integer;
+    const cReversed: array[Boolean] of ShortInt = (1, -1);
+    var aPos: Integer;
+        aTM: TTickMetrics;
     begin
-      if not Reversed then AOffSet:=AStart+AOffSet
-        else AOffSet:=LengthPx+AOffSet+AStart-1;
-      if AScalePos in [eopTop, eopBottom] then
-        begin
-          for i:=0 to high(TickArray) do
+      if not Reversed
+        then AOffSet:=aStart+AOffSet
+        else AOffSet:=LengthPx+AOffSet+aStart-1;
+      if AScalePos in [eopTop, eopBottom]
+        then
+          for aTM in TickArray do
             begin
-              if not Reversed then aPos:=AOffSet+TickArray[i].Pos
-                else aPos:=AOffSet-TickArray[i].Pos;;
-              case TickArray[i].Size of
-                etsShort: ACanvas.Line(aPos, aTSStart, aPos, aTSEnd);
-                etsMiddle: ACanvas.Line(aPos, aTMStart, aPos, aTMEnd);
-                etsLong: ACanvas.Line(aPos, aTLStart, aPos, aTLEnd);
-              end;
-            end;
-        end else
-        begin
-          for i:=0 to high(TickArray) do
+              aPos:=AOffSet+cReversed[Reversed]*aTM.Pos;
+              ACanvas.Line(aPos, arTStart[aTM.Size], aPos, arTEnd[aTM.Size]);
+            end
+        else
+          for aTM in TickArray do
             begin
-              if not Reversed then aPos:=AOffSet+TickArray[i].Pos
-                else aPos:=AOffSet-TickArray[i].Pos;
-              case TickArray[i].Size of
-                etsShort: ACanvas.Line(aTSStart, aPos, aTSEnd, aPos);
-                etsMiddle: ACanvas.Line(aTMStart, aPos, aTMEnd, aPos);
-                etsLong: ACanvas.Line(aTLStart, aPos, aTLEnd, aPos);
-              end;
+              aPos:=AOffSet+cReversed[Reversed]*aTM.Pos;
+              ACanvas.Line(arTStart[aTM.Size], aPos, arTEnd[aTM.Size], aPos);
             end;
-        end;
     end;
 
+  var aTickColor: TColor;
   begin
     with ACanvas do
       begin
         Pen.Style:=psSolid;
-        aTickColor:=GetColorResolvingDefault(TickColor, clBtnText);
-        if not Parent.IsEnabled then
-          if TickDesign<etd3DLowered then
-            begin
-              aTickColor:=GetMergedColor(aTickColor, Pixels[Width div 2, Height div 2], 0.45);
-            end else
-            begin
-              AColor3DDark:=GetMergedColor(AColor3DDark, Pixels[Width div 2, Height div 2], 0.67);
-              AColor3DLight:=GetMergedColor(AColor3DLight, Pixels[Width div 2, Height div 2], 0.67);
-            end;
+        if TickDesign<etd3DLowered then
+          begin
+            aTickColor:=GetColorResolvingDefault(TickColor, clBtnText);
+            if not Parent.IsEnabled then aTickColor:=GetMonochromaticColor(aTickColor);
+          end else
+          begin
+            AColor3DDark:=GetColorResolvingDefault(AColor3DDark, clBtnShadow);
+            AColor3DLight:=GetColorResolvingDefault(AColor3DLight, clBtnHilight);
+            if not Parent.IsEnabled then
+              begin
+                AColor3DDark:=GetMonochromaticColor(AColor3DDark);
+                AColor3DLight:=GetMonochromaticColor(AColor3DLight);
+              end;
+          end;
         case TickDesign of
           etdSimple:
             begin
@@ -663,45 +653,45 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
   var i, lV, valueTL, valueBR: Integer;
       aDetails: TThemedElementDetails;
       aFontColor: TColor;
-      cosPi1800, sinPi1800, lHelp: Double;
-      strVal: string;
+      lHelp: Double;
       aRect: TRect;
+      strVal: string;
       aValueVisible: TValuesVisibility;
 
     function GetTopLeftPos: Integer;
     begin
-      with ACanvas do
-        if AScalePos in [eopLeft, eopRight] 
-          then Result:=round(cosPi1800*TextWidth(strVal)+sinPi1800*TextHeight(strVal))
-          else Result:=round(sinPi1800*TextWidth(strVal)+cosPi1800*TextHeight(strVal));
+      if AScalePos in [eopLeft, eopRight]
+        then Result:=ACanvas.TextWidth(strVal)
+        else Result:=ACanvas.TextHeight(strVal);
     end;
 
     function GetValuePos: Integer;
     var c: Char;
         h: SmallInt;
     begin
-      with ACanvas do
-        if AScalePos in [eopLeft, eopRight] then
-          case ValueDisplay of  { Vertical }
-            evdNormal: Result:=-round(cosPi1800*(TextHeight(strVal) div 2)+sinPi1800*(TextWidth(strVal) div 2));
-            evdTopLeft, evdTopLeftInside: Result:=-round(cosPi1800*TextHeight(strVal)+sinPi1800*TextWidth(strVal)); 
-            evdCompactTopLeft: 
-              begin
-                Result:=0;
-                h:=TextHeight('9');
-                for c in strVal do
-                  if not (c=FormatSettings.DecimalSeparator)
-                    then dec(Result, h)
-                    else dec(Result, h div 2);
-                inc(Result, length(strVal));
-              end;
-            otherwise Result:=1;
-          end else
-          case ValueDisplay of  { Horizontal }
-            evdNormal: Result:=-round(sinPi1800*(TextHeight(strVal) div 2)+cosPi1800*(TextWidth(strVal) div 2));
-            evdTopLeft, evdTopLeftInside, evdCompactTopLeft: Result:=-round(sinPi1800*TextHeight(strVal)+cosPi1800*TextWidth(strVal)); 
-            otherwise Result:=1;
-          end;
+      if AScalePos in [eopLeft, eopRight] then
+        case ValueDisplay of  { vertical }
+          evdNormal: Result:=-ACanvas.TextHeight(strVal) div 2;
+          evdTopLeft, evdTopLeftInside: Result:=-ACanvas.TextHeight(strVal);
+          evdCompactTopLeft:
+            begin
+              Result:=0;
+              h:=ACanvas.TextHeight('9');
+              for c in strVal do
+                if not (c=FormatSettings.DecimalSeparator)
+                  then dec(Result, h)
+                  else dec(Result, h div 2);
+              inc(Result, length(strVal));
+            end;
+          otherwise
+            Result:=1;
+        end else
+        case ValueDisplay of  { horizontal }
+          evdNormal: Result:=-ACanvas.TextWidth(strVal) div 2;
+          evdTopLeft, evdTopLeftInside, evdCompactTopLeft: Result:=-ACanvas.TextWidth(strVal);
+          otherwise
+            Result:=1;
+        end;
     end;
 
     procedure DrawValue;
@@ -710,7 +700,9 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
     
       procedure nDrawValue(AValue: Integer);
       begin
-        if AScalePos in [eopLeft, eopRight] then aRect.Left:=AValue else aRect.Top:=AValue;
+        if AScalePos in [eopLeft, eopRight]
+          then aRect.Left:=AValue
+          else aRect.Top:=AValue;
         ThemeServices.DrawText(ACanvas, aDetails, strVal, aRect, aFlags, 0);
       end;
 
@@ -731,7 +723,7 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
     begin
       if ValueDisplay in [evdTopLeft, evdTopLeftInside, evdCompactTopLeft] 
         then aValueShift:=-ValueShift
-        else aValueShift:=ValueShift;
+        else aValueShift:= ValueShift;
       aFlags:=DT_NOPREFIX or DT_SINGLELINE;
       case AScalePos of
         eopTop:
@@ -762,7 +754,7 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
     end;
 
   begin
-    aDetails:=ThemeServices.GetElementDetails(caThemedContent[caItemState[Parent.IsEnabled]]);    
+    aDetails:=ArBtnDetails[Parent.IsEnabled, False];
     aRect.Right:=ACanvas.Width;
     aRect.Bottom:=ACanvas.Height;
     aValueVisible:=ValueVisible;
@@ -770,63 +762,60 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
       eopTop:
         if ATicks then
           case ValueDisplay of
-            evdNormal, evdTopLeft, evdBottomRight: valueTL:=aTLStart-ValueIndent+2;
+            evdNormal, evdTopLeft, evdBottomRight: valueTL:=arTStart[etsLong]-ValueIndent+2;
             otherwise
               if TickAlign=etaInner 
-                then valueTL:=aTLStart-ValueIndent+ACanvas.TextHeight('1,9')-1
-                else valueTL:=aTLStart-ValueIndent+2;
+                then valueTL:=arTStart[etsLong]-ValueIndent+ACanvas.TextHeight('1,9')-1
+                else valueTL:=arTStart[etsLong]-ValueIndent+2;
           end else 
-          valueTL:=ATickStart.Y-ValueIndent;
+            valueTL:=ATickStart.Y-ValueIndent;
       eopRight:
         if ATicks then
           case ValueDisplay of
-            evdNormal, evdTopLeft, evdBottomRight: valueBR:=aTLStart+ValueIndent+1;
+            evdNormal, evdTopLeft, evdBottomRight: valueBR:=arTStart[etsLong]+ValueIndent+1;
             otherwise
               case TickAlign of
-                etaOuter: valueBR:=aTLStart+ValueIndent+1;  
-                etaInner: valueBR:=aTLStart+ValueIndent-ACanvas.TextWidth('9')+1;
-                etaCenter: valueBR:=aTLStart+ValueIndent-ACanvas.TextWidth('9') div 2 +1;
+                etaOuter:  valueBR:=arTStart[etsLong]+ValueIndent+1;
+                etaInner:  valueBR:=arTStart[etsLong]+ValueIndent-ACanvas.TextWidth('9')+1;
+                etaCenter: valueBR:=arTStart[etsLong]+ValueIndent-ACanvas.TextWidth('9') div 2 +1;
               end;
           end else 
-          valueBR:=ATickStart.X+ValueIndent;
+            valueBR:=ATickStart.X+ValueIndent;
       eopBottom:
         if ATicks then
           case ValueDisplay of
-            evdNormal, evdTopLeft, evdBottomRight: valueBR:=aTLStart+ValueIndent;      
+            evdNormal, evdTopLeft, evdBottomRight: valueBR:=arTStart[etsLong]+ValueIndent;
             otherwise
               if TickAlign=etaInner 
-                then valueBR:=aTLStart+ValueIndent-ACanvas.TextHeight('1,9')+3
-                else valueBR:=aTLStart+ValueIndent;  
+                then valueBR:=arTStart[etsLong]+ValueIndent-ACanvas.TextHeight('1,9')+3
+                else valueBR:=arTStart[etsLong]+ValueIndent;
           end else 
-          valueBR:=ATickStart.Y+ValueIndent;
+            valueBR:=ATickStart.Y+ValueIndent;
       eopLeft:
         if ATicks then
           case ValueDisplay of
-            evdNormal, evdTopLeft, evdBottomRight: valueTL:=aTLStart-ValueIndent;
+            evdNormal, evdTopLeft, evdBottomRight: valueTL:=arTStart[etsLong]-ValueIndent;
             evdTopLeftInside, evdBttmRightInside:
               case TickAlign of
-                etaOuter: valueTL:=aTLStart-ValueIndent;  
-                etaInner: valueTL:=aTLStart-ValueIndent+ACanvas.TextWidth('9');
-                etaCenter: valueTL:=aTLStart-ValueIndent+ACanvas.TextWidth('9') div 2;
+                etaOuter:  valueTL:=arTStart[etsLong]-ValueIndent;
+                etaInner:  valueTL:=arTStart[etsLong]-ValueIndent+ACanvas.TextWidth('9');
+                etaCenter: valueTL:=arTStart[etsLong]-ValueIndent+ACanvas.TextWidth('9') div 2;
               end; 
             otherwise
               case TickAlign of
-                etaOuter: valueTL:=aTLStart-ValueIndent-ACanvas.TextWidth('9');  
-                etaInner: valueTL:=aTLStart-ValueIndent;
-                etaCenter: valueTL:=aTLStart-ValueIndent-ACanvas.TextWidth('9') div 2;
+                etaOuter:  valueTL:=arTStart[etsLong]-ValueIndent-ACanvas.TextWidth('9');
+                etaInner:  valueTL:=arTStart[etsLong]-ValueIndent;
+                etaCenter: valueTL:=arTStart[etsLong]-ValueIndent-ACanvas.TextWidth('9') div 2;
               end; 
           end else 
-          valueTL:=ATickStart.X-ValueIndent;
+            valueTL:=ATickStart.X-ValueIndent;
     end;
     with ACanvas do
       begin
-        Font.Orientation:=FontOrientation;
         aFontColor:=GetColorResolvingDefault(Font.Color, clBtnText);
         if TickDesign>=etd3DLowered then 
-          Font.Color:=GetMergedColor(aFontColor, Pixels[Width div 2, height div 2], 0.75);
+          Font.Color:=GetMergedColor(aFontColor, Pixels[Width div 2, Height div 2], 0.75);
         Brush.Style:=bsClear;
-        cosPi1800:=abs(cos(pi_1800*FFontOrientation));
-        sinPi1800:=abs(sin(pi_1800*FFontOrientation));
         if aValueVisible>evvBounds then
           begin
             i:=MaxL-MinL;
@@ -835,10 +824,10 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
             for i:=0 to high(ValueArray) do
               begin
                 strVal:=GetStringValue(i);
-                if not Reversed 
+                if not Reversed
                   then lV:=MinL+round(i*lHelp)
                   else lV:=MaxL-round(i*lHelp);
-                lV:=AStart+lV+GetValuePos;
+                lV:=aStart+lV+GetValuePos;
                 DrawValue;
               end;
           end;
@@ -847,14 +836,14 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
             if (aValueVisible=evvBounds) or (ValueArray=nil) or (Min<>ValueArray[0]) then
               begin
                 strVal:=GetStringMin;
-                lV:=AStart+GetValuePos;
+                lV:=aStart+GetValuePos;
                 if Reversed then lV:=lV+LengthPx;
                 DrawValue;
               end;
             if (aValueVisible=evvBounds) or (ValueArray=nil) or (Max<>ValueArray[high(ValueArray)]) then
               begin
                 strVal:=GetStringMax;
-                lV:=AStart+GetValuePos;
+                lV:=aStart+GetValuePos;
                 if not Reversed then lV:=lV+LengthPx;
                 DrawValue;
               end;
@@ -864,8 +853,8 @@ var aTLStart, aTLEnd, aTMStart, aTMEnd, aTSStart, aTSEnd: Integer; AStart: Integ
                   strVal:=GetStringValue(AExtraValues[i], FDigits);
                   lV:=round((AExtraValues[i]-Min)*LengthPx/(Max-Min));
                   if not Reversed 
-                    then lV:=AStart+lV+GetValuePos
-                    else lV:=AStart+LengthPx-lV+GetValuePos;                    
+                    then lV:=aStart+lV+GetValuePos
+                    else lV:=aStart+LengthPx-lV+GetValuePos;
                   DrawValue;
                 end;
           end;
@@ -878,34 +867,26 @@ begin
     eopTop:
       begin
         CalcTickPoints(ATickStart.Y, -1);
-        AStart:=ATickStart.X;
+        aStart:=ATickStart.X;
       end;
     eopRight:
       begin
         CalcTickPoints(ATickStart.X, 1);
-        AStart:=ATickStart.Y;
+        aStart:=ATickStart.Y;
       end;
     eopBottom:
       begin
         CalcTickPoints(ATickStart.Y, 1);
-        AStart:=ATickStart.X;
+        aStart:=ATickStart.X;
       end;
     eopLeft:
       begin
         CalcTickPoints(ATickStart.X, -1);
-        AStart:=ATickStart.Y;
+        aStart:=ATickStart.Y;
       end;
   end;
   ATicks:=ATicks and (TickVisible>etvNone);
-  if ATicks then 
-    begin
-      if TickDesign>=etd3DLowered then
-        begin
-          AColor3DDark:=GetColorResolvingDefault(AColor3DDark, clBtnShadow);
-          AColor3DLight:=GetColorResolvingDefault(AColor3DLight, clBtnHilight);
-        end;
-      DrawTicks;
-    end;
+  if ATicks then DrawTicks;
   if AValues and (ValueVisible>evvNone) then DrawValues;
   {$IFDEF DBGSCALE} DebugLn('Scale.Draw '+floattostr((now-td)*24*60*60*1000)); {$ENDIF}
 end;
@@ -916,22 +897,19 @@ begin
   if UpdateCount=0 then RecalcRedraw;
 end;  
 
-function TCustomECScale.GetPreferredSize(ACanvas: TCanvas; AHorizontal: Boolean; 
-  ATicks: Boolean = True; AValues: Boolean = True): Integer;
+function TCustomECScale.GetPreferredSize(ACanvas: TCanvas; AHorizontal: Boolean; ATicks: Boolean = True;
+           AValues: Boolean = True): Integer;
 var bValues: Boolean;
 begin
   Result:=0;
   if ATicks or AValues then
     begin
       if ATicks and (TickVisible>etvNone) then inc(Result,TickIndent+TickLength);
-      bValues:= (AValues and (ValueVisible>evvNone));
-      if AHorizontal then 
-        begin  { Horizontal } 
-          if bValues then inc(Result, GetPreferredValuesHeight(ACanvas))
-        end else
-        begin  { Vertical }
-          if bValues then inc(Result, GetPreferredValuesWidth(ACanvas))
-        end;
+      bValues:=(AValues and (ValueVisible>evvNone));
+      if bValues then
+        if AHorizontal
+          then inc(Result, GetPreferredValuesHeight(ACanvas))
+          else inc(Result, GetPreferredValuesWidth(ACanvas));
     end;
 end;
 
@@ -939,8 +917,7 @@ function TCustomECScale.GetPreferredValuesHeight(ACanvas: TCanvas): Integer;
 begin  
   Result:=ValueIndent; 
   if ValueDisplay<=evdBottomRight 
-    then inc(Result, Math.max(GetTextSize(ACanvas, GetStringMax, True), 
-                              GetTextSize(ACanvas, GetStringMin, True)))
+    then inc(Result, Math.max(GetTextSize(ACanvas, GetStringMax, True), GetTextSize(ACanvas, GetStringMin, True)))
     else if TickAlign<>etaInner then inc(Result, ACanvas.TextHeight(',9')-2);
 end;  
  
@@ -957,16 +934,14 @@ begin
       begin
        inc(Result, aWidth);
         case TickAlign of
-          etaInner: dec(Result, ACanvas.TextWidth('9'));
+          etaInner:  dec(Result, ACanvas.TextWidth('9'));
           etaCenter: dec(Result, ACanvas.TextWidth('9') div 2);
         end;           
       end;
     evdCompactTopLeft, evdCompactBttmRight:
-      begin
-        case TickAlign of
-          etaOuter: inc(Result, ACanvas.TextWidth('9'));
-          etaCenter: inc(Result, ACanvas.TextWidth('9') div 2);
-        end;
+      case TickAlign of
+        etaOuter:  inc(Result, ACanvas.TextWidth('9'));
+        etaCenter: inc(Result, ACanvas.TextWidth('9') div 2);
       end;
   end;   
 end;
@@ -1009,28 +984,29 @@ begin
     end;         
 end;   
 
-function TCustomECScale.GetStringValue(AValue: Double; ARound: Integer): string;
+function TCustomECScale.GetStringValue(AValue: Double; ARound: SmallInt): string;
 begin
   if assigned(FOnPrepareValue) then FOnPrepareValue(self, AValue);
   case ValueFormat of
-    esvfAutoRound: if ARound<0 
-                     then Result:=floattostr(AValue)
-                     else Result:=floattostrF(AValue, ffFixed, 1, ARound);
-    esvfFixedRound: Result:=floattostrF(AValue, ffFixed, 1, ARound); 
+    esvfAutoRound:   if ARound<0
+                       then Result:=floatToStr(AValue)
+                       else Result:=floatToStrF(AValue, ffFixed, 1, ARound);
+    esvfFixedRound:  Result:=floatToStrF(AValue, ffFixed, 1, ARound);
     esvfSmartRound: 
       begin
         if abs(AValue)>=10 then dec(ARound, trunc(log10(abs(AValue))));
         if (ARound<0) or (frac(AValue)=0) then ARound:=0;
-        Result:=floattostrF(AValue, ffFixed, 1, ARound);        
+        Result:=floatToStrF(AValue, ffFixed, 1, ARound);
       end;
-    esvfExponential: Result:=floattostrF(AValue, ffExponent, ARound, ARound);
+    esvfSIPrefix:    Result:=floatToSIPrefix(AValue, ARound);
+    esvfExponential: Result:=floatToStrF(AValue, ffExponent, ARound, ARound);
     esvfHexadecimal: Result:=hexStr(round(AValue), ARound);
     esvfMarkHexadec: Result:='$'+hexStr(round(AValue), ARound);
-    esvfOctal: Result:=octStr(round(AValue), ARound);
-    esvfMarkOctal: Result:='&'+octStr(round(AValue), ARound);
-    esvfBinary: Result:=binStr(round(AValue), ARound);
-    esvfDate: Result:=datetostr(AValue, DTFormat);
-    esvfTime: Result:=timetostr(AValue, DTFormat);
+    esvfOctal:       Result:=octStr(round(AValue), ARound);
+    esvfMarkOctal:   Result:='&'+octStr(round(AValue), ARound);
+    esvfBinary:      Result:=binStr(round(AValue), ARound);
+    esvfDate:        Result:=dateToStr(AValue, DTFormat);
+    esvfTime:        Result:=timeToStr(AValue, DTFormat);
   end;
 end;
 
@@ -1042,20 +1018,22 @@ begin
     else if (AIndex>=0) and (AIndex<FText.Count) then Result:=FText.Strings[AIndex];
 end;
 
-function TCustomECScale.GetTextSize(ACanvas: TCanvas; const AStrVal: string;
-  AHorizontal: Boolean): Integer;
-var cosPi1800, sinPi1800, aHelp: Double;
+function TCustomECScale.GetTextSize(ACanvas: TCanvas; const AStrVal: string; AHorizontal: Boolean): Integer;
 begin
-  aHelp:=pi_1800*FontOrientation;
-  cosPi1800:=abs(cos(aHelp));
-  sinPi1800:=abs(sin(aHelp));
-  with ACanvas do
-    begin
-      if AHorizontal  
-        then Result:=round(sinPi1800*TextWidth(AStrVal)+cosPi1800*(TextHeight(AStrVal)-2))
-        else Result:=round(cosPi1800*TextWidth(AStrVal)+sinPi1800*TextHeight(AStrVal));           
-    end;
-end;       
+  if AHorizontal
+    then Result:=ACanvas.TextHeight(AStrVal)-2
+    else Result:=ACanvas.TextWidth(AStrVal);
+end;
+
+function TCustomECScale.IsDateTimeFormatStored: Boolean;
+begin
+  Result:=(FDateTimeFormat<>cDefDateTimeFormat);
+end;
+
+function TCustomECScale.IsLogarithmBaseStored: Boolean;
+begin
+  Result:=(FLogarithmBase<>cDefLogarithmBase);
+end;
 
 procedure TCustomECScale.Redraw;
 begin
@@ -1071,8 +1049,8 @@ end;
 
 procedure TCustomECScale.SetCorrection(AValue: Double);
 begin
-  if FCorrection = AValue then exit;
-  FCorrection := AValue;
+  if FCorrection=AValue then exit;
+  FCorrection:=AValue;
   if ((TickVisible>etvNone) or (ValueVisible>evvNone)) and (ScaleType=estLinear) then RecalcRedraw;         
 end; 
 
@@ -1092,26 +1070,18 @@ begin
   if ValueVisible>evvNone then RecalcRedraw;
 end;
 
-procedure TCustomECScale.SetFontOrientation(const AValue: Integer);
-begin
-  if FFontOrientation=AValue then exit;
-  {FFontOrientation:=AValue;}  //seems Qt/GTK2/Win32 works differently now
-  if ValueVisible>evvNone then RecalcRedraw;
-end;
-
 procedure TCustomECScale.SetLogarithmBase(const AValue: Double);
 begin
   if FLogarithmBase=AValue then exit;
   FLogarithmBase:=AValue;
-  if ((TickVisible>etvNone) or (ValueVisible>evvNone))
-    and (ScaleType=estLogarithmic) then RecalcRedraw;
+  if ((TickVisible>etvNone) or (ValueVisible>evvNone)) and (ScaleType=estLogarithmic) then RecalcRedraw;
 end;
 
 procedure TCustomECScale.SetMax(const AValue: Double);
 var bUpdating: Boolean;
 begin
   if FMax=AValue then exit;
-  bUpdating:= UpdateCount>0;
+  bUpdating:=(UpdateCount>0);
   if (Min<AValue) or bUpdating or (csLoading in Parent.ComponentState) then
     begin
       FMax:=AValue;
@@ -1123,7 +1093,7 @@ procedure TCustomECScale.SetMin(const AValue: Double);
 var bUpdating: Boolean;
 begin
   if FMin=AValue then exit;
-  bUpdating:= UpdateCount>0;
+  bUpdating:=(UpdateCount>0);
   if (AValue<Max) or bUpdating or (csLoading in Parent.ComponentState) then
     begin
       FMin:=AValue;

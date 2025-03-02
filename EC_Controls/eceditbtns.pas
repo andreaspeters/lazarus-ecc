@@ -1,7 +1,11 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2018 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2020 Vojtěch Čihák, Czech Republic
+
+  Credit: alignment of composite components (classes TECEditBtnSpacing and TECComboBtnSpacing)
+    is based on idea of Flávio Etrusco published on mailing list.
+    http://lists.lazarus.freepascal.org/pipermail/lazarus/2013-March/079971.html
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,23 +38,66 @@ unit ECEditBtns;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, Math, Themes, Types, StdCtrls, ActnList,
-  Dialogs, Forms, ImgList, LCLIntf, LCLProc, LCLType, LMessages, ECSpinCtrls, ECTypes;
+  Classes, SysUtils, Controls, StdCtrls, ActnList, Dialogs, Graphics, Forms, ImgList,
+  LCLIntf, LCLProc, LCLType, LMessages, Math, Themes, Types, ECSpinCtrls, ECTypes;
 
 type       
   {$PACKENUM 2}
-  TButtonMode = (ebmSpeedBtn, ebmToggleBox, ebmDelayBtn);
+  TButtonMode = (ebmButton, ebmToggleBox, ebmDelayBtn);
   TDropDownGlyph = (edgNone, edgMiddle, edgDown);
   TEBOption = (eboClickAltEnter, eboClickCtrlEnter, eboClickShiftEnter, eboInCellEditor);
   TEBOptions = set of TEBOption;   
   TItemOrder = (eioFixed, eioHistory, eioSorted);
-  { Event }
+  { event }
   TOnDrawGlyph = procedure(Sender: TObject; AState: TItemState) of object;
   
 const
   cDefEBOptions = [eboClickAltEnter, eboClickCtrlEnter, eboClickShiftEnter];
+  cDefBtnCheckedFontStyles = [];
+  cDefBtnSpacing = 6;
+  cBtnDropDownGlyphIndent = 4;
+  cBtnMargin = 6;
 
-type 
+type
+  { TECBtnCore }
+  TECBtnCore = class
+  private
+    FCheckedFontColor: TColor;
+    FCheckedFontStyles: TFontStyles;
+    FDropDownGlyph: TDropDownGlyph;
+    FFlat: Boolean;
+    FGlyphColor: TColor;
+    FGlyphDesign: TGlyphDesign;
+    FGlyphDesignChecked: TGlyphDesign;
+    FImageIndex: TImageIndex;
+    FImageIndexChecked: TImageIndex;
+    FImages: TCustomImageList;
+    FImageWidth: SmallInt;
+    FLayout: TObjectPos;
+    FMargin: SmallInt;
+    FMode: TButtonMode;
+    FShowCaption: Boolean;
+    FSpacing: SmallInt;
+    FTransparent: Boolean;
+  protected
+    BtnBMPs: array[TItemState] of TBitmap;
+    BtnDrawnPushed: Boolean;
+    BtnPushed: Boolean;
+    NeedRedraw: Boolean;
+    Owner: TControl;
+    PrevSize: TSize;
+    RealLayout: TObjectPos;
+    ValidStates: TItemStates;
+    function CalcPreferredSize(ACanvas: TCanvas): TSize;
+    procedure DrawButtonBMPs(ACanvas: TCanvas; AOnDrawGlyph: TOnDrawGlyph);
+    function HasValidActImage: Boolean;
+    function HasValidImages: Boolean;
+    function Resize(AWidth, AHeight: Integer): Boolean;
+  public
+    constructor Create(AOwner: TControl);
+    destructor Destroy; override;
+  end;
+
   TCustomECSpeedBtn = class;
 
   { TECSpeedBtnActionLink }
@@ -59,6 +106,7 @@ type
     FClientSpeedBtn: TCustomECSpeedBtn;
     procedure AssignClient(AClient: TObject); override;
     procedure SetChecked(Value: Boolean); override;
+    procedure SetImageIndex({%H-}Value: Integer); override;
   public
     function IsCheckedLinked: Boolean; override;
   end;
@@ -70,31 +118,33 @@ type
   private
     FAllowAllUp: Boolean;
     FChecked: Boolean;
-    FCheckedFontColor: TColor;
-    FCheckedFontStyles: TFontStyles;
     FCheckFromAction: Boolean;
     FDelay: Integer;
-    FDropDownGlyph: TDropDownGlyph;
-    FFlat: Boolean;
-    FGlyphColor: TColor;
-    FGlyphDesignChecked: TGlyphDesign;
-    FGlyphDesign: TGlyphDesign;
     FGroupIndex: Integer;
-    FImageIndex: TImageIndex;
-    FImageIndexChecked: TImageIndex;
-    FImages: TCustomImageList;
-    FLayout: TObjectPos;
-    FMargin: SmallInt;
-    FMode: TButtonMode;
     FRepeating: Integer;
-    FShowCaption: Boolean;
-    FSpacing: SmallInt;
     FOnChange: TNotifyEvent;
     FOnDrawGlyph: TOnDrawGlyph;
     FOnHoldDown: TNotifyEvent;
     FOnRelease: TNotifyEvent;
     FOnRepeating: TNotifyEvent;
-    FTransparent: Boolean;
+    function GetBtnBitmaps(AState: TItemState): TBitmap;
+    function GetCheckedFontColor: TColor;
+    function GetCheckedFontStyles: TFontStyles;
+    function GetDropDownGlyph: TDropDownGlyph;
+    function GetFlat: Boolean;
+    function GetGlyphColor: TColor;
+    function GetGlyphDesign: TGlyphDesign;
+    function GetGlyphDesignChecked: TGlyphDesign;
+    function GetImageIndex: TImageIndex;
+    function GetImageIndexChecked: TImageIndex;
+    function GetImages: TCustomImageList;
+    function GetImageWidth: SmallInt;
+    function GetLayout: TObjectPos;
+    function GetMargin: SmallInt;
+    function GetMode: TButtonMode;
+    function GetShowCaption: Boolean;
+    function GetSpacing: SmallInt;
+    function GetTransparent: Boolean;
     procedure SetAllowAllUp(AValue: Boolean);
     procedure SetChecked(AValue: Boolean);
     procedure SetCheckedFontColor(AValue: TColor);
@@ -109,6 +159,7 @@ type
     procedure SetImageIndex(AValue: TImageIndex);
     procedure SetImageIndexChecked(AValue: TImageIndex);
     procedure SetImages(AValue: TCustomImageList);
+    procedure SetImageWidth(AValue: SmallInt);
     procedure SetLayout(AValue: TObjectPos);
     procedure SetMargin(AValue: SmallInt);
     procedure SetMode(AValue: TButtonMode);
@@ -117,21 +168,12 @@ type
     procedure SetSpacing(AValue: SmallInt);
     procedure SetTransparent(AValue: Boolean);
   protected const
-    cDefCheckedFontStyles = [];
     cDefHeight = 23;
-    cDefSpacing = 6;
     cDefWidth = 21;
-    cDropDownGlyphIndent: SmallInt = 4;
-    cMargin: SmallInt = 6;  
   protected
-    BtnBitmapPushedDisabled: TBitmap;
-    BtnDrawnPushed: Boolean;
-    BtnPushed: Boolean;
-    NeedRedraw: Boolean;
-    PrevSize: TSize;
-    RealLayout: TObjectPos;
+    Core: TECBtnCore;
     ECTimer: TCustomECTimer;
-    ValidStates: TItemStates;
+    UpdateCount: SmallInt;
     procedure CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer; 
                                      {%H-}WithThemeSpace: Boolean); override;
     procedure Click; override;
@@ -140,12 +182,9 @@ type
     procedure CMColorChanged(var {%H-}Message: TLMessage); message CM_COLORCHANGED;
     procedure CMParentColorChanged(var Message: TLMessage); message CM_PARENTCOLORCHANGED;
     procedure CreateTimer;
-    procedure CreateValidBitmaps(AEnabled: Boolean);
     function DialogChar(var Message: TLMKey): Boolean; override;
-    procedure DrawButtonBMPs;
     procedure FontChanged(Sender: TObject); override;
     function GetActionLinkClass: TControlActionLinkClass; override;
-    function HasValidImages: Boolean;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     procedure MouseEnter; override;
     procedure MouseLeave; override;
@@ -165,33 +204,33 @@ type
     procedure UpdateGroup;
     property CheckFromAction: Boolean read FCheckFromAction write FCheckFromAction;
   public
-    BtnBitmaps: array [low(TItemState)..high(TItemState)] of TBitmap;
-    UpdateCount: SmallInt;
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     procedure BeginUpdate;
     procedure EndUpdate;
     property AllowAllUp: Boolean read FAllowAllUp write SetAllowAllUp default False;
+    property BtnBitmaps[AState: TItemState]: TBitmap read GetBtnBitmaps;
     property Checked: Boolean read FChecked write SetChecked default False;
-    property CheckedFontColor: TColor read FCheckedFontColor write SetCheckedFontColor default clDefault;
-    property CheckedFontStyles: TFontStyles read FCheckedFontStyles write SetCheckedFontStyles default cDefCheckedFontStyles;
+    property CheckedFontColor: TColor read GetCheckedFontColor write SetCheckedFontColor default clDefault;
+    property CheckedFontStyles: TFontStyles read GetCheckedFontStyles write SetCheckedFontStyles default cDefBtnCheckedFontStyles;
     property Delay: Integer read FDelay write SetDelay default 0;
-    property DropDownGlyph: TDropDownGlyph read FDropDownGlyph write SetDropDownGlyph default edgNone;
-    property Flat: Boolean read FFlat write SetFlat default False;
-    property GlyphColor: TColor read FGlyphColor write SetGlyphColor default clDefault;
-    property GlyphDesign: TGlyphDesign read FGlyphDesign write SetGlyphDesign;  { set default in descendants }
-    property GlyphDesignChecked: TGlyphDesign read FGlyphDesignChecked write SetGlyphDesignChecked default egdNone;
+    property DropDownGlyph: TDropDownGlyph read GetDropDownGlyph write SetDropDownGlyph default edgNone;
+    property Flat: Boolean read GetFlat write SetFlat default False;
+    property GlyphColor: TColor read GetGlyphColor write SetGlyphColor default clDefault;
+    property GlyphDesign: TGlyphDesign read GetGlyphDesign write SetGlyphDesign;  { set default in descendants }
+    property GlyphDesignChecked: TGlyphDesign read GetGlyphDesignChecked write SetGlyphDesignChecked default egdNone;
     property GroupIndex: Integer read FGroupIndex write SetGroupIndex default 0;
-    property ImageIndex: TImageIndex read FImageIndex write SetImageIndex default -1;
-    property ImageIndexChecked: TImageIndex read FImageIndexChecked write SetImageIndexChecked default -1;
-    property Images: TCustomImageList read FImages write SetImages;
-    property Layout: TObjectPos read FLayout write SetLayout default eopLeft;
-    property Margin: SmallInt read FMargin write SetMargin default -1;
-    property Mode: TButtonMode read FMode write SetMode default ebmSpeedBtn;
+    property ImageIndex: TImageIndex read GetImageIndex write SetImageIndex default -1;
+    property ImageIndexChecked: TImageIndex read GetImageIndexChecked write SetImageIndexChecked default -1;
+    property Images: TCustomImageList read GetImages write SetImages;
+    property ImageWidth: SmallInt read GetImageWidth write SetImageWidth default 0;
+    property Layout: TObjectPos read GetLayout write SetLayout default eopLeft;
+    property Margin: SmallInt read GetMargin write SetMargin default -1;
+    property Mode: TButtonMode read GetMode write SetMode default ebmButton;
     property Repeating: Integer read FRepeating write SetRepeating default 0;
-    property ShowCaption: Boolean read FShowCaption write SetShowCaption default True;
-    property Spacing: SmallInt read FSpacing write SetSpacing default cDefSpacing;
-    property Transparent: Boolean read FTransparent write SetTransparent;
+    property ShowCaption: Boolean read GetShowCaption write SetShowCaption default True;
+    property Spacing: SmallInt read GetSpacing write SetSpacing default cDefBtnSpacing;
+    property Transparent: Boolean read GetTransparent write SetTransparent;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnDrawGlyph: TOnDrawGlyph read FOnDrawGlyph write FOnDrawGlyph;
     property OnHoldDown: TNotifyEvent read FOnHoldDown write FOnHoldDown;
@@ -227,6 +266,7 @@ type
     property ImageIndex;
     property ImageIndexChecked;
     property Images;
+    property ImageWidth;
     property Layout;
     property Margin;
     property Mode;
@@ -258,7 +298,207 @@ type
     property OnResize;    
   end;
 
-  { TCustomECSpeedBtnPlus }    
+  TCustomECBitBtn = class;
+
+  { TECBitBtnActionLink }
+  TECBitBtnActionLink = class(TWinControlActionLink)
+  protected
+    FClientBitBtn: TCustomECBitBtn;
+    procedure AssignClient(AClient: TObject); override;
+    procedure SetChecked(Value: Boolean); override;
+    procedure SetImageIndex({%H-}Value: Integer); override;
+  public
+    function IsCheckedLinked: Boolean; override;
+  end;
+
+  { TCustomECBitBtn }
+  TCustomECBitBtn = class(TCustomControl)
+  private
+    FAllowAllUp: Boolean;
+    FChecked: Boolean;
+    FCheckFromAction: Boolean;
+    FDelay: Integer;
+    FGroupIndex: Integer;
+    FRepeating: Integer;
+    FOnChange: TNotifyEvent;
+    FOnDrawGlyph: TOnDrawGlyph;
+    FOnHoldDown: TNotifyEvent;
+    FOnRelease: TNotifyEvent;
+    FOnRepeating: TNotifyEvent;
+    function GetBtnBitmaps(AState: TItemState): TBitmap;
+    function GetCheckedFontColor: TColor;
+    function GetCheckedFontStyles: TFontStyles;
+    function GetDropDownGlyph: TDropDownGlyph;
+    function GetFlat: Boolean;
+    function GetGlyphColor: TColor;
+    function GetGlyphDesign: TGlyphDesign;
+    function GetGlyphDesignChecked: TGlyphDesign;
+    function GetImageIndex: TImageIndex;
+    function GetImageIndexChecked: TImageIndex;
+    function GetImages: TCustomImageList;
+    function GetImageWidth: SmallInt;
+    function GetLayout: TObjectPos;
+    function GetMargin: SmallInt;
+    function GetMode: TButtonMode;
+    function GetShowCaption: Boolean;
+    function GetSpacing: SmallInt;
+    function GetTransparent: Boolean;
+    procedure SetAllowAllUp(AValue: Boolean);
+    procedure SetChecked(AValue: Boolean);
+    procedure SetCheckedFontColor(AValue: TColor);
+    procedure SetCheckedFontStyles(AValue: TFontStyles);
+    procedure SetDelay(AValue: Integer);
+    procedure SetDropDownGlyph(AValue: TDropDownGlyph);
+    procedure SetFlat(AValue: Boolean);
+    procedure SetGlyphColor(AValue: TColor);
+    procedure SetGlyphDesign(AValue: TGlyphDesign);
+    procedure SetGlyphDesignChecked(AValue: TGlyphDesign);
+    procedure SetGroupIndex(AValue: Integer);
+    procedure SetImageIndex(AValue: TImageIndex);
+    procedure SetImageIndexChecked(AValue: TImageIndex);
+    procedure SetImages(AValue: TCustomImageList);
+    procedure SetImageWidth(AValue: SmallInt);
+    procedure SetLayout(AValue: TObjectPos);
+    procedure SetMargin(AValue: SmallInt);
+    procedure SetMode(AValue: TButtonMode);
+    procedure SetRepeating(AValue: Integer);
+    procedure SetShowCaption(AValue: Boolean);
+    procedure SetSpacing(AValue: SmallInt);
+    procedure SetTransparent(AValue: Boolean);
+  protected const
+    cDefHeight = 27;
+    cDefWidth = 75;
+  protected
+    Core: TECBtnCore;
+    ECTimer: TCustomECTimer;
+    UpdateCount: SmallInt;
+    procedure CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer;
+                                     {%H-}WithThemeSpace: Boolean); override;
+    procedure Click; override;
+    procedure CMBiDiModeChanged(var {%H-}Message: TLMessage); message CM_BIDIMODECHANGED;
+    procedure CMButtonPressed(var Message: TLMessage); message CM_BUTTONPRESSED;
+    procedure CMColorChanged(var {%H-}Message: TLMessage); message CM_COLORCHANGED;
+    procedure CMParentColorChanged(var Message: TLMessage); message CM_PARENTCOLORCHANGED;
+    procedure CreateTimer;
+    function DialogChar(var Message: TLMKey): Boolean; override;
+    procedure FontChanged(Sender: TObject); override;
+    function GetActionLinkClass: TControlActionLinkClass; override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseEnter; override;
+    procedure MouseLeave; override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
+    procedure Paint; override;
+    procedure Redraw;
+    procedure Resize; override;
+    procedure ResizeInvalidate;
+    procedure SetAction(Value: TBasicAction); override;
+    procedure SetAutoSize(Value: Boolean); override;
+    procedure SetParent(NewParent: TWinControl); override;
+    procedure SetTimerEvent;
+    procedure TextChanged; override;
+    procedure TimerOnTimerDelay(Sender: TObject);
+    procedure TimerOnTimerHold(Sender: TObject);
+    procedure TimerOnTimerRepeating(Sender: TObject);
+    procedure UpdateGroup;
+    property CheckFromAction: Boolean read FCheckFromAction write FCheckFromAction;
+  public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    procedure BeginUpdate;
+    procedure EndUpdate;
+    property AllowAllUp: Boolean read FAllowAllUp write SetAllowAllUp default False;
+    property BtnBitmaps[AState: TItemState]: TBitmap read GetBtnBitmaps;
+    property Checked: Boolean read FChecked write SetChecked default False;
+    property CheckedFontColor: TColor read GetCheckedFontColor write SetCheckedFontColor default clDefault;
+    property CheckedFontStyles: TFontStyles read GetCheckedFontStyles write SetCheckedFontStyles default cDefBtnCheckedFontStyles;
+    property Delay: Integer read FDelay write SetDelay default 0;
+    property DropDownGlyph: TDropDownGlyph read GetDropDownGlyph write SetDropDownGlyph default edgNone;
+    property Flat: Boolean read GetFlat write SetFlat default False;
+    property GlyphColor: TColor read GetGlyphColor write SetGlyphColor default clDefault;
+    property GlyphDesign: TGlyphDesign read GetGlyphDesign write SetGlyphDesign;  { set default in descendants }
+    property GlyphDesignChecked: TGlyphDesign read GetGlyphDesignChecked write SetGlyphDesignChecked default egdNone;
+    property GroupIndex: Integer read FGroupIndex write SetGroupIndex default 0;
+    property ImageIndex: TImageIndex read GetImageIndex write SetImageIndex default -1;
+    property ImageIndexChecked: TImageIndex read GetImageIndexChecked write SetImageIndexChecked default -1;
+    property Images: TCustomImageList read GetImages write SetImages;
+    property ImageWidth: SmallInt read GetImageWidth write SetImageWidth default 0;
+    property Layout: TObjectPos read GetLayout write SetLayout default eopLeft;
+    property Margin: SmallInt read GetMargin write SetMargin default -1;
+    property Mode: TButtonMode read GetMode write SetMode default ebmButton;
+    property Repeating: Integer read FRepeating write SetRepeating default 0;
+    property ShowCaption: Boolean read GetShowCaption write SetShowCaption default True;
+    property Spacing: SmallInt read GetSpacing write SetSpacing default cDefBtnSpacing;
+    property Transparent: Boolean read GetTransparent write SetTransparent;
+    property OnChange: TNotifyEvent read FOnChange write FOnChange;
+    property OnDrawGlyph: TOnDrawGlyph read FOnDrawGlyph write FOnDrawGlyph;
+    property OnHoldDown: TNotifyEvent read FOnHoldDown write FOnHoldDown;
+    property OnRelease: TNotifyEvent read FOnRelease write FOnRelease;
+    property OnRepeating: TNotifyEvent read FOnRepeating write FOnRepeating;
+  end;
+
+  { TECBitBtn }
+  TECBitBtn = class(TCustomECBitBtn)
+  published
+    property Action;
+    property Align;
+    property AllowAllUp;
+    property Anchors;
+    property AutoSize;
+    property BiDiMode;
+    property BorderSpacing;
+    property Caption;
+    property Checked;
+    property CheckedFontColor;
+    property CheckedFontStyles;
+    {property Color;}  {does nothing ATM}
+    property Constraints;
+    property Delay;
+    property DropDownGlyph;
+    property Enabled;
+    property Flat;
+    property Font;
+    property GlyphColor;
+    property GlyphDesign default egdNone;
+    property GlyphDesignChecked;
+    property GroupIndex;
+    property ImageIndex;
+    property ImageIndexChecked;
+    property Images;
+    property ImageWidth;
+    property Layout;
+    property Margin;
+    property Mode;
+    property PopupMenu;
+    property ParentBiDiMode;
+    {property ParentColor;}  {does nothing ATM}
+    property ParentFont;
+    property ParentShowHint;
+    property Repeating;
+    property ShowCaption;
+    property ShowHint;
+    property Spacing;
+    property TabOrder;
+    property TabStop default True;
+    property Visible;
+    property OnChangeBounds;
+    property OnChange;
+    property OnClick;
+    property OnContextPopup;
+    property OnDragDrop;
+    property OnDragOver;
+    property OnDrawGlyph;
+    property OnHoldDown;
+    property OnMouseDown;
+    property OnMouseEnter;
+    property OnMouseLeave;
+    property OnMouseMove;
+    property OnMouseUp;
+    property OnRelease;
+    property OnRepeating;
+    property OnResize;
+  end;
+
+  { TCustomECSpeedBtnPlus }
   TCustomECSpeedBtnPlus = class(TCustomECSpeedBtn)
   protected
     CustomClick: TObjectMethod;
@@ -289,7 +529,7 @@ type
     property DropDownGlyph;
     property Flat;
     property GlyphColor;
-    property GlyphDesign;
+    property GlyphDesign default egdNone;
     property ImageIndex;
     property Images;
     property Layout;
@@ -348,7 +588,6 @@ type
     procedure EditingDone; override;
     procedure SetRealBoundRect(ARect: TRect);
     procedure SetRealBounds(ALeft, ATop, AWidth, AHeight: Integer);
-    procedure SwitchOption(AOption: TEBOption; AOn: Boolean);
     property Indent: SmallInt read FIndent write SetIndent default 0;
     property Options: TEBOptions read FOptions write FOptions default cDefEBOptions;
     property WidthInclBtn: Integer read GetWidthInclBtn write SetWidthInclBtn stored False;
@@ -362,7 +601,7 @@ type
   public
     constructor Create(AOwner: TComponent); override;
   published
-    property Button: TECSpeedBtnPlus read FButton write FButton;
+    property Button: TECSpeedBtnPlus read FButton;
     property Indent;
     property Options;
     property WidthInclBtn;
@@ -477,7 +716,7 @@ type
     constructor Create(AOwner: TComponent); override;
     procedure EditingDone; override;
   published
-    property Button: TECSpeedBtnColor read FButton write FButton;
+    property Button: TECSpeedBtnColor read FButton;
     property ColorLayout: TColorLayout read FColorLayout write SetColorLayout default cDefColorLayout;
     property CustomColor: TColor read FCustomColor write SetCustomColor default cDefCustomColor;
     property Indent;
@@ -544,7 +783,11 @@ type
     function GetSpace(Kind: TAnchorKind): Integer; override;
     procedure GetSpaceAround(var SpaceAround: TRect); override;
   end;       
-  
+
+const
+  cComboReadOnlyStyles = [csDropDownList, csOwnerDrawFixed, csOwnerDrawVariable];
+
+type
   { TBaseECComboBtn }
   TBaseECComboBtn = class(TCustomComboBox)
   private
@@ -605,7 +848,7 @@ type
   public
     constructor Create(TheOwner: TComponent); override;
   published
-    property Button: TECSpeedBtnPlus read FButton write FButton;
+    property Button: TECSpeedBtnPlus read FButton;
     property Indent;
     property ItemOrder default eioFixed;
     property Options;
@@ -719,7 +962,7 @@ type
     procedure ResetPrefixesAndLayout(AOldLayout: TColorLayout);
     procedure SetColorText(const AColor: string);
   published           				 
-    property Button: TECSpeedBtnColor read FButton write FButton;
+    property Button: TECSpeedBtnColor read FButton;
     property ColorLayout: TColorLayout read FColorLayout write SetColorLayout default cDefColorLayout;
     property CustomColor: TColor read FCustomColor write SetCustomColor default cDefCustomColor;
     property Indent;
@@ -788,8 +1031,8 @@ type
   
 implementation
 
-const cNonAlphaColors = [eclSystemBGR, eclRGBColor, eclBGRColor,
-        eclCMYColor, eclYMCColor, eclHSBColor, eclBSHColor];
+const cColorBtnWidth = 27;
+      cNonAlphaColors = [eclSystemBGR, eclRGBColor, eclBGRColor, eclCMYColor, eclYMCColor, eclHSBColor, eclBSHColor];
 
 function DoColorBtnClick(AOwner: TComponent; AAlpha: Boolean; var AColor: TColor): Boolean;
 var aAlphaChannel: Integer;
@@ -809,6 +1052,332 @@ begin
       if AAlpha then AColor := aAlphaChannel + AColor;
     end;
   aColorDialog.Free;
+end;
+
+{ TECBtnCore }
+
+constructor TECBtnCore.Create(AOwner: TControl);
+begin
+  Owner := AOwner;
+  FCheckedFontColor := clDefault;
+  FGlyphColor := clDefault;
+  FImageIndex := -1;
+  FImageIndexChecked := -1;
+  FLayout := eopLeft;
+  RealLayout := eopLeft;
+  FMargin := -1;
+  FShowCaption := True;
+  FSpacing := cDefBtnSpacing;
+  FTransparent := True;
+  PrevSize.cx := -1;
+  ValidStates := caEnabledStates;
+end;
+
+destructor TECBtnCore.Destroy;
+var aState: TItemState;
+begin
+  for aState in caEnabledStates do
+    FreeAndNil(BtnBMPs[aState]);
+  inherited Destroy;
+end;
+
+function TECBtnCore.CalcPreferredSize(ACanvas: TCanvas): TSize;
+var aCaption: string;
+    aCaptionSize: TSize;
+    aMargin: SmallInt;
+begin
+  aCaption := Owner.Caption;
+  if aCaption <> '' then
+    begin
+      DeleteAmpersands(aCaption);
+      aCaptionSize := ACanvas.TextExtent(aCaption);
+    end else
+      aCaptionSize := Size(0, 0);
+  Result := Size(-1, -1);
+  if HasValidImages
+    then Result := FImages.SizeForPPI[FImageWidth, Owner.Font.PixelsPerInch]
+    else if HasValidActImage
+           then Result := TCustomAction(Owner.Action).ActionList.Images.SizeForPPI[FImageWidth, Owner.Font.PixelsPerInch]
+           else Result := ACanvas.GlyphExtent(FGlyphDesign);
+  if RealLayout in [eopRight, eopLeft] then
+    begin
+      if Result.cx * aCaptionSize.cx > 0 then inc(Result.cx, FSpacing);
+      inc(Result.cx, aCaptionSize.cx);
+      if aCaptionSize.cx > 0 then inc(Result.cx, 2*FSpacing);
+      Result.cy := Math.max(Result.cy, aCaptionSize.cy);
+    end else
+    begin
+      Result.cx := Math.max(Result.cx, aCaptionSize.cx);
+      if Result.cy * aCaptionSize.cy > 0 then inc(Result.cy, FSpacing);
+      inc(Result.cy, aCaptionSize.cy);
+    end;
+  aMargin := FMargin;
+  if aMargin < 0 then aMargin := cBtnMargin;
+  inc(Result.cx, 2*aMargin);
+  inc(Result.cy, 2*aMargin);
+  Result.cx := Result.cx or 1;  { odd size glyphs look better }
+  Result.cy := Result.cy or 1;
+end;
+
+procedure TECBtnCore.DrawButtonBMPs(ACanvas: TCanvas; AOnDrawGlyph: TOnDrawGlyph);
+var aCaption: string;
+    aFlags: Cardinal;
+    aGlyphDesign, aGlyphDsgnChckd: TGlyphDesign;
+    aGlyphPoint: TPoint;
+    aGlyphSize, aTextSize: TSize;
+    aImageIndex, aImgIdxChckd, aLength: Integer;
+    aImages: TCustomImageList;
+    aRect: TRect;
+    aState: TItemState;
+    aValidStates: TItemStates;
+
+  procedure AdjustRect(AWidthLimit, AHeightLimit: SmallInt);
+  var i, j, aLimit: SmallInt;
+  begin
+    i := -4;
+    aLimit := aRect.Right - aRect.Left;
+    if aLimit <= 21 then inc(i);
+    aLimit := aLimit - AWidthLimit;
+    if aLimit > 0 then dec(i, aLimit div 5);
+    j := -4;
+    aLimit := aRect.Bottom - aRect.Top - AHeightLimit;
+    if aLimit > 0 then dec(j, aLimit div 5);
+    InflateRect(aRect, i, j);
+  end;
+
+begin
+  {$IFDEF DBGCTRLS} DebugLn('TCustomECxBtn.DrawButton'); {$ENDIF}
+  if assigned(Owner.Parent) then
+    begin
+      aRect := Owner.ClientRect;
+      aValidStates := ValidStates;
+      for aState in aValidStates do
+        begin
+          BtnBMPs[aState].TransparentColor := GetColorResolvingDefault(Owner.Color, Owner.Parent.Brush.Color);
+          BtnBMPs[aState].TransparentClear;
+        end;
+      if (FMode = ebmButton) and FFlat then
+        begin
+          if eisEnabled in aValidStates then BtnBMPs[eisHighlighted].Canvas.DrawButtonBackground(aRect, eisEnabled);
+          aValidStates := aValidStates - [eisDisabled, eisEnabled, eisChecked, eisHighlighted];
+        end;
+      for aState in aValidStates do
+        BtnBMPs[aState].Canvas.DrawButtonBackground(aRect, aState);
+      aValidStates := ValidStates;
+      if not assigned(AOnDrawGlyph) then
+        begin
+          aCaption := Owner.Caption;
+          if (aCaption <> '') and FShowCaption then
+            begin
+              DeleteAmpersands(aCaption);
+              aFlags := DT_CENTER or DT_VCENTER;
+              ACanvas.Font.Style := ACanvas.Font.Style + [fsBold, fsItalic, fsUnderline];
+              aRect := ThemeServices.GetTextExtent(ACanvas.Handle, ArBtnDetails[True, False], aCaption, aFlags, nil);
+              aTextSize.cx := aRect.Right - aRect.Left + 1;
+              aTextSize.cy := aRect.Bottom - aRect.Top + 1;
+            end else
+              aTextSize := Size(0, 0);
+          if FDropDownGlyph > edgNone then
+            begin
+              aGlyphSize := ACanvas.GlyphExtent(egdArrowDown);
+              if not Owner.IsRightToLeft
+                then aGlyphPoint.X := Owner.Width - aGlyphSize.cx - cBtnDropDownGlyphIndent
+                else aGlyphPoint.X := cBtnDropDownGlyphIndent;
+              if FDropDownGlyph = edgMiddle
+                then aGlyphPoint.Y := (Owner.Height - aGlyphSize.cy + 2) div 2
+                else aGlyphPoint.Y := Owner.Height - aGlyphSize.cy - cBtnDropDownGlyphIndent;
+              aRect := Rect(aGlyphPoint.X, aGlyphPoint.Y, aGlyphPoint.X + aGlyphSize.cx, aGlyphPoint.Y + aGlyphSize.cy);
+              for aState in aValidStates do
+                BtnBMPs[aState].Canvas.DrawGlyph(aRect, FGlyphColor, egdArrowDown, aState);
+            end;
+          if assigned(FImages) then
+	          begin
+              aImages:=FImages;
+              aImageIndex := FImageIndex;
+              aImgIdxChckd := FImageIndexChecked;
+              aGlyphSize := aImages.SizeForPPI[FImageWidth, Owner.Font.PixelsPerInch];
+              if (aImageIndex >= 0) and (aImageIndex < aImages.Count) then
+                begin
+                  if ((aImgIdxChckd < 0) or (aImgIdxChckd >= aImages.Count)) and (FMode <> ebmButton)
+                    then aImgIdxChckd := aImageIndex;
+                end else
+                  if (aImgIdxChckd >= 0) and (aImgIdxChckd < aImages.Count) and (FMode = ebmButton)
+                    then aImageIndex := aImgIdxChckd
+                    else aImageIndex := -1;
+            end else
+              if HasValidActImage then
+                begin
+                  aImages := TCustomAction(Owner.Action).ActionList.Images;
+                  aImageIndex := TCustomAction(Owner.Action).ImageIndex;
+                  aImgIdxChckd := aImageIndex;
+                  aGlyphSize := aImages.SizeForPPI[FImageWidth, Owner.Font.PixelsPerInch];
+                end else
+                begin
+                  aImageIndex := -1;
+                  aImgIdxChckd := -1;
+                end;
+          if (aImageIndex + aImgIdxChckd) <= -2 then
+            begin
+              aGlyphDesign := FGlyphDesign;
+              aGlyphDsgnChckd := FGlyphDesignChecked;
+              if aGlyphDsgnChckd = egdNone then aGlyphDsgnChckd := aGlyphDesign;
+              if (aGlyphDesign = egdNone) and (FMode = ebmButton) then aGlyphDesign := FGlyphDesignChecked;
+              aGlyphSize := ACanvas.GlyphExtent(aGlyphDesign);
+              if aGlyphDesign > egdNone then
+                begin
+                  aGlyphSize.cx := aGlyphSize.cx or 1;
+                  aGlyphSize.cy := aGlyphSize.cy or 1;
+                end;
+            end;
+          aRect := Owner.ClientRect;
+          if (aTextSize.cx > 0) and not Owner.AutoSize and (FMargin >= 0) and (FLayout in [eopRight, eopLeft]) then
+            if not Owner.IsRightToLeft xor (FLayout = eopRight)
+              then aRect.Right := aTextSize.cx + 2 * FMargin
+              else aRect.Left := aRect.Right - aTextSize.cx - 2 * FMargin;
+          if aGlyphSize.cx*aTextSize.cx <> 0 then
+            begin
+              if RealLayout in [eopTop, eopBottom] then
+                begin
+                  aLength := aGlyphSize.cy + aTextSize.cy;
+                  aGlyphPoint.X := (Owner.Width - aGlyphSize.cx) div 2;
+                end else
+                begin
+                  aLength := aGlyphSize.cx + aTextSize.cx;
+                  aGlyphPoint.Y := (Owner.Height - aGlyphSize.cy) div 2;
+                end;
+              inc(aLength, FSpacing);
+              case RealLayout of
+                eopTop:
+                  begin
+                    aGlyphPoint.Y := (Owner.Height - aLength) div 2;
+                    aRect.Top := aGlyphPoint.Y + aGlyphSize.cy + FSpacing;
+                  end;
+                eopRight:
+                  begin
+                    if FMargin < 0
+                      then aRect.Left := (Owner.Width - aLength) div 2
+                      else aRect.Left := Owner.Width - aLength - FMargin;
+                    aGlyphPoint.X := aRect.Left + aTextSize.cx + FSpacing;
+                  end;
+                eopBottom:
+                  begin
+                    aRect.Top := (Owner.Height - aLength) div 2;
+                    aGlyphPoint.Y := aRect.Top + aTextSize.cy + FSpacing;
+                  end;
+                eopLeft:
+                  begin
+                    if FMargin < 0
+                      then aGlyphPoint.X := (Owner.Width - aLength) div 2
+                      else aGlyphPoint.X := FMargin;
+                    aRect.Left := aGlyphPoint.X + aGlyphSize.cx + FSpacing;
+                  end;
+              end;  {case}
+              if RealLayout in [eopRight, eopLeft]
+                then aRect.Right := aRect.Left + aTextSize.cx
+                else aRect.Bottom := aRect.Top + aTextSize.cy;
+            end else
+              aGlyphPoint := Point((Owner.Width - aGlyphSize.cx) div 2, (Owner.Height - aGlyphSize.cy) div 2);
+          if aTextSize.cx > 0 then
+            begin
+              if Owner.UseRightToLeftReading then aFlags := aFlags or DT_RTLREADING;
+              for aState in aValidStates do
+                begin
+                  BtnBMPs[aState].Canvas.Font.Assign(Owner.Font);
+                  if aState >= eisChecked then
+                    begin
+                      BtnBMPs[aState].Canvas.Font.Style := FCheckedFontStyles;
+                      BtnBMPs[aState].Canvas.Font.Color := FCheckedFontColor;
+                    end;
+                  if BtnBMPs[aState].Canvas.Font.Color = clDefault
+                    then BtnBMPs[aState].Canvas.Font.Color := clBtnText;
+                  ThemeServices.DrawText(BtnBMPs[aState].Canvas,
+                    ThemeServices.GetElementDetails(caThemedContent[aState]), Owner.Caption, aRect, aFlags, 0);
+                end;
+            end;
+          if (aImageIndex + aImgIdxChckd) >= -1 then
+            begin
+              if FMode = ebmButton then
+                begin
+                  for aState in aValidStates do
+                    aImages.ResolutionForPPI[FImageWidth, Owner.Font.PixelsPerInch, Owner.GetCanvasScaleFactor].
+                      Draw(BtnBMPs[aState].Canvas, aGlyphPoint.X, aGlyphPoint.Y, aImageIndex, caGraphEffects[aState]);
+                end else
+                begin
+                  if aImageIndex >= 0 then
+                    for aState in aValidStates*[eisDisabled, eisHighlighted, eisEnabled] do
+                      aImages.ResolutionForPPI[FImageWidth, Owner.Font.PixelsPerInch, Owner.GetCanvasScaleFactor].
+                        Draw(BtnBMPs[aState].Canvas, aGlyphPoint.X, aGlyphPoint.Y, aImageIndex, caGraphEffects[aState]);
+                  if aImgIdxChckd >= 0 then
+                    for aState in aValidStates*[eisChecked, eisPushed, eisPushedHilighted, eisPushedDisabled] do
+                      aImages.ResolutionForPPI[FImageWidth, Owner.Font.PixelsPerInch, Owner.GetCanvasScaleFactor].
+                        Draw(BtnBMPs[aState].Canvas, aGlyphPoint.X, aGlyphPoint.Y, aImgIdxChckd, caGraphEffects[aState]);
+                end;
+            end else
+            begin
+              if aTextSize.cx = 0 then
+                case aGlyphDesign of
+                  egdGrid..egdSizeArrLeft: AdjustRect(30, 30);
+                  egdRectBeveled..high(TGlyphDesign): AdjustRect(85, 30);
+                end else
+                  aRect := Rect(aGlyphPoint.X, aGlyphPoint.Y, aGlyphPoint.X + aGlyphSize.cx, aGlyphPoint.Y + aGlyphSize.cy);
+              if FMode = ebmButton then
+                begin
+                  if aGlyphDesign > egdNone then
+                    for aState in aValidStates do
+                      BtnBMPs[aState].Canvas.DrawGlyph(aRect, FGlyphColor, aGlyphDesign, aState);
+                end else
+                begin
+                  if aGlyphDesign > egdNone then
+                    for aState in aValidStates*[eisDisabled, eisHighlighted, eisEnabled] do
+                      BtnBMPs[aState].Canvas.DrawGlyph(aRect, FGlyphColor, aGlyphDesign, aState);
+                  if aGlyphDsgnChckd > egdNone then
+                    for aState in aValidStates*[eisChecked, eisPushed, eisPushedHilighted, eisPushedDisabled] do
+                      BtnBMPs[aState].Canvas.DrawGlyph(aRect, FGlyphColor, aGlyphDsgnChckd, aState);
+                end;
+            end;
+        end else
+          for aState in aValidStates do
+            AOnDrawGlyph(Owner, aState);
+    end;
+  NeedRedraw := False;
+end;
+
+function TECBtnCore.HasValidActImage: Boolean;
+var aAction: TCustomAction;
+begin
+  aAction := TCustomAction(Owner.Action);
+  Result := (assigned(aAction) and assigned(aAction.ActionList.Images) and
+    (aAction.ImageIndex >= 0) and (aAction.ImageIndex < aAction.ActionList.Images.Count));
+end;
+
+function TECBtnCore.HasValidImages: Boolean;
+begin
+  Result := (assigned(FImages) and ((FImageIndex >= 0) or (FImageIndexChecked >= 0))
+    and ((FImageIndex < FImages.Count) or (FImageIndexChecked < FImages.Count)));
+end;
+
+function TECBtnCore.Resize(AWidth, AHeight: Integer): Boolean;
+var aState: TItemState;
+begin
+  Result := ((AWidth <> PrevSize.cx) or (AHeight <> PrevSize.cy));
+  if Result  then
+    begin
+      if PrevSize.cx = -1 then
+        begin
+          for aState in caEnabledStates do
+            begin
+              BtnBMPs[aState] := TBitmap.Create;
+              BtnBMPs[aState].SetProperties(AWidth, AHeight, FTransparent);
+            end;
+          BtnBMPs[eisDisabled] := BtnBMPs[eisHighlighted];
+          BtnBMPs[eisPushedDisabled] := BtnBMPs[eisPushedHilighted];
+        end else
+          for aState in caEnabledStates do
+            BtnBMPs[aState].SetSize(AWidth, AHeight);
+      NeedRedraw := True;
+      PrevSize.cx := AWidth;
+      PrevSize.cy := AHeight;
+    end;
 end;
 
 { TECSpeedBtnActionLink }
@@ -837,6 +1406,11 @@ begin
     end;    
 end;
 
+procedure TECSpeedBtnActionLink.SetImageIndex(Value: Integer);
+begin
+  FClientSpeedBtn.Redraw;
+end;
+
 { TCustomECSpeedBtn }
 
 constructor TCustomECSpeedBtn.Create(AOwner: TComponent);
@@ -844,463 +1418,14 @@ begin
   inherited Create(AOwner);
   ControlStyle := ControlStyle + [csNoFocus, csParentBackground, csReplicatable] 
                                - csMultiClicks - [csCaptureMouse, csOpaque, csSetCaption];
-  FCheckedFontColor := clDefault;
-  FGlyphColor := clDefault;
-  FImageIndex := -1;
-  FImageIndexChecked:=-1;
-  FLayout := eopLeft;
-  RealLayout := eopLeft;
-  FMargin := -1;
-  FShowCaption := True;
-  FSpacing := cDefSpacing;
-  FTransparent := True;
-  PrevSize.cx := cDefWidth;
-  PrevSize.cy := cDefHeight;
+  Core := TECBtnCore.Create(self);
   SetInitialBounds(0, 0, cDefWidth, cDefHeight);
   AccessibleRole := larButton;
-end;
-
-destructor TCustomECSpeedBtn.Destroy;
-var aState: TItemState;
-begin
-  for aState := low(TItemState) to high(TItemState) do
-    FreeAndNil(BtnBitmaps[aState]);
-  inherited Destroy;
-end;
-
-procedure TCustomECSpeedBtn.BeginUpdate;
-begin
-  inc(UpdateCount);
-end;
-
-procedure TCustomECSpeedBtn.CalculatePreferredSize(var PreferredWidth, 
-            PreferredHeight: Integer; WithThemeSpace: Boolean);
-var aCaption: string;
-    aCaptionSize, aGlyphSize: TSize;
-    aMargin: SmallInt;
-begin
-  aCaption := Caption;
-  if aCaption <> '' then
-    begin
-      DeleteAmpersands(aCaption);
-      aCaptionSize := Canvas.TextExtent(aCaption);
-    end else
-    aCaptionSize := Size(0, 0);
-  if (ImageIndex >= 0) and assigned(Images) and (ImageIndex < Images.Count)
-    then aGlyphSize := Size(Images.Width, Images.Height)
-    else aGlyphSize := Canvas.GlyphExtent(GlyphDesign);     
-  if RealLayout in [eopRight, eopLeft] then
-    begin
-      if aGlyphSize.cx*aCaptionSize.cx > 0 then inc(aGlyphSize.cx, Spacing);
-      inc(aGlyphSize.cx, aCaptionSize.cx);
-      if aCaptionSize.cx > 0 then inc(aGlyphSize.cx, 2*Spacing);
-      aGlyphSize.cy := Math.max(aGlyphSize.cy, aCaptionSize.cy);
-    end else
-    begin
-      aGlyphSize.cx := Math.max(aGlyphSize.cx, aCaptionSize.cx);
-      if aGlyphSize.cy*aCaptionSize.cy > 0 then inc(aGlyphSize.cy, Spacing);
-      inc(aGlyphSize.cy, aCaptionSize.cy);
-    end;
-  aMargin := Margin;
-  if aMargin < 0 then aMargin := cMargin;
-  inc(aGlyphSize.cx, 2*aMargin);
-  inc(aGlyphSize.cy, 2*aMargin);
-  aGlyphSize.cx := aGlyphSize.cx or 1;  { Odd size glyphs look better }
-  aGlyphSize.cy := aGlyphSize.cy or 1;
-  PreferredWidth := aGlyphSize.cx;
-  PreferredHeight := aGlyphSize.cy;
-end;
-
-procedure TCustomECSpeedBtn.Click;
-begin
-  case Mode of
-    ebmToggleBox: if not assigned(Action) then Checked := not Checked;
-    ebmDelayBtn: if Delay > 0 then
-                   if Checked then
-                     begin
-                       ECTimer.Enabled := False;
-                       ECTimer.Enabled := True;
-                     end else
-                     Checked := True;
-  end;
-  inherited Click;
-end;   
-
-procedure TCustomECSpeedBtn.CMBiDiModeChanged(var Message: TLMessage);
-var aRealLayout: TObjectPos;
-begin
-  aRealLayout := Layout;
-  if IsRightToLeft then
-    case aRealLayout of
-      eopRight: aRealLayout := eopLeft;
-      eopLeft: aRealLayout := eopRight;
-    end;
-  RealLayout := aRealLayout;
-  Redraw;
-end;   
-
-procedure TCustomECSpeedBtn.CMButtonPressed(var Message: TLMessage);
-var aSender: TCustomECSpeedBtn;
-begin
-  if csDestroying in ComponentState then exit;
-  if Message.WParam = WParam(FGroupIndex) then
-    begin
-      aSender := TCustomECSpeedBtn(Message.LParam);
-      if aSender <> self then
-        begin
-          if aSender.Checked and FChecked then
-            begin
-              FChecked := False;
-              Invalidate;
-            end;
-          FAllowAllUp := aSender.AllowAllUp;
-        end;
-    end;         
-end;   
-
-procedure TCustomECSpeedBtn.CMColorChanged(var Message: TLMessage);
-begin
-  NeedRedraw := True;
-end;   
-
-procedure TCustomECSpeedBtn.CMParentColorChanged(var Message: TLMessage);
-begin
-  inherited CMParentColorChanged(Message);
-  if not ParentColor then NeedRedraw := True;
-end;
-
-procedure TCustomECSpeedBtn.CreateTimer;
-begin
-  ECTimer := TCustomECTimer.Create(self);
-  ECTimer.Enabled := False;
-end;
-
-procedure TCustomECSpeedBtn.CreateValidBitmaps(AEnabled: Boolean);
-var aIState: TItemState;
-    aWidth, aHeight: Integer;
-begin
-  for aIState in ValidStates do  
-    FreeAndNil(BtnBitmaps[aIState]);
-  if AEnabled 
-    then ValidStates := caEnabledStates 
-    else ValidStates := caDisabledStates;
-  aWidth := Width;
-  aHeight := Height;    
-  for aIState in ValidStates do 
-    begin
-      BtnBitmaps[aIState] := TBitmap.Create;
-      BtnBitmaps[aIState].SetProperties(aWidth, aHeight, Transparent);
-    end;          
-end;                 
-  
-function TCustomECSpeedBtn.DialogChar(var Message: TLMKey): Boolean;
-begin
-  Result := False;
-  if Message.Msg = LM_SYSCHAR then
-    begin
-      if IsEnabled and IsVisible then
-        begin
-          if IsAccel(Message.CharCode, Caption) then
-            begin
-              Click;
-              Result := True;      
-            end else
-            Result := inherited DialogChar(Message);     
-        end;
-    end;
-end;   
-
-procedure TCustomECSpeedBtn.DrawButtonBMPs;
-var aImageIndex, aImgIdxChckd, aLength: Integer;
-    aCaption: string;
-    aFlags: Cardinal;
-    aGlyphDesign, aGlyphDsgnChckd: TGlyphDesign;
-    aGlyphSize, aTextSize: TSize;
-    aGlyphPoint: TPoint;
-    aRect: TRect;
-    aState: TItemState;
-    aValidStates: TItemStates;
-    
-  procedure AdjustRect(AWidthLimit, AHeightLimit: SmallInt);
-  var i, j, aLimit: SmallInt;
-  begin
-    i := -4;
-    aLimit := aRect.Right - aRect.Left;
-    if aLimit <= 21 then inc(i);      
-    aLimit := aLimit - AWidthLimit;
-    if aLimit > 0 then dec(i, aLimit div 5);
-    j := -4;                                   
-    aLimit := aRect.Bottom - aRect.Top - AHeightLimit;
-    if aLimit > 0 then dec(j, aLimit div 5);			
-    InflateRect(aRect, i, j);
-  end;            
-    
-begin
-  {$IFDEF DBGCTRLS} DebugLn('TCustomECSpeedBtn.DrawButton'); {$ENDIF}
-  if assigned(Parent) then
-    begin
-      aRect := ClientRect;
-      aValidStates := ValidStates;
-      for aState in aValidStates do
-        begin
-          BtnBitmaps[aState].TransparentColor := GetColorResolvingDefault(Color, Parent.Brush.Color);
-          BtnBitmaps[aState].TransparentClear;
-        end;
-      if (Mode = ebmSpeedBtn) and Flat then
-        begin
-          if eisEnabled in aValidStates then BtnBitmaps[eisHighlighted].Canvas.DrawButtonBackground(aRect, eisEnabled);
-          aValidStates := aValidStates - [eisDisabled, eisEnabled, eisHighlighted];
-        end;
-      for aState in aValidStates do
-        BtnBitmaps[aState].Canvas.DrawButtonBackground(aRect, aState);
-      aValidStates := ValidStates;
-      if not assigned(OnDrawGlyph) then
-        begin
-          aCaption := Caption;
-          if (aCaption <> '') and ShowCaption then
-            begin
-              DeleteAmpersands(aCaption);
-              aFlags := DT_CENTER or DT_VCENTER;
-              aState := eisEnabled;
-              with ThemeServices do
-                aRect := GetTextExtent(Canvas.Handle, GetElementDetails(caThemedContent[aState]),
-                  aCaption, aFlags, nil);
-              aTextSize.cx := aRect.Right - aRect.Left + 1;
-              aTextSize.cy := aRect.Bottom - aRect.Top + 1;
-            end else
-            aTextSize := Size(0, 0);
-          if DropDownGlyph > edgNone then
-            begin
-              aGlyphSize := Canvas.GlyphExtent(egdArrowDown);
-              if not IsRightToLeft
-                then aGlyphPoint.X := Width - aGlyphSize.cx - cDropDownGlyphIndent
-                else aGlyphPoint.X := cDropDownGlyphIndent;
-              if DropDownGlyph = edgMiddle
-                then aGlyphPoint.Y := (Height - aGlyphSize.cy + 2) div 2
-                else aGlyphPoint.Y := Height - aGlyphSize.cy - cDropDownGlyphIndent;
-              aRect := Rect(aGlyphPoint.X, aGlyphPoint.Y, aGlyphPoint.X + aGlyphSize.cx,
-                aGlyphPoint.Y + aGlyphSize.cy);
-              for aState in aValidStates do
-                BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, egdArrowDown, aState);
-            end;
-          if assigned(Images) then
-	          begin
-              aImageIndex := ImageIndex;
-              aImgIdxChckd := ImageIndexChecked;
-              aGlyphSize := Size(Images.Width, Images.Height);
-              if (aImageIndex >= 0) and (aImageIndex < Images.Count) then  
-                begin
-                  if ((aImgIdxChckd < 0) or (aImgIdxChckd >= Images.Count)) and (Mode <> ebmSpeedBtn)
-                    then aImgIdxChckd := aImageIndex;
-                end else
-                if (aImgIdxChckd >= 0) and (aImgIdxChckd < Images.Count) and (Mode = ebmSpeedBtn)
-                  then aImageIndex := aImgIdxChckd
-                  else aImageIndex := -1;
-            end else
-            begin
-              aImageIndex := -1;
-              aImgIdxChckd := -1;
-            end;
-          if (aImageIndex < 0) and (aImgIdxChckd < 0) then
-            begin
-              aGlyphDesign := GlyphDesign;
-              aGlyphDsgnChckd := GlyphDesignChecked;
-              if aGlyphDsgnChckd = egdNone then aGlyphDsgnChckd := aGlyphDesign;
-              if (aGlyphDesign = egdNone) and (Mode = ebmSpeedBtn) then aGlyphDesign := GlyphDesignChecked;
-              aGlyphSize := Canvas.GlyphExtent(aGlyphDesign);
-              if aGlyphDesign > egdNone then
-                begin
-                  aGlyphSize.cx := aGlyphSize.cx or 1;
-                  aGlyphSize.cy := aGlyphSize.cy or 1;
-                end;             
-            end;
-          aRect := ClientRect;
-          if (aTextSize.cx > 0) and not AutoSize and (Margin >= 0) and (Layout in [eopRight, eopLeft]) then
-            if not IsRightToLeft xor (Layout = eopRight)
-              then aRect.Right := aTextSize.cx + 2 * Margin
-              else aRect.Left := aRect.Right - aTextSize.cx - 2 * Margin;
-          if aGlyphSize.cx*aTextSize.cx <> 0 then
-            begin
-              if RealLayout in [eopTop, eopBottom] then
-                begin
-                  aLength := aGlyphSize.cy + aTextSize.cy;
-                  aGlyphPoint.X := (Width - aGlyphSize.cx) div 2;
-                end else 
-                begin
-                  aLength := aGlyphSize.cx + aTextSize.cx;
-                  aGlyphPoint.Y := (Height - aGlyphSize.cy) div 2;
-                end;
-              inc(aLength, Spacing);
-              case RealLayout of
-                eopTop: 
-                  begin
-                    aGlyphPoint.Y := (Height - aLength) div 2;
-                    aRect.Top := aGlyphPoint.Y + aGlyphSize.cy + Spacing;    
-                  end;
-                eopRight: 
-                  begin
-                    if Margin < 0
-                      then aRect.Left := (Width - aLength) div 2
-                      else aRect.Left := Width - aLength - Margin;
-                    aGlyphPoint.X := aRect.Left + aTextSize.cx + Spacing;
-                  end;
-                eopBottom:
-                  begin
-                    aRect.Top := (Height - aLength) div 2;
-                    aGlyphPoint.Y := aRect.Top + aTextSize.cy + Spacing; 
-                  end;
-                eopLeft: 
-                  begin
-                    if Margin < 0
-                      then aGlyphPoint.X := (Width - aLength) div 2
-                      else aGlyphPoint.X := Margin;
-                    aRect.Left := aGlyphPoint.X + aGlyphSize.cx + Spacing;  
-                  end;
-              end;
-              if RealLayout in [eopRight, eopLeft]
-                then aRect.Right := aRect.Left + aTextSize.cx
-                else aRect.Bottom := aRect.Top + aTextSize.cy;
-            end else
-            aGlyphPoint := Point((Width - aGlyphSize.cx) div 2, (Height - aGlyphSize.cy) div 2);  
-          if aTextSize.cx > 0 then
-            begin              
-              if UseRightToLeftReading then aFlags := aFlags or DT_RTLREADING;     
-              for aState in aValidStates do
-                begin
-                  BtnBitmaps[aState].Canvas.Font.Assign(Font);
-                  if aState >= eisPushed then
-                    begin
-                      BtnBitmaps[aState].Canvas.Font.Style := CheckedFontStyles;
-                      BtnBitmaps[aState].Canvas.Font.Color := CheckedFontColor;
-                    end;
-                  if BtnBitmaps[aState].Canvas.Font.Color = clDefault
-                    then BtnBitmaps[aState].Canvas.Font.Color := clBtnText;  
-                  with ThemeServices do 
-                    DrawText(BtnBitmaps[aState].Canvas, GetElementDetails(caThemedContent[aState]), 
-                      Caption, aRect, aFlags, 0);
-                end;
-            end;
-          if (aImageIndex >= 0) or (aImgIdxChckd >= 0) then
-            begin
-              if Mode = ebmSpeedBtn then
-                begin
-                  for aState in aValidStates do
-                    ThemeServices.DrawIcon(BtnBitmaps[aState].Canvas, 
-                      ThemeServices.GetElementDetails(caThemedContent[aState]), 
-                      aGlyphPoint, FImages, aImageIndex);
-                end else
-                begin
-                  if aImageIndex >= 0 then
-                    for aState in aValidStates*[eisDisabled, eisHighlighted, eisEnabled] do
-                      ThemeServices.DrawIcon(BtnBitmaps[aState].Canvas,
-                        ThemeServices.GetElementDetails(caThemedContent[aState]),
-                        aGlyphPoint, FImages, aImageIndex);
-                  if aImgIdxChckd >= 0 then
-                    for aState in aValidStates*[eisPushed, eisPushedHihlighted, eisPushedDisabled] do
-                      ThemeServices.DrawIcon(BtnBitmaps[aState].Canvas,
-                        ThemeServices.GetElementDetails(caThemedContent[aState]),
-                        aGlyphPoint, FImages, aImgIdxChckd);
-                end;
-            end else
-            begin
-              if aTextSize.cx = 0 then 
-                begin
-                  case aGlyphDesign of
-                    egdGrid..egdSizeArrLeft: AdjustRect(30, 30);
-                    egdRectBeveled..high(TGlyphDesign): AdjustRect(85, 30);
-                  end;
-                end else
-                aRect := Rect(aGlyphPoint.X, aGlyphPoint.Y, aGlyphPoint.X + aGlyphSize.cx, aGlyphPoint.Y + aGlyphSize.cy);
-              if Mode = ebmSpeedBtn then
-                begin
-                  if aGlyphDesign > egdNone then
-                    for aState in aValidStates do
-                      BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, aGlyphDesign, aState);
-                end else
-                begin
-                  if aGlyphDesign > egdNone then    
-                    for aState in aValidStates*[eisDisabled, eisHighlighted, eisEnabled] do
-                      BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, aGlyphDesign, aState);
-                  if aGlyphDsgnChckd > egdNone then         
-                    for aState in aValidStates*[eisPushed, eisPushedHihlighted, eisPushedDisabled] do
-                      BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, aGlyphDsgnChckd, aState);
-                end;
-            end;
-        end else
-        for aState in aValidStates do
-          OnDrawGlyph(self, aState);
-    end;
-  NeedRedraw := False;
-end;
-
-procedure TCustomECSpeedBtn.EndUpdate;
-begin
-  dec(UpdateCount);
-  if UpdateCount = 0 then
-    begin
-      NeedRedraw := True;
-      if AutoSize then
-        begin
-          InvalidatePreferredSize;
-          AdjustSize;
-        end;
-      Invalidate;
-    end;
-end;
-
-procedure TCustomECSpeedBtn.FontChanged(Sender: TObject);
-begin
-  inherited FontChanged(Sender);
-  NeedRedraw := True;  { Invalidate not necessary here }  
 end;
 
 function TCustomECSpeedBtn.GetActionLinkClass: TControlActionLinkClass;
 begin
   Result := TECSpeedBtnActionLink;
-end;
-
-function TCustomECSpeedBtn.HasValidImages: Boolean;
-begin
-  Result := (assigned(Images) and ((ImageIndex >= 0) or (ImageIndexChecked >= 0))
-    and ((ImageIndex < Images.Count) or (ImageIndexChecked < Images.Count)));
-end;
-
-procedure TCustomECSpeedBtn.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-begin
-  inherited MouseDown(Button, Shift, X, Y);
-  if Button = mbLeft then
-    begin
-      BtnPushed := True;
-      if (Mode = ebmSpeedBtn) and assigned(ECTimer) then
-        if (Repeating = 0) or assigned(OnRepeating) then ECTimer.Enabled := True;
-    end;
-  if not Checked then Invalidate;
-end;
-
-procedure TCustomECSpeedBtn.MouseLeave;
-begin
-  {$IFDEF DBGCTRLS} DebugLn('TBaseECSpeedBtn.MouseLeave'); {$ENDIF}
-  inherited MouseLeave;
-  if BtnPushed then MouseUp(mbLeft, [ssLeft], 0, 0);
-  Invalidate;  
-end;
-
-procedure TCustomECSpeedBtn.MouseEnter;
-begin
-  inherited MouseEnter;
-  Invalidate;
-end;
-
-procedure TCustomECSpeedBtn.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-begin
-  inherited MouseUp(Button, Shift, X, Y);      
-  BtnPushed := False;
-  if Mode <> ebmDelayBtn then
-    begin
-      if assigned(ECTimer) then ECTimer.Enabled := False;
-      if Mode = ebmSpeedBtn then Invalidate;  { when Delay <> 0 SetChecked cares of Invalidate; }
-    end else
-    if Delay = 0 then Invalidate;
 end;
 
 procedure TCustomECSpeedBtn.Paint;
@@ -1310,368 +1435,129 @@ begin
   {$IFDEF DBGCTRLS} DebugLn('TCustomECSpeedBtn.Paint'); {$ENDIF}
   inherited Paint;
   bEnabled := IsEnabled;
-  if (bEnabled xor not (eisDisabled in ValidStates)) or (ValidStates = []) then
+  if bEnabled xor not (eisDisabled in Core.ValidStates) then
     begin
-      NeedRedraw := True;
-      CreateValidBitmaps(bEnabled);
-    end;    
-  if NeedRedraw then DrawButtonBMPs;
+      if bEnabled
+        then Core.ValidStates := caEnabledStates
+        else Core.ValidStates := caDisabledStates;
+      Core.NeedRedraw := True;
+    end;
+  if Core.NeedRedraw then Core.DrawButtonBMPs(Canvas, OnDrawGlyph);
   aState := eisEnabled;
   if bEnabled then
     begin
-      if BtnPushed or Checked or (assigned(ECTimer) and ECTimer.Enabled) then
-        begin
-          if not MouseEntered 
-            then aState := eisPushed
-            else aState := eisPushedHihlighted;
-        end else 
-        if MouseEntered then aState := eisHighlighted;
+      if Core.BtnPushed
+        then aState:= eisPushed
+        else if Mode <> ebmButton then
+               begin
+                 if Checked or (assigned(ECTimer) and ECTimer.Enabled)
+                   then if not MouseInClient
+                          then aState := eisChecked
+                          else aState := eisPushedHilighted
+                   else if MouseInClient then aState := eisHighlighted;
+               end else
+                 if MouseInClient then aState := eisHighlighted;
     end else
-    begin
-      if Checked 
+      if Checked
         then aState := eisPushedDisabled
         else aState := eisDisabled;
-    end;
-  Canvas.Draw(0, 0, BtnBitmaps[aState]);
-  BtnDrawnPushed := (aState in [eisPushed, eisPushedHihlighted]);
+  Canvas.Draw(0, 0, Core.BtnBMPs[aState]);
+  Core.BtnDrawnPushed := (aState in [eisChecked, eisPushed, eisPushedHilighted]);
 end;
 
-procedure TCustomECSpeedBtn.Redraw;
+{$MACRO ON}
+{$DEFINE BTNCLASSNAME:=TCustomECSpeedBtn}
+{$include ecxbtn.inc}
+
+{ TECBitBtnActionLink }
+
+procedure TECBitBtnActionLink.AssignClient(AClient: TObject);
 begin
-  NeedRedraw := True;
-  if UpdateCount = 0 then Invalidate;
+  inherited AssignClient(AClient);
+  FClientBitBtn := TCustomECBitBtn(AClient);
 end;
 
-procedure TCustomECSpeedBtn.Resize;
+function TECBitBtnActionLink.IsCheckedLinked: Boolean;
+begin
+  Result := inherited IsCheckedLinked and (FClientBitBtn.Checked = TCustomAction(Action).Checked);
+end;
+
+procedure TECBitBtnActionLink.SetChecked(Value: Boolean);
+begin
+  if IsCheckedLinked then
+    begin
+      FClientBitBtn.CheckFromAction := True;
+      try
+        FClientBitBtn.Checked := Value;
+      finally
+        FClientBitBtn.CheckFromAction := False;
+      end;
+    end;
+end;
+
+procedure TECBitBtnActionLink.SetImageIndex(Value: Integer);
+begin
+  FClientBitBtn.Redraw;
+end;
+
+{ TCustomECBitBtn }
+
+constructor TCustomECBitBtn.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  ControlStyle := ControlStyle + [csParentBackground, csReplicatable, csSetCaption]
+                               - csMultiClicks - [csCaptureMouse, csNoFocus, csOpaque];
+  Core := TECBtnCore.Create(self);
+  SetInitialBounds(0, 0, cDefWidth, cDefHeight);
+  TabStop := True;
+  AccessibleRole := larButton;
+end;
+
+function TCustomECBitBtn.GetActionLinkClass: TControlActionLinkClass;
+begin
+  Result := TECBitBtnActionLink;
+end;
+
+procedure TCustomECBitBtn.Paint;
 var aState: TItemState;
-    aWidth, aHeight: Integer;
+    bEnabled: Boolean;
 begin
-  inherited Resize;
-  aWidth := Width;
-  aHeight := Height;
-  if (aWidth <> PrevSize.cx) or (aHeight <> PrevSize.cy) then
+  {$IFDEF DBGCTRLS} DebugLn('TCustomECBitBtn.Paint'); {$ENDIF}
+  inherited Paint;
+  bEnabled := IsEnabled;
+  if bEnabled xor not (eisDisabled in Core.ValidStates) then
     begin
-      for aState in ValidStates do
-        BtnBitmaps[aState].SetSize(aWidth, aHeight);
-      Redraw;
-      PrevSize.cx := aWidth;
-      PrevSize.cy := aHeight;
-    end;  
-end;
-
-procedure TCustomECSpeedBtn.ResizeInvalidate;
-begin
-  if UpdateCount = 0 then
-    begin;
-      if AutoSize then
-        begin
-          InvalidatePreferredSize;
-          AdjustSize;
-        end;    
-      Invalidate;
+      if bEnabled
+        then Core.ValidStates := caEnabledStates
+        else Core.ValidStates := caDisabledStates;
+      Core.NeedRedraw := True;
     end;
-end;            
-
-procedure TCustomECSpeedBtn.SetAction(Value: TBasicAction);
-begin
-  inherited SetAction(Value);
-  if assigned(Value) and (Value is TCustomAction) and TCustomAction(Value).AutoCheck then Delay := -1;
-end;            
-
-procedure TCustomECSpeedBtn.SetAutoSize(Value: Boolean);
-begin
-  inherited SetAutoSize(Value);
-  if Value then
+  if Core.NeedRedraw then Core.DrawButtonBMPs(Canvas, OnDrawGlyph);
+  aState := eisEnabled;
+  if bEnabled then
     begin
-      InvalidatePreferredSize;
-      AdjustSize;
-      NeedRedraw := True;
-      Invalidate;   
-    end; 
-end;                        
-
-procedure TCustomECSpeedBtn.SetParent(NewParent: TWinControl);
-begin
-  inherited SetParent(NewParent);
-  NeedRedraw := True;
-end;
-
-procedure TCustomECSpeedBtn.SetTimerEvent;
-begin
-  if Mode = ebmDelayBtn
-    then ECTimer.OnTimer := @TimerOnTimerDelay
-    else if Repeating = 0
-           then ECTimer.OnTimer := @TimerOnTimerHold
-           else ECTimer.OnTimer := @TimerOnTimerRepeating;
-end;
-
-procedure TCustomECSpeedBtn.TextChanged;
-begin
-  inherited TextChanged;
-  NeedRedraw := True;
-  ResizeInvalidate; 
-end;             
-
-procedure TCustomECSpeedBtn.TimerOnTimerDelay(Sender: TObject);
-begin
-  ECTimer.Enabled := False;
-  Checked := False;
-  Invalidate;
-end;
-
-procedure TCustomECSpeedBtn.TimerOnTimerHold(Sender: TObject);
-begin
-  ECTimer.Enabled := False;
-  if assigned(OnHoldDown) then
-    begin
-      OnHoldDown(self);
-      ControlState := ControlState - [csClicked];
-    end;
-end;
-
-procedure TCustomECSpeedBtn.TimerOnTimerRepeating(Sender: TObject);
-begin
-  if assigned(OnRepeating) then
-    begin
-      OnRepeating(self);
-      ControlState := ControlState - [csClicked];
-    end;
-end;
-
-procedure TCustomECSpeedBtn.UpdateGroup;
-var aMsg : TLMessage;
-begin
-  if (FGroupIndex <> 0) and (Parent <> nil) and (not (csLoading in ComponentState)) then
-  begin
-    aMsg.Msg := CM_ButtonPressed;
-    aMsg.WParam := FGroupIndex;
-    aMsg.LParam := PtrInt(self);
-    aMsg.Result := 0;
-    Parent.Broadcast(aMsg);
-  end;    
-end;                 
-
-{ TCustomECSpeedBtn.Setters }
-
-procedure TCustomECSpeedBtn.SetAllowAllUp(AValue: Boolean);
-begin
-  if FAllowAllUp = AValue then exit;
-  FAllowAllUp := AValue;
-  UpdateGroup;
-end; 
-
-procedure TCustomECSpeedBtn.SetChecked(AValue: Boolean);
-begin                                                  
-  if (FChecked = AValue) or (not AValue and (GroupIndex <> 0) and (not AllowAllUp)) then exit;
-  FChecked := AValue;
-  if [csLoading, csDestroying]*ComponentState = [] then
-    begin
-      if GroupIndex <> 0 then UpdateGroup;
-      if AValue then 
-        begin
-          if Mode = ebmSpeedBtn then Mode := ebmToggleBox;
-          if Mode = ebmDelayBtn then
-            begin
-              if not (csDesigning in ComponentState)
-                then ECTimer.Enabled := True
-                else Mode := ebmToggleBox;
-            end;
-        end;
-      if assigned(OnChange) then OnChange(self);
-      if not AValue and assigned(OnRelease) then OnRelease(self);
-    end; 
-  if not AValue or not BtnDrawnPushed then Invalidate;
-end;
-
-procedure TCustomECSpeedBtn.SetCheckedFontColor(AValue: TColor);
-begin
-  if FCheckedFontColor=AValue then exit;
-  FCheckedFontColor:=AValue;
-  Redraw;
-end;
-
-procedure TCustomECSpeedBtn.SetCheckedFontStyles(AValue: TFontStyles);
-begin
-  if FCheckedFontStyles=AValue then exit;
-  FCheckedFontStyles:=AValue;
-  Redraw;
-end;
-
-procedure TCustomECSpeedBtn.SetDelay(AValue: Integer);
-begin
-  if FDelay = AValue then exit;       
-  FDelay := AValue;
-  if not (csDesigning in ComponentState) then
-    begin
-      if (AValue > 0) and (Mode <> ebmToggleBox) then
-        begin
-          if not assigned(ECTimer) then
-            begin
-              CreateTimer;
-              SetTimerEvent;
-            end;
-          ECTimer.Delay := AValue;
-          ECTimer.Repeating := Repeating;
-        end else
-        FreeAndNil(ECTimer);
-    end;
-end;
-
-procedure TCustomECSpeedBtn.SetDropDownGlyph(AValue: TDropDownGlyph);
-begin
-  if FDropDownGlyph = AValue then exit;
-  FDropDownGlyph := AValue;
-  Redraw;
-end;
-
-procedure TCustomECSpeedBtn.SetFlat(AValue: Boolean);
-begin
-  if FFlat=AValue then exit;
-  FFlat:=AValue;
-  Redraw;
-end;
-
-procedure TCustomECSpeedBtn.SetGlyphColor(AValue: TColor);
-begin
-  if FGlyphColor = AValue then exit;
-  FGlyphColor := AValue;
-  if not HasValidImages then Redraw;
-end;
-
-procedure TCustomECSpeedBtn.SetGlyphDesign(AValue: TGlyphDesign);
-begin
-  if FGlyphDesign=AValue then exit;
-  FGlyphDesign:=AValue;
-  if not HasValidImages then
-    begin
-      NeedRedraw := True;
-      ResizeInvalidate;
-    end;
-end;
-
-procedure TCustomECSpeedBtn.SetGlyphDesignChecked(AValue: TGlyphDesign);
-begin
-  if FGlyphDesignChecked = AValue then exit;
-  FGlyphDesignChecked := AValue;
-  if not HasValidImages and ((Mode <> ebmSpeedBtn) or (GlyphDesign = egdNone)) then Redraw;
-end;
-
-procedure TCustomECSpeedBtn.SetGroupIndex(AValue: Integer);
-begin
-  if FGroupIndex = AValue then exit;
-  FGroupIndex := AValue;
-  if AValue <> 0 then 
-    begin
-      FDelay := -1;  { only checkable button makes sense in group }
-      UpdateGroup;
-    end;
-end;   
-
-procedure TCustomECSpeedBtn.SetImageIndex(AValue: TImageIndex);
-begin
-  if FImageIndex = AValue then exit;
-  FImageIndex := AValue;
-  NeedRedraw := True;
-  ResizeInvalidate;
-end;
-
-procedure TCustomECSpeedBtn.SetImageIndexChecked(AValue: TImageIndex);
-begin
-  if FImageIndexChecked = AValue then exit;
-  FImageIndexChecked := AValue;
-  if (Mode <> ebmSpeedBtn) or (ImageIndex < 0) then Redraw;
-end;
-
-procedure TCustomECSpeedBtn.SetImages(AValue: TCustomImageList);
-begin
-  if FImages = AValue then exit; 
-  FImages := AValue;
-  NeedRedraw := True;
-  ResizeInvalidate;
-end;
-
-procedure TCustomECSpeedBtn.SetLayout(AValue: TObjectPos);
-begin
-  if FLayout = AValue then exit;
-  FLayout := AValue;
-  if IsRightToLeft then
-    case AValue of
-      eopRight: AValue := eopLeft;
-      eopLeft: AValue := eopRight;
-    end;
-  RealLayout := AValue;                           
-  NeedRedraw := True;
-  ResizeInvalidate;
-end;
-
-procedure TCustomECSpeedBtn.SetMargin(AValue: SmallInt);
-begin
-  if FMargin = AValue then exit;
-  FMargin := AValue;    
-  NeedRedraw := True;
-  ResizeInvalidate;
-end;
-
-procedure TCustomECSpeedBtn.SetMode(AValue: TButtonMode);
-begin
-  if FMode = AValue then exit;
-  if (AValue = ebmSpeedBtn) or (FMode = ebmSpeedBtn) and ((ImageIndex <> ImageIndexChecked)
-    or (GlyphDesign <> GlyphDesignChecked)) then NeedRedraw := True;
-  FMode := AValue;
-  if AValue <> ebmToggleBox then
-    begin
-      FGroupIndex := 0;
-      Checked := False;
-      if Delay > 0 then
-        begin
-          if not assigned(ECTimer) then CreateTimer;
-          ECTimer.Delay := Delay;
-          ECTimer.Repeating := Repeating;
-        end;
+      if Core.BtnPushed
+        then aState:= eisPushed
+        else if Mode <> ebmButton then
+               begin
+                 if Checked or (assigned(ECTimer) and ECTimer.Enabled)
+                   then if not MouseInClient
+                          then aState := eisChecked
+                          else aState := eisPushedHilighted
+                   else if MouseInClient then aState := eisHighlighted;
+               end else
+                 if MouseInClient then aState := eisHighlighted;
     end else
-    FreeAndNil(ECTimer);
-  if assigned(ECTimer) then SetTimerEvent;
+      if Checked
+        then aState := eisPushedDisabled
+        else aState := eisDisabled;
+  Canvas.Draw(0, 0, Core.BtnBMPs[aState]);
+  if Focused then Canvas.DrawFocusRectNonThemed(Rect(3, 3, Width - 3, Height - 3));
+  Core.BtnDrawnPushed := (aState in [eisChecked, eisPushed, eisPushedHilighted]);
 end;
 
-procedure TCustomECSpeedBtn.SetRepeating(AValue: Integer);
-begin
-  if FRepeating = AValue then exit;
-  FRepeating := AValue;
-  if assigned(ECTimer) then
-    begin
-      ECTimer.Repeating := AValue;
-      SetTimerEvent;
-    end;
-end;
-
-procedure TCustomECSpeedBtn.SetShowCaption(AValue: Boolean);
-begin
-  if FShowCaption = AValue then exit;
-  FShowCaption := AValue;
-  if Caption <> '' then
-    begin
-      NeedRedraw := True;
-      ResizeInvalidate;
-    end;
-end;
-
-procedure TCustomECSpeedBtn.SetSpacing(AValue: SmallInt);
-begin
-  if FSpacing = AValue then exit;
-  FSpacing := AValue;
-  NeedRedraw := True;
-  ResizeInvalidate;  
-end;
-
-procedure TCustomECSpeedBtn.SetTransparent(AValue: Boolean);
-var aState: TItemState;
-begin
-  if FTransparent=AValue then exit;
-  FTransparent:=AValue;
-  for aState in ValidStates do
-    BtnBitmaps[aState].Transparent := AValue;
-  Redraw;
-end;
+{$DEFINE BTNCLASSNAME:=TCustomECBitBtn}
+{$include ecxbtn.inc}
 
 { TCustomECSpeedBtnPlus }
 
@@ -1692,8 +1578,7 @@ procedure TCustomECSpeedBtnPlus.MouseDown(Button: TMouseButton; Shift: TShiftSta
 begin
   inherited MouseDown(Button, Shift, X, Y);
   if assigned(CustomMouseDown) then CustomMouseDown(Button, Shift);
-  if assigned(Owner) and (Owner is TWinControl) and TWinControl(Owner).CanFocus
-    then TWinControl(Owner).SetFocus;
+  if (Owner is TWinControl) and TWinControl(Owner).CanFocus then TWinControl(Owner).SetFocus;
 end;    
 
 procedure TCustomECSpeedBtnPlus.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
@@ -1714,8 +1599,8 @@ function TECEditBtnSpacing.GetSpace(Kind: TAnchorKind): Integer;
 begin
   Result:=inherited GetSpace(Kind);
   case Kind of
-    akLeft: if Control.IsRightToLeft then
-              inc(Result, TBaseECEditBtn(Control).FAnyButton.Width + TBaseECEditBtn(Control).Indent);
+    akLeft:  if Control.IsRightToLeft then
+               inc(Result, TBaseECEditBtn(Control).FAnyButton.Width + TBaseECEditBtn(Control).Indent);
     akRight: if not Control.IsRightToLeft then
                inc(Result, TBaseECEditBtn(Control).FAnyButton.Width + TBaseECEditBtn(Control).Indent);
   end;              
@@ -1767,7 +1652,7 @@ end;
 procedure TBaseECEditBtn.DoEnter;
 begin
   inherited DoEnter;
-  if (eboInCellEditor in Options) and FAnyButton.MouseEntered then CaretPos:=Point(length(Text), 1);
+  if (eboInCellEditor in Options) and FAnyButton.MouseInClient then CaretPos := Point(length(Text), 1);
 end;
 
 procedure TBaseECEditBtn.DoExit;
@@ -1787,7 +1672,7 @@ end;
 
 procedure TBaseECEditBtn.EditingDone;
 begin
-  if (edfForceEditingDone in Flags) or not FAnyButton.MouseEntered then
+  if (edfForceEditingDone in Flags) or not FAnyButton.MouseInClient then
     begin
       if edfForceEditingDone in Flags then include(Flags, edfAllowDoExitInCell);
       exclude(Flags, edfForceEditingDone);
@@ -1839,7 +1724,7 @@ procedure TBaseECEditBtn.SetButtonPosition;
 begin
   if not IsRightToLeft
     then FAnyButton.Left := Left + Width + Indent
-    else FAnyButton.Left := Left - Indent - FAnyButton.Width;         
+    else if Left >= 0 then FAnyButton.Left := Left - Indent - FAnyButton.Width;
 end;    
 
 procedure TBaseECEditBtn.SetEnabled(Value: Boolean);
@@ -1878,20 +1763,10 @@ begin
   if assigned(OnVisibleChanged) then OnVisibleChanged(self, Value);
 end;
 
-procedure TBaseECEditBtn.SwitchOption(AOption: TEBOption; AOn: Boolean);
-var aOptions: TEBOptions;
-begin
-  aOptions := FOptions;
-  if AOn 
-    then Include(aOptions, AOption)
-    else Exclude(aOptions, AOption);
-  Options := aOptions;
-end;
-
 procedure TBaseECEditBtn.WMKillFocus(var Message: TLMKillFocus);
 begin
   if eboInCellEditor in Options then
-    if not (edfForceEditingDone in Flags) and FAnyButton.MouseEntered then exit;  { Exit! }
+    if not (edfForceEditingDone in Flags) and FAnyButton.MouseInClient then exit;  { Exit! }
   include(Flags, edfForceEditingDone);
   inherited WMKillFocus(Message);
 end;
@@ -1930,7 +1805,7 @@ end;
 constructor TECSpeedBtnColor.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  FGlyphDesign := cDefGlyphDesign;
+  Core.FGlyphDesign := cDefGlyphDesign;
 end;        
 
 { TECColorBtn }
@@ -1943,7 +1818,7 @@ begin
     begin  
       CustomClick := @DoButtonClick;
       Name := 'ECCBSpeedBtn';
-      Width := 27;
+      Width := cColorBtnWidth;
     end;     
   inherited Create(AOwner);
   ReadOnly := True;
@@ -1983,7 +1858,7 @@ begin
             FButton.GlyphColor := aColor;
           end;
       end else
-      exit;  { Exit! }
+        exit;  { Exit! }
   inherited RealSetText(AValue);
   if b and assigned(OnCustomColorChanged) then OnCustomColorChanged(self);
 end;
@@ -2029,8 +1904,8 @@ function TECComboBtnSpacing.GetSpace(Kind: TAnchorKind): Integer;
 begin
   Result:=inherited GetSpace(Kind);
   case Kind of
-    akLeft: if Control.IsRightToLeft then
-              inc(Result, TBaseECComboBtn(Control).FAnyButton.Width + TBaseECComboBtn(Control).Indent);
+    akLeft:  if Control.IsRightToLeft then
+               inc(Result, TBaseECComboBtn(Control).FAnyButton.Width + TBaseECComboBtn(Control).Indent);
     akRight: if not Control.IsRightToLeft then
                inc(Result, TBaseECComboBtn(Control).FAnyButton.Width + TBaseECComboBtn(Control).Indent);
   end;  
@@ -2067,9 +1942,9 @@ end;
 procedure TBaseECComboBtn.Add(const AItem: string);
 begin
   case ItemOrder of
-    eioFixed: AddItemLimit(AItem, False);
+    eioFixed:   AddItemLimit(AItem, False);
     eioHistory: AddItemHistory(AItem, False);
-    eioSorted: AddItemLimit(AItem, False);
+    eioSorted:  AddItemLimit(AItem, False);
   end;
 end;
 
@@ -2083,21 +1958,17 @@ end;
 
 procedure TBaseECComboBtn.AddItemLimit(const AItem: string; ACaseSensitive: Boolean);
 var i, aCount: Integer;
-    aDuplicates: TDuplicates;
 begin
-  aDuplicates := TStringList(Items).Duplicates;
-  if aDuplicates <> dupAccept then
-    begin
-      if not ACaseSensitive then
-        begin
-          for i := Items.Count -1 downto 0 do
-            if AnsiCompareText(Items[i], AItem) = 0 then exit;  { Exit! }
-        end else
-        begin
-          for i := Items.Count -1 downto 0 do
-            if Items[i] = AItem then exit;  { Exit! }
-        end;
-    end;
+  if TStringList(Items).Duplicates <> dupAccept then
+    if not ACaseSensitive then
+      begin
+        for i := Items.Count -1 downto 0 do
+          if AnsiCompareText(Items[i], AItem) = 0 then exit;  { Exit! }
+      end else
+      begin
+        for i := Items.Count -1 downto 0 do
+          if Items[i] = AItem then exit;  { Exit! }
+      end;
   Items.BeginUpdate;
   aCount := MaxCount - 1;  { remove overflow item(s)+1 from the beginning }
   if aCount >= 0 then      { and it works on sorted list too, so beware }
@@ -2140,7 +2011,7 @@ end;
 
 procedure TBaseECComboBtn.EditingDone;
 begin
-  if (edfForceEditingDone in Flags) or not FAnyButton.MouseEntered then
+  if (edfForceEditingDone in Flags) or not FAnyButton.MouseInClient then
     begin
       if edfForceEditingDone in Flags then include(Flags, edfAllowDoExitInCell);
       exclude(Flags, edfForceEditingDone);
@@ -2158,15 +2029,13 @@ procedure TBaseECComboBtn.KeyDown(var Key: Word; Shift: TShiftState);
 begin
   if eboInCellEditor in Options then include(Flags, edfForceEditingDone);
   case Key of 
-    VK_RETURN:
-      begin
-        if ((ssModifier in Shift) and (eboClickCtrlEnter in Options)) or
-          ((ssAlt in Shift) and (eboClickAltEnter in Options)) or
-          ((ssShift in Shift) and (eboClickShiftEnter in Options)) 
-          then FAnyButton.Click
-          else if eboInCellEditor in Options then Flags := Flags + [edfEnterWasInKeyDown, edfForceEditingDone];
-      end;
-    VK_SPACE: if (ssModifier in Shift) or ReadOnly then FAnyButton.Click;
+    VK_RETURN: if ((ssModifier in Shift) and (eboClickCtrlEnter in Options)) or
+                  ((ssAlt in Shift) and (eboClickAltEnter in Options)) or
+                  ((ssShift in Shift) and (eboClickShiftEnter in Options))
+                 then FAnyButton.Click
+                 else if eboInCellEditor in Options
+                        then Flags := Flags + [edfEnterWasInKeyDown, edfForceEditingDone];
+    VK_SPACE:  if (ssModifier in Shift) or (Style in cComboReadOnlyStyles) then FAnyButton.Click;
   end;
   inherited KeyDown(Key, Shift);
 end;
@@ -2197,12 +2066,10 @@ begin
     begin
       Items.BeginUpdate;
       if ItemOrder = eioFixed
-        then
-          for i := 0 to Items.Count - aMaxCount - 1 do
-            Items.Delete(i)
-        else
-          for i := Items.Count - 1 downto aMaxCount do
-            Items.Delete(i);
+        then for i := 0 to Items.Count - aMaxCount - 1 do
+               Items.Delete(i)
+        else for i := Items.Count - 1 downto aMaxCount do
+               Items.Delete(i);
       Items.EndUpdate;
     end;
 end;
@@ -2221,7 +2088,7 @@ procedure TBaseECComboBtn.SetButtonPosition;
 begin
   if not IsRightToLeft
     then FAnyButton.Left := Left + Width + Indent
-    else FAnyButton.Left := Left - Indent - FAnyButton.Width;
+    else if Left >= 0 then FAnyButton.Left := Left - Indent - FAnyButton.Width;
 end;
 
 procedure TBaseECComboBtn.SetEnabled(Value: Boolean);
@@ -2269,7 +2136,7 @@ end;
 procedure TBaseECComboBtn.WMKillFocus(var Message: TLMKillFocus);
 begin
   if eboInCellEditor in Options then
-    if not (edfForceEditingDone in Flags) and FAnyButton.MouseEntered then exit;  { Exit! }
+    if not (edfForceEditingDone in Flags) and FAnyButton.MouseInClient then exit;  { Exit! }
   include(Flags, edfForceEditingDone);
   inherited WMKillFocus(Message);
 end;
@@ -2293,13 +2160,11 @@ var aValue: Integer;
 begin
   aValue := Val;
   if not (csLoading in ComponentState) and (ItemOrder = eioHistory) then
-    begin
-      if (aValue > 0) and (aValue < Items.Count) then
-        begin
-          Items.Move(aValue, 0);
-          aValue := 0;
-        end;
-    end;
+    if (aValue > 0) and (aValue < Items.Count) then
+      begin
+        Items.Move(aValue, 0);
+        aValue := 0;
+      end;
   inherited SetItemIndex(aValue);
 end;
 
@@ -2357,7 +2222,7 @@ begin
       CustomClick := @DoButtonClick;
       GlyphColor := clBtnFace;  { ~clNone }
       Name := 'ECCCSpeedBtn';
-      Width := 27;
+      Width := cColorBtnWidth;
     end;
   FLastAddedColorStr := 'clNone';
   inherited Create(AOwner);
@@ -2378,7 +2243,7 @@ procedure TECColorCombo.AddColor(AColor: TColor);
 var aColorStr: string;
 begin
   aColorStr := ColorToStrLayouted(AColor, ColorLayout, Prefix);
-  if not ReadOnly then FLastAddedColorStr := aColorStr;
+  if not (Style in cComboReadOnlyStyles) then FLastAddedColorStr := aColorStr;
   case ItemOrder of
     eioFixed:
       begin
@@ -2430,20 +2295,18 @@ begin  { do not call inherited ! }
   inc(ARect.Left, 3);
   Canvas.TextOut(ARect.Left, (ARect.Top + ARect.Bottom - FTextExtent.cy) div 2, Items[Index]);
   if TryStrToColorLayouted(Items[Index], ColorLayout, aColor) then 
-    with Canvas do
-      begin
-        Pen.Color := GetColorResolvingEnabled(clWindowText, FIsEnabled);
-        Brush.Color := GetColorResolvingEnabled(aColor, FIsEnabled);
-        Brush.Style := bsSolid;
-        Rectangle(ARect.Left + FTextExtent.cx + 2, ARect.Top + 1,
-                  ARect.Right - 3, ARect.Bottom - 1);
-      end;
+    begin
+      Canvas.Pen.Color := GetColorResolvingEnabled(clWindowText, FIsEnabled);
+      Canvas.Brush.Color := GetColorResolvingEnabled(aColor, FIsEnabled);
+      Canvas.Brush.Style := bsSolid;
+      Canvas.Rectangle(ARect.Left + FTextExtent.cx + 2, ARect.Top + 1, ARect.Right - 3, ARect.Bottom - 1);
+    end;
 end;
 
 procedure TECColorCombo.EditingDone;
 begin
   inherited EditingDone;
-  if not ReadOnly then SetColorText(Text);
+  if not (Style in cComboReadOnlyStyles) then SetColorText(Text);
 end;
 
 procedure TECColorCombo.EnabledChanged;
@@ -2453,20 +2316,18 @@ begin
 end;
 
 function TECColorCombo.GetColorIndex(AColor: TColor): Integer;
-var i: Integer;
-    aColorDD: TColor;
+var aColorDD: TColor;
+    i: Integer;
 begin
   Result := -1;
   AColor := ColorToRGB(AColor);
   for i := 0 to Items.Count-1 do
-    begin
-      if TryStrToColorLayouted(Items[i], ColorLayout, aColorDD) then
-        if ColorToRGB(aColorDD) = AColor then
-          begin
-            Result := i;
-            break;
-          end;
-    end;
+    if TryStrToColorLayouted(Items[i], ColorLayout, aColorDD) then
+      if ColorToRGB(aColorDD) = AColor then
+        begin
+          Result := i;
+          break;
+        end;
 end;
 
 procedure TECColorCombo.InitializeWnd;
@@ -2489,12 +2350,12 @@ end;
 procedure TECColorCombo.RealSetText(const AValue: TCaption);
 begin
   SetColorText(AValue);
-  if not Readonly then inherited RealSetText(FLastAddedColorStr);
+  if not (Style in cComboReadOnlyStyles) then inherited RealSetText(FLastAddedColorStr);
 end;
 
 procedure TECColorCombo.ResetPrefixesAndLayout(AOldLayout: TColorLayout);
-var i: Integer;
-    aColor: TColor;
+var aColor: TColor;
+    i: Integer;
 begin
   for i := 0 to Items.Count - 1 do
     if TryStrToColorLayouted(Items[i], AOldLayout, aColor) then
@@ -2527,16 +2388,14 @@ begin
   inherited SetItemIndex(Val);
   aValue := ItemIndex;  { Val may be changed in inherited }
   if not (csLoading in ComponentState) then
-    begin
-      if aValue >= 0 then
-        begin
-          if TryStrToColorLayouted(Items[aValue] , ColorLayout, aColor) then
-            if not FUpdatingCustomColor
-              then CustomColor := aColor
-              else FCustomColor := aColor;
-        end else
+    if aValue >= 0 then
+      begin
+        if TryStrToColorLayouted(Items[aValue] , ColorLayout, aColor) then
+          if not FUpdatingCustomColor
+            then CustomColor := aColor
+            else FCustomColor := aColor;
+      end else
         CustomColor := clNone;
-    end;
 end;
 
 procedure TECColorCombo.SetItems(const Value: TStrings);
@@ -2579,7 +2438,7 @@ begin
       FButton.GlyphColor := clBtnFace;
       ItemIndex := -1;
     end else
-    FButton.GlyphColor := AValue and $FFFFFF;
+      FButton.GlyphColor := AValue and $FFFFFF;
   if not (csLoading in ComponentState) then
     begin
       FUpdatingCustomColor := True;

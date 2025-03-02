@@ -1,7 +1,11 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2020 Vojtěch Čihák, Czech Republic
+
+  Credit: alignment of composite components (class TECSpinEditSpacing)
+    is based on idea of Flávio Etrusco published on mailing list.
+    http://lists.lazarus.freepascal.org/pipermail/lazarus/2013-March/079971.html
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -14,7 +18,7 @@
   conditions of the license of that module. An independent module is a module which is not derived
   from or based on this library. If you modify this library, you may extend this exception to your
   version of the library, but you are not obligated to do so. If you do not wish to do so, delete
-  this exception statement from your version.
+  this exception sta-tement from your version.
 
   This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
   without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
@@ -34,13 +38,14 @@ unit ECSpinCtrls;
 interface
 
 uses
-  Classes, SysUtils, Controls, StdCtrls, CustomTimer, Math, Graphics, ImgList, ECTypes,
-  LCLIntf, LMessages, {$IFDEF DBGSPINS} LCLProc, {$ENDIF} LCLType, Themes;
+  Classes, SysUtils, Controls, StdCtrls, CustomTimer, Graphics, ImgList, LCLIntf,
+  {$IFDEF DBGSPINS} LCLProc, {$ENDIF} LCLType, LMessages, Math, Themes, ECTypes;
 
 type
   {$PACKENUM 1}
   TBtnKind = (ebkMin, ebkBigDec, ebkDec, ebkMiddle, ebkDrag, ebkMenu, ebkInc, ebkBigInc, ebkMax);
   {$PACKENUM 2}
+  TBtnState = eisDisabled..eisPushed;
   TButtonStyle = (ebsSeparated, ebsSplittedBlock, ebsClearBlock);
   TDragOrientation = (edoVertical, edoHorizontal, edoBoth);
   TExtraMouseButtons = set of mbRight..high(TMouseButton); 
@@ -48,37 +53,33 @@ type
   TModifierEnter = (emeNoAction, emeMenuClick, emeMiddleClick);  { Alt, Ctrl/Meta or Shift + Enter }
   TSEOption = ({ Arrows, Home/End & PgUp/PgDn can exceed Max/Min and reach MaxInEdit/MinInEdit }
                esoArrowKeysExceed, 
-               { Editing immediately changes value, it does not wait for EditingDone }
-               esoEditingChangesValue,
-               { Modifiers + Home/End for Max/Min }
-               esoHomeEndAlt, esoHomeEndCtrl,
-               { ECSpinEdit is used as a grid in-cell editor }
-               esoInCellEditor,
-               { smart spinning months and years }
-               esoSmartDate,
-               { Modifiers + Space clicks Middle, otherwise it opens Menu }
-               esoSpaceClicksMiddle, 
-               { ArrowKeys for spinning }
-               esoUpDownOnly, esoUpDownAlt, esoUpDownCtrl, esoUpDownShift);  
+               esoEditingChangesValue,  { editing immediately changes value, otherwise EditingDone }
+               esoHomeEndAlt,           { modifiers + Home/End for Max/Min }
+               esoHomeEndCtrl,
+               esoInCellEditor,         { ECSpinEdit is used as a grid in-cell editor }
+               esoSmartDate,            { smart spinning months and years }
+               esoSpaceClicksMiddle,    { modifiers + Space clicks Middle, otherwise it opens Menu }
+               esoUpDownOnly, esoUpDownAlt, esoUpDownCtrl, esoUpDownShift);  { Arrows for spinning }
   TSEOptions = set of TSEOption; 
   TValueFormat = (evfRound, evfExponent, evfExponential, evfMantissa, evfHexadecimal,
                   evfMarkHexadec, evfOctal, evfMarkOctal, evfBinary, evfDate, evfTime, evfText,
                   evfCombined);
-  { Event }
+  { event }
   TOnDrawGlyph = procedure(Sender: TObject; AKind: TBtnKind; AState: TItemState) of object;
 
 const
   cDefActAltEnter = emeNoAction;
   cDefActCtrlEnter = emeMenuClick; 
   cDefActShiftEnter = emeNoAction;
+  cDefDateTimeFormat = 'hh:nn:ss';
   cDefCTDelay = 650;  {miliseconds}
   cDefCTRepeat = 75;  {miliseconds}
+  cDefMantissaExp: Double = 2.0;
   cDefSSBWidth = 15;  {pixels}
   cDefSEOptions = [esoEditingChangesValue, esoHomeEndCtrl, esoSpaceClicksMiddle, esoSmartDate,
                    esoUpDownOnly, esoUpDownAlt, esoUpDownCtrl, esoUpDownShift];
-  cMouseModifier = [ssCtrl, ssMeta];
   
-type  
+type
   { TCustomECTimer }
   TCustomECTimer = class(TCustomTimer)
   private
@@ -213,16 +214,17 @@ type
     FKind: TBtnKind;
     procedure CreateBitmaps;
     procedure FreeBitmaps;
+    function IsBtnOrderStored: Boolean;
     procedure Resize;
   public
-    BtnBitmaps: array[low(TItemState)..eisPushed] of TBitmap;
+    BtnBitmaps: array[TBtnState] of TBitmap;
     Parent: TCustomSpinBtns;
     constructor Create(AParent: TCustomSpinBtns);
     destructor Destroy; override;
     property Enabled: Boolean read FEnabled;
     property Kind: TBtnKind read FKind;
   published
-    property BtnOrder: Word read FBtnOrder write SetBtnOrder;
+    property BtnOrder: Word read FBtnOrder write SetBtnOrder stored IsBtnOrderStored;
     property Caption: string read FCaption write SetCaption;
     property GlyphColor: TColor read FGlyphColor write SetGlyphColor default clDefault;
     property ImageIndex: TImageIndex read FImageIndex write SetImageIndex default -1;
@@ -242,6 +244,7 @@ type
     FImages: TCustomImageList;
     FIncrement: Double;
     FMax: Double;
+    FMenuBtnLeftMouseUp: Boolean;
     FMenuControl: TExtraMouseButtons;
     FMiddle: Double;
     FMin: Double;
@@ -283,6 +286,7 @@ type
     class destructor DestroyTimer;
   protected
     BtnPositions: array of Integer;
+    BtnPushed: Boolean;  { Btn clicked; for SpinEdit }
     CursorSwap: TCursor;
     FController: TECSpinController;
     InitValue: Double;  { initial Value for BtnDrag click & drag }
@@ -291,7 +295,7 @@ type
     NeedCalcHoveredBtnInPaint: Boolean;
     PrevCTRLDown: Boolean;  { wheter CTRL was pressed in previous MouseMove }
     PrevHeight: Integer;
-    PushedBtn: SmallInt;  { ommits invisible } 
+    PushedBtn: SmallInt;  { ommits invisible }
     RedrawMode: TRedrawMode;
     FWidth: Integer;
     CustomChange: TObjectMethod;
@@ -313,7 +317,7 @@ type
     procedure DoBtnIncClick; virtual;
     procedure DoTimerRepeatingMode(Sender: TObject);
     procedure DrawButtons;
-    procedure EndMouseDrag;                   
+    procedure EndMouseDrag;
     procedure FontChanged(Sender: TObject); override;
     procedure Loaded; override;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
@@ -333,8 +337,8 @@ type
     procedure VisibleChanged; override;
     property BackgroundColor: TColor read FBackgroundColor write SetBackgroundColor;
   public
-    BtnsSorted: array [0..Byte(high(TBtnKind))] of TSingleSpinBtn;
-    BtnsUnsorted: array [low(TBtnKind)..high(TBtnKind)] of TSingleSpinBtn;
+    BtnsSorted: array[0..Byte(high(TBtnKind))] of TSingleSpinBtn;
+    BtnsUnsorted: array[low(TBtnKind)..high(TBtnKind)] of TSingleSpinBtn;
     HoveredBtn: SmallInt;      { ommits invisible } 
     HoveredBtnReal: SmallInt;  { includes invisible }
     UpdateCount: SmallInt;
@@ -367,6 +371,7 @@ type
     property Images: TCustomImageList read FImages write SetImages;
     property Increment: Double read FIncrement write FIncrement;
     property Max: Double read FMax write SetMax;
+    property MenuBtnLeftMouseUp: Boolean read FMenuBtnLeftMouseUp write FMenuBtnLeftMouseUp default False;
     property MenuControl: TExtraMouseButtons read FMenuControl write FMenuControl default [];
     property Min: Double read FMin write SetMin;
     property Middle: Double read FMiddle write SetMiddle;  {don't change order, it's intently after Max & Min}
@@ -418,9 +423,10 @@ type
     property GlyphStyle;
     property Images;
     property Increment;
-    property Max;
+    property Max nodefault;
+    property MenuBtnLeftMouseUp;
     property MenuControl;
-    property Min;
+    property Min nodefault;
     property Middle;
     property Mode;
     property MouseFromMiddle;
@@ -472,6 +478,8 @@ type
     procedure DoBtnBigIncClick; override;
     procedure DoBtnDecClick; override;
     procedure DoBtnIncClick; override;
+    function IsMaxInEditStored: Boolean;
+    function IsMinInEditStored: Boolean;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     procedure RecalcRedraw; override;
     procedure Resize; override;
@@ -501,11 +509,12 @@ type
     property Images;
     property Increment;
     property Left stored False;
-    property Max;
+    property Max nodefault;
+    property MenuBtnLeftMouseUp;
     property MenuControl;
-    property Min;    
-    property MaxInEdit: Double read FMaxInEdit write SetMaxInEdit;
-    property MinInEdit: Double read FMinInEdit write SetMinInEdit;
+    property Min nodefault;
+    property MaxInEdit: Double read FMaxInEdit write SetMaxInEdit stored IsMaxInEditStored;
+    property MinInEdit: Double read FMinInEdit write SetMinInEdit stored IsMinInEditStored;
     property Middle;
     property Mode;
     property MouseFromMiddle;
@@ -573,6 +582,8 @@ type
     procedure SetWidthInclBtns(AValue: Integer);
   protected
     Flags: TEditingDoneFlags;
+    KeyInEdit: Boolean;
+    PrevValue: Double;
     TextEdited: Boolean;
     procedure Change; override;
     function ChildClassAllowed(ChildClass: TClass): Boolean; override;
@@ -586,9 +597,12 @@ type
     function GetDecreasedValue: Double;
     function GetIncreasedValue: Double;
     procedure InitializeWnd; override;
+    function IsDateTimeFormatStored: Boolean;
+    function IsMantissaExpStored: Boolean;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure KeyPress(var Key: Char); override;
     procedure KeyUp(var Key: Word; Shift: TShiftState); override;
+    procedure Loaded; override;
     procedure RewriteText;
     procedure SetEnabled(Value: Boolean); override;
     procedure SetParent(NewParent: TWinControl); override;
@@ -606,7 +620,6 @@ type
     procedure GetValueFromString(const AString: string);
     procedure SetRealBoundRect(ARect: TRect);
     procedure SetRealBounds(ALeft, ATop, AWidth, AHeight: Integer);
-    procedure SwitchOption(AOption: TSEOption; AOn: Boolean);
     function TryGetValueFromString(AString: string; out AValue: Double): Boolean;
   published
     property ActionAltEnter: TModifierEnter read FActionAltEnter write FActionAltEnter default cDefActAltEnter;
@@ -620,11 +633,11 @@ type
     property BiDiMode;
     property BorderSpacing;
     property BorderStyle;    
-    property Buttons: TECSpinBtnsPlus read FSpinBtns write FSpinBtns;
+    property Buttons: TECSpinBtnsPlus read FSpinBtns;
     property Color;
     property Constraints;
     property Controller: TECSpinController read GetController write SetController;
-    property DateTimeFormat: string read FDateTimeFormat write SetDateTimeFormat;
+    property DateTimeFormat: string read FDateTimeFormat write SetDateTimeFormat stored IsDateTimeFormatStored;
     property Digits: Word read FDigits write SetDigits default 0;
     property DragCursor;
     property DragKind;
@@ -634,7 +647,7 @@ type
     property HideSelection;     
     property Indent: SmallInt read FIndent write SetIndent default 0;
     property Items: TStrings read FItems write SetItems;
-    property MantissaExp: Double read FMantissaExp write SetMantissaExp;
+    property MantissaExp: Double read FMantissaExp write SetMantissaExp stored IsMantissaExpStored;
     property Options: TSEOptions read FOptions write FOptions default cDefSEOptions;
     property ParentBiDiMode;
     property ParentColor;
@@ -693,7 +706,7 @@ procedure TCustomECTimer.DoOnTimer;
 var aCounter: Integer;
     aStartTimer, aStopTimer: TNotifyEvent;
 begin
-  {$IFDEF DBGSPINS} DebugLn('TCustomECTimer.DoOnTimer'); {$ENDIF}
+  {$IFDEF DBGLINE} DebugLn('TCustomECTimer.DoOnTimer'); {$ENDIF}
   aCounter := Counter;
   if aCounter = 0 then
     begin
@@ -706,19 +719,19 @@ begin
       OnStopTimer:=aStopTimer;
     end;
   inherited DoOnTimer;
-  inc(aCounter); 
-  if (MaxCount > 0) and (aCounter >= MaxCount) 
+  inc(aCounter);
+  if (MaxCount > 0) and (aCounter >= MaxCount)
     then Enabled := False
     else FCounter := aCounter;
 end;
 
 procedure TCustomECTimer.SetEnabled(Value: Boolean);
 begin
-  {$IFDEF DBGSPINS} DebugLn('TCustomECTimer.SetEnabled ' + BoolToStr(Value)); {$ENDIF}
+  {$IFDEF DBGLINE} DebugLn('TCustomECTimer.SetEnabled ' + boolToStr(Value)); {$ENDIF}
   if Value then
     begin
       FCounter := 0;
-      Interval := FDelay;      
+      Interval := FDelay;
     end;
   inherited SetEnabled(Value);
 end;
@@ -748,8 +761,8 @@ begin
 end;
 
 destructor TECSpinController.Destroy;
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   {$IFDEF DBGSPINS} DebugLn('TECSpinController.Destroy'); {$ENDIF}
   for i := 0 to ClientList.Count - 1 do
@@ -780,12 +793,12 @@ begin
           SetupButtons(TECSpinEdit(AClient).Buttons);
           SetupSpinEdit(TECSpinEdit(AClient));
         end else
-        if AClient is TECSpinPosition then
-          begin
-            SetupButtons(TECSpinPosition(AClient).Buttons);
-            SetupSpinPosition(AClient);
-          end;
-        if AClient is TCustomSpinBtns then SetupButtons(TCustomSpinBtns(AClient));
+          if AClient is TECSpinPosition then
+            begin
+              SetupButtons(TECSpinPosition(AClient).Buttons);
+              SetupSpinPosition(AClient);
+            end;
+      if AClient is TCustomSpinBtns then SetupButtons(TCustomSpinBtns(AClient));
     end;
 end;
 
@@ -840,7 +853,7 @@ begin
       end;
 end;
 
-{TECSpinController.Setters}
+{ TECSpinController.Setters }
 
 procedure TECSpinController.SetActionAltEnter(AValue: TModifierEnter);
 var i: Integer;
@@ -873,8 +886,8 @@ begin
 end;   
 
 procedure TECSpinController.SetBtnBigDecWidth(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FBtnBigDecWidth = AValue then exit;
   FBtnBigDecWidth := AValue;
@@ -883,8 +896,8 @@ begin
 end;
 
 procedure TECSpinController.SetBtnBigIncWidth(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FBtnBigIncWidth = AValue then exit;
   FBtnBigIncWidth := AValue;
@@ -893,8 +906,8 @@ begin
 end;
 
 procedure TECSpinController.SetBtnDecWidth(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FBtnDecWidth = AValue then exit;
   FBtnDecWidth := AValue;
@@ -903,8 +916,8 @@ begin
 end;
 
 procedure TECSpinController.SetBtnDragWidth(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FBtnDragWidth = AValue then exit;
   FBtnDragWidth := AValue;
@@ -913,8 +926,8 @@ begin
 end;
 
 procedure TECSpinController.SetBtnIncWidth(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FBtnIncWidth = AValue then exit;
   FBtnIncWidth := AValue;
@@ -923,8 +936,8 @@ begin
 end;
 
 procedure TECSpinController.SetBtnMaxWidth(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FBtnMaxWidth = AValue then exit;
   FBtnMaxWidth := AValue;
@@ -933,8 +946,8 @@ begin
 end;
 
 procedure TECSpinController.SetBtnMenuWidth(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FBtnMenuWidth = AValue then exit;
   FBtnMenuWidth := AValue;
@@ -943,8 +956,8 @@ begin
 end;
 
 procedure TECSpinController.SetBtnMiddleWidth(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FBtnMiddleWidth = AValue then exit;
   FBtnMiddleWidth := AValue;
@@ -953,8 +966,8 @@ begin
 end;
 
 procedure TECSpinController.SetBtnMinWidth(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FBtnMinWidth = AValue then exit;
   FBtnMinWidth := AValue;
@@ -963,8 +976,8 @@ begin
 end;
 
 procedure TECSpinController.SetGlyphStyle(AValue: TGlyphStyle);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FGlyphStyle = AValue then exit;
   FGlyphStyle := AValue;
@@ -979,12 +992,10 @@ begin
   FIndent := AValue;
   for i := 0 to ClientList.Count - 1 do
     if assigned(ClientList[i]) then
-      begin
-        if TControl(ClientList[i]) is TECSpinEdit
-          then TECSpinEdit(TControl(ClientList[i])).Indent := AValue
-          else if TControl(ClientList[i]) is TECSpinPosition
-                then TECSpinPosition(TControl(ClientList[i])).IndentBtns := AValue;
-      end;
+      if TControl(ClientList[i]) is TECSpinEdit
+        then TECSpinEdit(TControl(ClientList[i])).Indent := AValue
+        else if TControl(ClientList[i]) is TECSpinPosition
+               then TECSpinPosition(TControl(ClientList[i])).IndentBtns := AValue;
 end;
 
 procedure TECSpinController.SetOptions(AValue: TSEOptions);
@@ -998,8 +1009,8 @@ begin
 end;
 
 procedure TECSpinController.SetReversed(AValue: Boolean);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FReversed = AValue then exit;
   FReversed := AValue;
@@ -1008,8 +1019,8 @@ begin
 end;
 
 procedure TECSpinController.SetSpacing(AValue: SmallInt);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FSpacing = AValue then exit;
   FSpacing := AValue;
@@ -1018,8 +1029,8 @@ begin
 end;
 
 procedure TECSpinController.SetStyle(AValue: TButtonStyle);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FStyle = AValue then exit;
   FStyle := AValue;
@@ -1028,8 +1039,8 @@ begin
 end;
 
 procedure TECSpinController.SetTimerDelay(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FTimerDelay = AValue then exit;
   FTimerDelay := AValue;
@@ -1038,8 +1049,8 @@ begin
 end;
 
 procedure TECSpinController.SetTimerRepeating(AValue: Integer);
-var i: Integer;
-    aBtns: TCustomSpinBtns;
+var aBtns: TCustomSpinBtns;
+    i: Integer;
 begin
   if FTimerRepeating = AValue then exit;
   FTimerRepeating := AValue;
@@ -1052,7 +1063,7 @@ end;
 constructor TSingleSpinBtn.Create(AParent: TCustomSpinBtns);
 begin
   inherited Create;
-  Parent := AParent;  {don't change order}
+  Parent := AParent;  { don't change order }
   FEnabled := True;
   FGlyphColor := clDefault;
   FImageIndex := -1;
@@ -1067,9 +1078,9 @@ begin
 end;
 
 procedure TSingleSpinBtn.CreateBitmaps;
-var aState: TItemState;
+var aState: TBtnState;
 begin
-  for aState := low(TItemState) to eisPushed do
+  for aState in TBtnState do
     begin
       BtnBitmaps[aState] := TBitmap.Create;
       BtnBitmaps[aState].SetProperties(self.Width, Parent.Height);
@@ -1077,21 +1088,26 @@ begin
 end;
 
 procedure TSingleSpinBtn.FreeBitmaps;
-var aState: TItemState;
+var aState: TBtnState;
 begin
-  for aState := low(TItemState) to eisPushed do
+  for aState in TBtnState do
     FreeAndNil(BtnBitmaps[aState]);
 end;
 
+function TSingleSpinBtn.IsBtnOrderStored: Boolean;
+begin
+  Result := (FBtnOrder <> Byte(FKind));
+end;
+
 procedure TSingleSpinBtn.Resize;
-var aState: TItemState;
+var aState: TBtnState;
     h, w: Integer;
 begin
-  if FVisible{ and Parent.HandleAllocated }then
+  if FVisible then
     begin
       w := Width;
       h := Parent.Height;
-      for aState:=low(TItemState) to eisPushed do
+      for aState in TBtnState do
         BtnBitmaps[aState].SetSize(w, h);
     end;
 end;
@@ -1111,7 +1127,8 @@ begin
       with Parent do
         if Style > ebsSeparated then DrawButtons;
       Parent.Invalidate;
-    end else Parent.RedrawMode := ermRecalcRedraw;
+    end else
+      Parent.RedrawMode := ermRecalcRedraw;
 end;
 
 procedure TSingleSpinBtn.SetCaption(const AValue: string);
@@ -1183,7 +1200,7 @@ begin
   BtnInc := CreateAndSetBtn(@BtnIncClick, ebkInc);
   BtnBigInc := CreateAndSetBtn(@BtnBigIncClick, ebkBigInc);
   BtnMax := CreateAndSetBtn(@BtnMaxClick, ebkMax);
-  for aKind := low(TBtnKind) to high(TBtnKind) do
+  for aKind in TBtnKind do
     BtnsUnsorted[aKind].FBtnOrder := Byte(aKind);
   SetBtnsSorted;
   FDiscreteChange := 1;
@@ -1210,7 +1227,7 @@ begin
   RedrawMode := ermRedrawBkgnd;
   if PrevHeight = -1 then
     begin
-      for aKind := low(TBtnKind) to high(TBtnKind) do
+      for aKind in TBtnKind do
         if BtnsUnsorted[aKind].Visible then BtnsUnsorted[aKind].CreateBitmaps;
       inc(PrevHeight);
     end;
@@ -1221,7 +1238,7 @@ end;
 destructor TCustomSpinBtns.Destroy;
 var aBtnKind: TBtnKind;
 begin
-  for aBtnKind := low(TBtnKind) to high(TBtnKind) do
+  for aBtnKind in TBtnKind do
     FreeAndNil(BtnsUnsorted[aBtnKind]);
   inherited Destroy;
 end;
@@ -1252,28 +1269,28 @@ end;
 
 procedure TCustomSpinBtns.BtnBigDecClick;
 begin
-  if cMouseModifier*GetKeyShiftState = []
+  if [ssModifier]*GetKeyShiftState = []
     then DoBtnBigDecClick
     else DoBtnDecClick;
 end;
 
 procedure TCustomSpinBtns.BtnBigIncClick;
 begin
-  if cMouseModifier*GetKeyShiftState = []
+  if [ssModifier]*GetKeyShiftState = []
   then DoBtnBigIncClick
   else DoBtnIncClick;
 end;
 
 procedure TCustomSpinBtns.BtnDecClick;
 begin
-  if cMouseModifier*GetKeyShiftState = []
+  if [ssModifier]*GetKeyShiftState = []
     then DoBtnDecClick
     else DoBtnBigDecClick;
 end;
 
 procedure TCustomSpinBtns.BtnIncClick;
 begin
-  if cMouseModifier*GetKeyShiftState = []
+  if [ssModifier]*GetKeyShiftState = []
     then DoBtnIncClick
     else DoBtnBigIncClick;
 end;
@@ -1325,8 +1342,7 @@ begin  { returns True if needs Invalidate (repaint) }
         end;
       aPrevHoveredBtnReal := HoveredBtnReal;
       HoveredBtnReal := aHoveredBtnReal;
-      if BtnsSorted[aHoveredBtnReal].Enabled or BtnsSorted[aPrevHoveredBtnReal].Enabled 
-        then Result := True;
+      Result := (BtnsSorted[aHoveredBtnReal].Enabled or BtnsSorted[aPrevHoveredBtnReal].Enabled);
     end; 
 end;
 
@@ -1353,8 +1369,8 @@ begin
   FWidth := aPos + aCount*FSpacing;
 end;
 
-procedure TCustomSpinBtns.CalculatePreferredSize(var PreferredWidth,
-            PreferredHeight: Integer; WithThemeSpace: Boolean);
+procedure TCustomSpinBtns.CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer;
+            WithThemeSpace: Boolean);
 begin
   {$IFDEF DBGSPINS} DebugLn('TCustomSpinBtns.CalculatePreferredSize'); {$ENDIF}
   PreferredHeight := 0;
@@ -1419,16 +1435,16 @@ procedure TCustomSpinBtns.DrawButtons;
 var aBlockBMP: TBitmap;
     aBtnKind: TBtnKind;
     aFlags: Cardinal;
-    aTransColor: TColor;
     aGlyphDesign: TGlyphDesign;
     aGlyphStyle: TGlyphStyle;
     aPoint: TPoint;
     aRect, aSrcRect: TRect;
-    aState: TItemState;
+    aState: TBtnState;
+    aTransColor: TColor;
     bReversed, bSplittedBlock: Boolean;
     i, k: Integer;
   
-  procedure DrawBlockButton(AItemState: TItemState);
+  procedure DrawBlockButton(AItemState: TBtnState);
   var i: SmallInt;
   begin
     aRect.Right := Width;
@@ -1482,172 +1498,170 @@ begin
           TransparentColor := aTransColor;
         end;
       aRect.Right := Width;
-      for aState := low(TItemState) to eisPushed do
+      for aState in TBtnState do
         DrawBlockButton(aState);
       FreeAndNil(aBlockBMP);
     end else 
-    for i := 0 to Byte(high(TBtnKind)) do
-      if BtnsSorted[i].Visible then 
-        begin
-          aRect.Right := BtnsSorted[i].Width;
-          for aState := low(TItemState) to eisPushed do
-            begin
-              BtnsSorted[i].BtnBitmaps[aState].TransparentColor := aTransColor;
-              BtnsSorted[i].BtnBitmaps[aState].TransparentClear;
-              BtnsSorted[i].BtnBitmaps[aState].Canvas.DrawButtonBackground(aRect, aState);
-            end;   
-        end;
+      for i := 0 to Byte(high(TBtnKind)) do
+        if BtnsSorted[i].Visible then
+          begin
+            aRect.Right := BtnsSorted[i].Width;
+            for aState in TBtnState do
+              begin
+                BtnsSorted[i].BtnBitmaps[aState].TransparentColor := aTransColor;
+                BtnsSorted[i].BtnBitmaps[aState].TransparentClear;
+                BtnsSorted[i].BtnBitmaps[aState].Canvas.DrawButtonBackground(aRect, aState);
+              end;
+          end;
   if assigned(OnDrawGlyph) then
     begin
-      for aBtnKind := low(TBtnKind) to high(TBtnKind) do
+      for aBtnKind in TBtnKind do
         if BtnsUnsorted[aBtnKind].Visible then
-          for aState := low(TItemState) to eisPushed do
+          for aState in TBtnState do
             OnDrawGlyph(self, aBtnKind, aState);
     end else
-    for i := 0 to Byte(high(TBtnKind)) do  { Draw Glyphs }
-      with BtnsSorted[i] do
-        if Visible then
-          begin
-            if Caption <> '' then
-              begin  { Draw Caption }
-                aRect := Rect(0, 0, FWidth, Height);
-                aFlags := DT_NOPREFIX or DT_SINGLELINE or DT_VCENTER or DT_CENTER; 
-                for aState := low(TItemState) to eisPushed do
-                  begin
-                    BtnBitmaps[aState].Canvas.Font.Assign(Parent.Font);
-                    BtnBitmaps[aState].Canvas.Font.Color := GetColorResolvingDefault(GlyphColor, clBtnText);
-                    with ThemeServices do 
-                      DrawText(BtnBitmaps[aState].Canvas, GetElementDetails(caThemedContent[aState]), 
-                        Caption, aRect, aFlags, 0);
-                  end;
-              end else
-              begin  { Draw Image from ImageList }
-                k := FImageIndex;
-                if (k > -1) and assigned(Parent.FImages) and (k < Parent.FImages.Count) then
-                  begin
-                    aPoint.X := (FWidth-Parent.FImages.Width) div 2;
-                    aPoint.Y := (Parent.Height-Parent.FImages.Height) div 2;
-                    for aState := low(TItemState) to eisPushed do
-                      begin
-                        with ThemeServices do 
-                          DrawIcon(BtnBitmaps[aState].Canvas, GetElementDetails(caThemedContent[aState]), 
+      for i := 0 to Byte(high(TBtnKind)) do  { draw Glyphs }
+        with BtnsSorted[i] do
+          if Visible then
+            begin
+              if Caption <> '' then
+                begin  { draw Caption }
+                  aRect := Rect(0, 0, FWidth, Height);
+                  aFlags := DT_NOPREFIX or DT_SINGLELINE or DT_VCENTER or DT_CENTER;
+                  for aState in TBtnState do
+                    begin
+                      BtnBitmaps[aState].Canvas.Font.Assign(Parent.Font);
+                      BtnBitmaps[aState].Canvas.Font.Color := GetColorResolvingDefault(GlyphColor, clBtnText);
+                      with ThemeServices do
+                        DrawText(BtnBitmaps[aState].Canvas, GetElementDetails(caThemedContent[aState]),
+                          Caption, aRect, aFlags, 0);
+                    end;
+                end else
+                begin  { draw Image from ImageList }
+                  k := FImageIndex;
+                  if (k > -1) and assigned(Parent.FImages) and (k < Parent.FImages.Count) then
+                    begin
+                      aPoint.X := (FWidth-Parent.FImages.Width) div 2;
+                      aPoint.Y := (Parent.Height-Parent.FImages.Height) div 2;
+                      for aState in TBtnState do
+                        with ThemeServices do
+                          DrawIcon(BtnBitmaps[aState].Canvas, GetElementDetails(caThemedContent[aState]),
                             aPoint, Parent.FImages, k);
-                      end;
-                  end else
-                  begin  { Draw built-in Glyphs }
-                    aBtnKind := Kind;
-                    if bReversed and (aGlyphStyle <= egsArrowsC) then
-                      case aBtnKind of
-                        ebkMin: aBtnKind := ebkMax;
-                        ebkBigDec: aBtnKind := ebkBigInc;
-                        ebkDec: aBtnKind := ebkInc;
-                        ebkInc: aBtnKind := ebkDec;
-                        ebkBigInc: aBtnKind := ebkBigDec;
-                        ebkMax: aBtnKind := ebkMin;
-                      end;
-                    case aGlyphStyle of
-                      egsArrowsA: 
+                    end else
+                    begin  { draw built-in Glyphs }
+                      aBtnKind := Kind;
+                      if bReversed and (aGlyphStyle <= egsArrowsC) then
                         case aBtnKind of
-                          ebkMin: aGlyphDesign := egdArrowsMin;
-                          ebkBigDec: aGlyphDesign := egdArrowsDD;
-                          ebkDec: aGlyphDesign := egdArrowDec;
-                          ebkMiddle: aGlyphDesign := egdArrowsMiddle;
-                          ebkDrag: 
-                            case DragOrientation of
-                              edoVertical: aGlyphDesign := egdArrowsUD;
-                              edoHorizontal: aGlyphDesign := egdArrowsLR;
-                              edoBoth: aGlyphDesign := egdArrowsURDL_S;                                  
-                            end;
-                          ebkMenu: aGlyphDesign := egdWindowRect;
-                          ebkInc: aGlyphDesign := egdArrowInc;
-                          ebkBigInc: aGlyphDesign := egdArrowsUU;
-                          ebkMax: aGlyphDesign := egdArrowsMax;
+                          ebkMin:    aBtnKind := ebkMax;
+                          ebkBigDec: aBtnKind := ebkBigInc;
+                          ebkDec:    aBtnKind := ebkInc;
+                          ebkInc:    aBtnKind := ebkDec;
+                          ebkBigInc: aBtnKind := ebkBigDec;
+                          ebkMax:    aBtnKind := ebkMin;
                         end;
-                      egsArrowsB: 
-                        case aBtnKind of
-                          ebkMin: aGlyphDesign := egdArrsB_Min;
-                          ebkBigDec: aGlyphDesign := egdArrsB_DD;
-                          ebkDec: aGlyphDesign := egdArrB_Down;
-                          ebkMiddle: aGlyphDesign := egdArrsB_Middle;
-                          ebkDrag: 
-                            if DragOrientation <> edoHorizontal
-                              then aGlyphDesign := egdArrsB_UD
-                              else aGlyphDesign := egdArrsB_LR;
-                          ebkMenu: aGlyphDesign := egdWindowRound;
-                          ebkInc: aGlyphDesign := egdArrB_Up;
-                          ebkBigInc: aGlyphDesign := egdArrsB_UU;
-                          ebkMax: aGlyphDesign := egdArrsB_Max;    
-                        end;
-                      egsArrowsC: 
-                        case aBtnKind of
-                          ebkMin: aGlyphDesign := egdArrC_Min;
-                          ebkBigDec: aGlyphDesign := egdArrC_DD;
-                          ebkDec: aGlyphDesign := egdArrC_Down;
-                          ebkMiddle: aGlyphDesign := egdArrC_Middle;
-                          ebkDrag: 
-                            if DragOrientation <> edoHorizontal
-                              then aGlyphDesign := egdArrC_UD
-                              else aGlyphDesign := egdArrC_LR;
-                          ebkMenu: aGlyphDesign := egdWindowRect;
-                          ebkInc: aGlyphDesign := egdArrC_Up;
-                          ebkBigInc: aGlyphDesign := egdArrC_UU;
-                          ebkMax: aGlyphDesign := egdArrC_Max;    
-                        end;
-                      egsComparison: 
-                        case aBtnKind of
-                          ebkMin: aGlyphDesign := egdArrsB_HMin;
-                          ebkBigDec: aGlyphDesign := egdArrsB_LL;
-                          ebkDec: aGlyphDesign := egdArrB_Left;
-                          ebkMiddle: aGlyphDesign := egdArrsB_HMiddle;
-                          ebkDrag: 
-                            if DragOrientation <> edoHorizontal
-                              then aGlyphDesign := egdArrsB_UD
-                              else aGlyphDesign := egdArrsB_LR;
-                          ebkMenu: aGlyphDesign := egdWindowRound;
-                          ebkInc: aGlyphDesign := egdArrB_Right;
-                          ebkBigInc: aGlyphDesign := egdArrsB_RR;
-                          ebkMax: aGlyphDesign := egdArrsB_HMax;    
-                        end;
-                      egsMath: 
-                        case aBtnKind of
-                          ebkMin: aGlyphDesign := egdArrB_HMin;
-                          ebkBigDec: aGlyphDesign := egdMathBigMinus;
-                          ebkDec: aGlyphDesign := egdMathMinus;
-                          ebkMiddle: aGlyphDesign := egdMathEqual; 
-                          ebkDrag: 
-                            begin
+                      case aGlyphStyle of
+                        egsArrowsA:
+                          case aBtnKind of
+                            ebkMin:    aGlyphDesign := egdArrowsMin;
+                            ebkBigDec: aGlyphDesign := egdArrowsDD;
+                            ebkDec:    aGlyphDesign := egdArrowDec;
+                            ebkMiddle: aGlyphDesign := egdArrowsMiddle;
+                            ebkDrag:
+                              case DragOrientation of
+                                edoVertical:   aGlyphDesign := egdArrowsUD;
+                                edoHorizontal: aGlyphDesign := egdArrowsLR;
+                                edoBoth:       aGlyphDesign := egdArrowsURDL_S;
+                              end;
+                            ebkMenu:   aGlyphDesign := egdWindowRect;
+                            ebkInc:    aGlyphDesign := egdArrowInc;
+                            ebkBigInc: aGlyphDesign := egdArrowsUU;
+                            ebkMax:    aGlyphDesign := egdArrowsMax;
+                          end;
+                        egsArrowsB:
+                          case aBtnKind of
+                            ebkMin:    aGlyphDesign := egdArrsB_Min;
+                            ebkBigDec: aGlyphDesign := egdArrsB_DD;
+                            ebkDec:    aGlyphDesign := egdArrB_Down;
+                            ebkMiddle: aGlyphDesign := egdArrsB_Middle;
+                            ebkDrag:
                               if DragOrientation <> edoHorizontal
-                                then aGlyphDesign := egdMathPlusMinus
+                                then aGlyphDesign := egdArrsB_UD
                                 else aGlyphDesign := egdArrsB_LR;
-                            end;
-                          ebkMenu: aGlyphDesign := egdWindowRound;
-                          ebkInc: aGlyphDesign := egdMathPlus;
-                          ebkBigInc: aGlyphDesign := egdMathBigPlus;
-                          ebkMax: aGlyphDesign := egdArrB_HMax;    
-                        end;
-                      egsPlayer: 
-                        case aBtnKind of
-                          ebkMin: aGlyphDesign := egdArrowHMin;
-                          ebkBigDec: aGlyphDesign := egdArrowsLL;
-                          ebkDec: aGlyphDesign := egdArrowLeft;
-                          ebkMiddle: aGlyphDesign := egdPlayPause;
-                          ebkDrag: 
-                            if DragOrientation <> edoHorizontal
-                              then aGlyphDesign := egdPlayUpDown
-                              else aGlyphDesign := egdArrowsLR;
-                          ebkMenu: aGlyphDesign := egdPlayStop;
-                          ebkInc: aGlyphDesign := egdArrowRight;
-                          ebkBigInc: aGlyphDesign := egdArrowsRR;
-                          ebkMax: aGlyphDesign := egdArrowHMax;    
-                        end;
-                    end;  {case}
-                    aRect := Rect(0, 0, Width, Height);
-                    if aGlyphDesign >= egdGrid then InflateRect(aRect, -3, -4);
-                    for aState := low(TItemState) to eisPushed do 
-                      BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, aGlyphDesign, aState)
-                   end;
-              end;
-          end;                        
+                            ebkMenu:   aGlyphDesign := egdWindowRound;
+                            ebkInc:    aGlyphDesign := egdArrB_Up;
+                            ebkBigInc: aGlyphDesign := egdArrsB_UU;
+                            ebkMax:    aGlyphDesign := egdArrsB_Max;
+                          end;
+                        egsArrowsC:
+                          case aBtnKind of
+                            ebkMin:    aGlyphDesign := egdArrC_Min;
+                            ebkBigDec: aGlyphDesign := egdArrC_DD;
+                            ebkDec:    aGlyphDesign := egdArrC_Down;
+                            ebkMiddle: aGlyphDesign := egdArrC_Middle;
+                            ebkDrag:
+                              if DragOrientation <> edoHorizontal
+                                then aGlyphDesign := egdArrC_UD
+                                else aGlyphDesign := egdArrC_LR;
+                            ebkMenu: aGlyphDesign := egdWindowRect;
+                            ebkInc:    aGlyphDesign := egdArrC_Up;
+                            ebkBigInc: aGlyphDesign := egdArrC_UU;
+                            ebkMax:    aGlyphDesign := egdArrC_Max;
+                          end;
+                        egsComparison:
+                          case aBtnKind of
+                            ebkMin:    aGlyphDesign := egdArrsB_HMin;
+                            ebkBigDec: aGlyphDesign := egdArrsB_LL;
+                            ebkDec:    aGlyphDesign := egdArrB_Left;
+                            ebkMiddle: aGlyphDesign := egdArrsB_HMiddle;
+                            ebkDrag:
+                              if DragOrientation <> edoHorizontal
+                                then aGlyphDesign := egdArrsB_UD
+                                else aGlyphDesign := egdArrsB_LR;
+                            ebkMenu:   aGlyphDesign := egdWindowRound;
+                            ebkInc:    aGlyphDesign := egdArrB_Right;
+                            ebkBigInc: aGlyphDesign := egdArrsB_RR;
+                            ebkMax:    aGlyphDesign := egdArrsB_HMax;
+                          end;
+                        egsMath:
+                          case aBtnKind of
+                            ebkMin:    aGlyphDesign := egdArrB_HMin;
+                            ebkBigDec: aGlyphDesign := egdMathBigMinus;
+                            ebkDec:    aGlyphDesign := egdMathMinus;
+                            ebkMiddle: aGlyphDesign := egdMathEqual;
+                            ebkDrag:
+                              begin
+                                if DragOrientation <> edoHorizontal
+                                  then aGlyphDesign := egdMathPlusMinus
+                                  else aGlyphDesign := egdArrsB_LR;
+                              end;
+                            ebkMenu:   aGlyphDesign := egdWindowRound;
+                            ebkInc:    aGlyphDesign := egdMathPlus;
+                            ebkBigInc: aGlyphDesign := egdMathBigPlus;
+                            ebkMax:    aGlyphDesign := egdArrB_HMax;
+                          end;
+                        egsPlayer:
+                          case aBtnKind of
+                            ebkMin:    aGlyphDesign := egdArrowHMin;
+                            ebkBigDec: aGlyphDesign := egdArrowsLL;
+                            ebkDec:    aGlyphDesign := egdArrowLeft;
+                            ebkMiddle: aGlyphDesign := egdPlayPause;
+                            ebkDrag:
+                              if DragOrientation <> edoHorizontal
+                                then aGlyphDesign := egdPlayUpDown
+                                else aGlyphDesign := egdArrowsLR;
+                            ebkMenu: aGlyphDesign := egdPlayStop;
+                            ebkInc:    aGlyphDesign := egdArrowRight;
+                            ebkBigInc: aGlyphDesign := egdArrowsRR;
+                            ebkMax:    aGlyphDesign := egdArrowHMax;
+                          end;
+                      end;  {case}
+                      aRect := Rect(0, 0, Width, Height);
+                      if aGlyphDesign >= egdGrid then InflateRect(aRect, -3, -4);
+                      for aState in TBtnState do
+                        BtnBitmaps[aState].Canvas.DrawGlyph(aRect, GlyphColor, aGlyphDesign, aState)
+                     end;
+                end;
+            end;
 end;
 
 procedure TCustomSpinBtns.EndMouseDrag;
@@ -1692,12 +1706,12 @@ var aHoveredBtnReal: Integer;
     InitValue := Value;
     InitX := X;
     InitY := Y;
-    PrevCTRLDown := (ssCtrl in Shift);
+    PrevCTRLDown := (ssModifier in Shift);
     CursorSwap := Cursor;
     case DragOrientation of
-      edoVertical: Cursor := crSizeNS;
+      edoVertical:   Cursor := crSizeNS;
       edoHorizontal: Cursor := crSizeWE;
-      edoBoth: Cursor := crSizeAll;
+      edoBoth:       Cursor := crSizeAll;
     end;
   end;
 
@@ -1712,9 +1726,11 @@ begin
           if BtnsSorted[aHoveredBtnReal].Enabled then
             begin
               PushedBtn := HoveredBtn;
+              BtnPushed:=True;
               case BtnsSorted[aHoveredBtnReal].Kind of
                 ebkBigDec, ebkDec, ebkInc, ebkBigInc:
                   begin
+                    BtnPushed:=True;
                     BtnsSorted[aHoveredBtnReal].Click;
                     TimerEvent := BtnsSorted[aHoveredBtnReal].Click;
                     ControlTimer.Delay := TimerDelay;
@@ -1724,18 +1740,18 @@ begin
                     ControlTimer.Enabled := True;
                   end;
                 ebkDrag: StartDragging;
-                otherwise
-                  BtnsSorted[aHoveredBtnReal].Click;
+                ebkMin, ebkMiddle, ebkMax: BtnsSorted[aHoveredBtnReal].Click;
+                ebkMenu: if not MenuBtnLeftMouseUp then BtnsSorted[aHoveredBtnReal].Click;
               end;
               Invalidate;
             end;
         end else  
-        if ([Button]*DragControl <> []) and ((Button <> mbRight) or not assigned(PopupMenu)) then
-          begin
-            MouseCapture := True;
-            StartDragging;
-            Invalidate;
-          end;
+          if ([Button]*DragControl <> []) and ((Button <> mbRight) or not assigned(PopupMenu)) then
+            begin
+              MouseCapture := True;
+              StartDragging;
+              Invalidate;
+            end;
     end;
 end;
 
@@ -1757,8 +1773,8 @@ var i, j: Integer;
 begin
   inherited MouseMove(Shift, X, Y);
   if InitX <> high(Integer) then
-    begin  { Drag state }
-      bCTRLDown := (ssCtrl in Shift);
+    begin  { drag state }
+      bCTRLDown := (ssModifier in Shift);
       if bCTRLDown <> PrevCTRLDown then
         begin
           InitValue := Value;
@@ -1788,20 +1804,18 @@ begin
         end;
       Value := EnsureRange(aValue, FMin, FMax);
       PrevCTRLDown := bCTRLDown;
-    end else
-    begin  { Normal state }
-      if CalcHoveredButton(X) then 
+    end else  { normal state }
+      if CalcHoveredButton(X) then
         if not MouseCapture then Invalidate;
-    end;
 end;
 
 procedure TCustomSpinBtns.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 var aPrevPushedBtn: SmallInt;
-    bMouseEntered: Boolean;
+    bMouseInClient: Boolean;
 begin         
-  { GTK2 bug report no. 21982 }     
   {$IFDEF DBGSPINS} Debugln('TCustomSpinBtns.MouseUp; Hovered, PushedBtn '+inttostr(HoveredBtn)+' '+inttostr(PushedBtn)); {$ENDIF}
   inherited MouseUp(Button, Shift, X, Y);
+  BtnPushed:=False;
   if InitX <> high(Integer) then  { any Button stops dragging }
     begin
       EndMouseDrag;
@@ -1814,39 +1828,36 @@ begin
           CalcHoveredButton(X);
           Invalidate;
         end else
-        if (aPrevPushedBtn >= 0) then 
-          begin
-            HoveredBtn := -1;
-            Invalidate;
-          end;
+          if (aPrevPushedBtn >= 0) then
+            begin
+              HoveredBtn := -1;
+              Invalidate;
+            end;
     end else
-    begin
       if Button = mbLeft then
         begin
-          bMouseEntered := PtInRect(ClientRect, Point(X, Y));  { MouseEntered is always True here }
-          if not bMouseEntered then HoveredBtn := -1;
+          bMouseInClient := PtInRect(ClientRect, Point(X, Y));  { MouseInClient is always True here }
+          if not bMouseInClient then HoveredBtn := -1;
           if PushedBtn >= 0 then
             begin
               StopTimer;
               PushedBtn := -1;
+              if (TBtnKind(HoveredBtnReal) = ebkMenu) and MenuBtnLeftMouseUp then BtnsSorted[HoveredBtnReal].Click;
               Invalidate;
               if assigned(CustomMouseUp) then CustomMouseUp;
             end else
-            if bMouseEntered then Invalidate;
+              if bMouseInClient then Invalidate;
         end else
-        begin
           if not (Button in DragControl) then
-            if [Button]*MenuControl <> [] 
+            if [Button]*MenuControl <> []
               then BtnMenuClick
               else if Button = mbMiddle then BtnMiddleClick;
-        end; 
-    end;
 end;
 
 procedure TCustomSpinBtns.Paint;
-var aState: TItemState;
-    aIndex, aLeft, i: Integer;
+var aIndex, aLeft, i: Integer;
     aMousePoint: TPoint;
+    aState: TBtnState;
     bEnabled: Boolean;
 begin
   {$IFDEF DBGSPINS} DebugLn('TCustomSpinBtns.Paint, HoveredBtn '+inttostr(HoveredBtn)); {$ENDIF}
@@ -1855,6 +1866,7 @@ begin
   if RedrawMode >= ermRedrawBkgnd then DrawButtons;
   if RedrawMode >= ermFreeRedraw then
     begin
+      if (TBtnKind(HoveredBtnReal) = ebkMenu) and not MenuBtnLeftMouseUp then MouseCapture := False;
       if NeedCalcHoveredBtnInPaint then  { when Buttons are a CellEditor }
         begin
           aMousePoint := ScreenToClient(Mouse.CursorPos);
@@ -1863,13 +1875,13 @@ begin
             else HoveredBtn := -1;
           NeedCalcHoveredBtnInPaint := False;
         end else
-        if not MouseCapture then  { solves when virtual desktop is switched during drag }
-          begin
-            if not MouseEntered then HoveredBtn := -1;
-            PushedBtn := -1;
-            if ControlTimer.Control = self then StopTimer;
-            EndMouseDrag; 
-          end; 
+          if not MouseCapture then  { solves when virtual desktop is switched during drag }
+            begin
+              if not MouseInClient then HoveredBtn := -1;
+              PushedBtn := -1;
+              if ControlTimer.Control = self then StopTimer;
+              EndMouseDrag;
+            end;
       bEnabled := IsEnabled;
       aLeft := 0;
       aIndex := 0;
@@ -1883,7 +1895,7 @@ begin
                      begin
                        if (aIndex = HoveredBtn) and not MouseCapture then aState := eisHighlighted
                      end else
-                     if aIndex = PushedBtn then aState := eisPushed;
+                       if aIndex = PushedBtn then aState := eisPushed;
             Canvas.Draw(aLeft, 0, BtnsSorted[i].BtnBitmaps[aState]);
             aLeft := aLeft + BtnsSorted[i].Width + Spacing;
             inc(aIndex);
@@ -1928,9 +1940,9 @@ var aKind: TBtnKind;
 begin
   {$IFDEF DBGSPINS} DebugLn('TCustomSpinBtns.SetBtnsSorted'); {$ENDIF}
   if not IsRightToLeft 
-    then for aKind := low(TBtnKind) to high(TBtnKind) do
+    then for aKind in TBtnKind do
            BtnsSorted[BtnsUnsorted[aKind].BtnOrder] := BtnsUnsorted[aKind]
-    else for aKind := low(TBtnKind) to high(TBtnKind) do
+    else for aKind in TBtnKind do
            BtnsSorted[8-BtnsUnsorted[aKind].BtnOrder] := BtnsUnsorted[aKind];
 end;
 
@@ -1960,12 +1972,12 @@ begin
   {$IFDEF DBGSPINS} DebugLn('TCustomSpinBtns.SortSpeenButtons'); {$ENDIF}
   if NewValue < OldValue then
     begin
-      if TheKind > low(TBtnKind) then  {pred(ebkMin) = 255 (or 65535 etc.), enums are unsigned}
+      if TheKind > low(TBtnKind) then  { pred(ebkMin)=255 (or 65535 etc.), enums are unsigned }
         for aKind := low(TBtnKind) to pred(TheKind) do
           if (BtnsUnsorted[aKind].BtnOrder >= NewValue) and (BtnsUnsorted[aKind].BtnOrder < OldValue) then
             BtnsUnsorted[aKind].FBtnOrder := BtnsUnsorted[aKind].BtnOrder + 1;
       if TheKind < high(TBtnKind) then
-        for aKind := succ(TheKind) to high(TBtnKind) do  {avoids range checks}
+        for aKind := succ(TheKind) to high(TBtnKind) do  { avoids range checks }
           if (BtnsUnsorted[aKind].BtnOrder >= NewValue) and (BtnsUnsorted[aKind].BtnOrder < OldValue) then
             BtnsUnsorted[aKind].FBtnOrder := BtnsUnsorted[aKind].BtnOrder + 1;
     end else
@@ -2041,21 +2053,19 @@ begin
       if FValue >= AValue then
         begin
           SetIncBtnsEnabled(False);
-          if b then 
-            if UpdateCount = 0 then Invalidate;
+          if b and (UpdateCount = 0) then Invalidate;
         end else
         begin
           SetIncBtnsEnabled(True);
-          if not b then
-            if UpdateCount = 0 then Invalidate;
+          if not b and (UpdateCount = 0) then Invalidate;
         end;         
     end;
 end;
 
 procedure TCustomSpinBtns.SetMiddle(AValue: Double);
 begin                                                   
-  if ((FMin < AValue) and (AValue < FMax)) or (csLoading in ComponentState) or
-    (UpdateCount > 0) then FMiddle := AValue;
+  if ((FMin < AValue) and (AValue < FMax)) or (csLoading in ComponentState) or (UpdateCount > 0)
+    then FMiddle := AValue;
 end;
 
 procedure TCustomSpinBtns.SetMin(AValue: Double);
@@ -2144,13 +2154,11 @@ begin
     begin
       SetDecBtnsEnabled(False);
       StopTimer;
-      if b then 
-        if UpdateCount = 0 then Invalidate;
+      if b and (UpdateCount = 0) then Invalidate;
     end else
     begin
       SetDecBtnsEnabled(True);
-      if not b then 
-        if UpdateCount = 0 then Invalidate;
+      if not b and (UpdateCount = 0) then Invalidate;
     end;
   b := BtnInc.Enabled;  
   AValue := Math.Min(AValue, FMax);  
@@ -2158,13 +2166,11 @@ begin
     begin
       SetIncBtnsEnabled(False);
       StopTimer;
-      if b then 
-        if UpdateCount = 0 then Invalidate;
+      if b and (UpdateCount = 0) then Invalidate;
     end else
     begin
       SetIncBtnsEnabled(True);                                    
-      if not b then 
-        if UpdateCount = 0 then Invalidate;
+      if not b and (UpdateCount = 0) then Invalidate;
     end;
   FValue := AValue;
   if assigned(CustomChange) then CustomChange;
@@ -2220,7 +2226,17 @@ end;
 procedure TECSpinBtnsPlus.DoBtnIncClick;
 begin
   Value := TECSpinEdit(Owner).GetIncreasedValue;
-end;    
+end;
+
+function TECSpinBtnsPlus.IsMaxInEditStored: Boolean;
+begin
+  Result := (FMaxInEdit <> FMax);
+end;
+
+function TECSpinBtnsPlus.IsMinInEditStored: Boolean;
+begin
+  Result := (FMinInEdit <> FMin);
+end;
 
 procedure TECSpinBtnsPlus.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
@@ -2234,7 +2250,6 @@ begin
     begin
       CalcInternalGeometry;
       AdjustWidth;
-      //TECSpinEdit(Owner).SetSpinBtnsPosition;
       RedrawMode := ermRedrawBkgnd;
       Invalidate;
     end;   
@@ -2248,7 +2263,7 @@ end;
 
 procedure TECSpinBtnsPlus.SetMaxInEdit(AValue: Double);
 begin
-  if  (FMinInEdit < AValue) or (csLoading in ComponentState) or (UpdateCount > 0) then
+  if (FMinInEdit < AValue) or (csLoading in ComponentState) or (UpdateCount > 0) then
     begin
       FMaxInEdit := AValue;
       if AValue < FMax then Max := AValue;
@@ -2286,12 +2301,18 @@ procedure TECSpinBtnsPlus.SetValue(AValue: Double; RaiseCustomChange, ExceedLimi
 var b: Boolean;
 begin
   if Mode = eimDiscrete then AValue := CalcDiscreteMode(AValue);
+  if ExceedLimit then
+    begin
+      AValue := Math.max(AValue, FMinInEdit);
+      AValue := Math.min(AValue, FMaxInEdit);
+    end else
+    begin
+      AValue := Math.max(AValue, FMin);
+      AValue := Math.min(AValue, FMax);
+    end;
   if FValue = AValue then exit;
   b := BtnDec.Enabled;
-  if ExceedLimit 
-    then AValue := Math.Max(AValue, FMinInEdit)
-    else AValue := Math.Max(AValue, FMin);
-  if AValue <= FMin then 
+  if AValue <= FMin then
     begin
       SetDecBtnsEnabled(False);
       StopTimer;
@@ -2302,9 +2323,6 @@ begin
       if not b then Invalidate;
     end;
   b := BtnInc.Enabled;  
-  if ExceedLimit 
-    then AValue := Math.Min(AValue, FMaxInEdit)
-    else AValue := Math.Min(AValue, FMax);
   if AValue >= FMax then
     begin
       SetIncBtnsEnabled(False);
@@ -2327,8 +2345,8 @@ begin
   {$IFDEF DBGSPINS} DebugLn('Spacing.GetSpace'); {$ENDIF}  
   Result:=inherited GetSpace(Kind);
   case Kind of
-    akLeft: if Control.IsRightToLeft then
-              inc(Result, TECSpinEdit(Control).Buttons.Width + TECSpinEdit(Control).Indent);
+    akLeft:  if Control.IsRightToLeft then
+               inc(Result, TECSpinEdit(Control).Buttons.Width + TECSpinEdit(Control).Indent);
     akRight: if not Control.IsRightToLeft then
                inc(Result, TECSpinEdit(Control).Buttons.Width + TECSpinEdit(Control).Indent);
   end;  
@@ -2364,8 +2382,8 @@ begin
   FActionAltEnter := cDefActAltEnter;
   FActionCtrlEnter := cDefActCtrlEnter;
   FActionShiftEnter := cDefActShiftEnter;   
-  FDateTimeFormat := 'hh:nn:ss';
-  FMantissaExp := 2;
+  FDateTimeFormat := cDefDateTimeFormat;
+  FMantissaExp := cDefMantissaExp;
   FValueFormat := evfRound;
   FItems := TStringList.Create;
   RewriteText;
@@ -2387,9 +2405,10 @@ end;
 procedure TECSpinEdit.Change;
 var aValue: Double;
 begin
-  if esoEditingChangesValue in Options then 
+  if (esoEditingChangesValue in Options) and not FSpinBtns.BtnPushed and not KeyInEdit then
     if TryGetValueFromString(Text, aValue) then FSpinBtns.SetValue(aValue, False, True);
-  inherited Change;
+  if PrevValue <> Value then inherited Change;
+  PrevValue := Value;
   {$IFDEF DBGSPINS} DebugLn('TECSpinEdit.Change '+BoolToStr(esoEditingChangesValue in Options, 
     'EditChangeVal ', 'EditingNOTChange ') +floattostr(Value)); {$ENDIF}
 end;      
@@ -2408,7 +2427,7 @@ end;
 
 function TECSpinEdit.CreateControlBorderSpacing: TControlBorderSpacing;
 begin
-  {$IFDEF DBGSPINS}  DebugLn('CreateControlBorderSpacing'); {$ENDIF}
+  {$IFDEF DBGSPINS} DebugLn('CreateControlBorderSpacing'); {$ENDIF}
   Result := TECSpinEditSpacing.Create(self);
 end;
 
@@ -2554,10 +2573,10 @@ var aFS: TFormatSettings;
     i: Integer;
 begin
   case FValueFormat of
-    evfRound: Result := floattostrF(AValue, ffFixed, 1, ARound);
-    evfExponent: Result := floattostrF(power(FMantissaExp, AValue), ffFixed, 1, ARound);
-    evfExponential: Result := floattostrF(AValue, ffExponent, ARound, ARound);
-    evfMantissa: Result := floattostrF(power(AValue, FMantissaExp), ffFixed, 1, ARound);
+    evfRound: Result := floatToStrF(AValue, ffFixed, 1, ARound);
+    evfExponent: Result := floatToStrF(power(FMantissaExp, AValue), ffFixed, 1, ARound);
+    evfExponential: Result := floatToStrF(AValue, ffExponent, ARound, ARound);
+    evfMantissa: Result := floatToStrF(power(AValue, FMantissaExp), ffFixed, 1, ARound);
     evfHexadecimal: Result := hexStr(round(AValue), ARound);
     evfMarkHexadec: Result := '$' + hexStr(round(AValue), ARound);
     evfOctal: Result := octStr(round(AValue), ARound);
@@ -2591,15 +2610,15 @@ begin
               then Result := FItems[0]
               else
               begin
-                Result := floattostrF(AValue, ffFixed, 1, ARound) + ' ';
+                Result := floatToStrF(AValue, ffFixed, 1, ARound) + ' ';
                 if i < FItems.Count
                   then Result := Result + FItems[i]
                   else Result := Result + FItems[FItems.Count - 1];
               end;
           end else
-          Result := floattostrF(AValue, ffFixed, 1, ARound);
+            Result := floatToStrF(AValue, ffFixed, 1, ARound);
       end;
-  end; {case}
+  end;  {case}
 end;      
 
 procedure TECSpinEdit.GetValueFromString(const AString: string);
@@ -2614,6 +2633,16 @@ procedure TECSpinEdit.InitializeWnd;
 begin
   inherited InitializeWnd;
   SetSpinBtnsPosition;
+end;
+
+function TECSpinEdit.IsDateTimeFormatStored: Boolean;
+begin
+  Result := (FDateTimeFormat <> cDefDateTimeFormat);
+end;
+
+function TECSpinEdit.IsMantissaExpStored: Boolean;
+begin
+  Result := (FMantissaExp <> cDefMantissaExp);
 end;
 
 procedure TECSpinEdit.KeyDown(var Key: Word; Shift: TShiftState);
@@ -2634,7 +2663,7 @@ begin
     begin
       if esoInCellEditor in Options then include(Flags, edfForceEditingDone);
       case Key of
-        VK_RETURN:  {Enter + Ctrl opens Menu}
+        VK_RETURN:  { Enter + Ctrl opens Menu }
           if ((ActionAltEnter = emeMenuClick) and (ssAlt in Shift)) or
             ((ActionCtrlEnter = emeMenuClick) and (ssModifier in Shift)) or
             ((ActionShiftEnter = emeMenuClick) and (ssShift in Shift)) then
@@ -2642,15 +2671,15 @@ begin
               FSpinBtns.BtnMenuClick;
               bKeyUsed := True;
             end else
-            if ((ActionAltEnter = emeMiddleClick) and (ssAlt in Shift)) or
-              ((ActionCtrlEnter = emeMiddleClick) and (ssModifier in Shift)) or
-              ((ActionShiftEnter = emeMiddleClick) and (ssShift in Shift)) then
-              begin
-                FSpinBtns.BtnMiddleClick;
-                bKeyUsed := True;
-              end else
-              if esoInCellEditor in Options then Flags := Flags + [edfEnterWasInKeyDown, edfForceEditingDone];
-        VK_SPACE:  {(CTRL +) Space clicks Menu or Middle} 
+              if ((ActionAltEnter = emeMiddleClick) and (ssAlt in Shift)) or
+                ((ActionCtrlEnter = emeMiddleClick) and (ssModifier in Shift)) or
+                ((ActionShiftEnter = emeMiddleClick) and (ssShift in Shift)) then
+                begin
+                  FSpinBtns.BtnMiddleClick;
+                  bKeyUsed := True;
+                end else
+                  if esoInCellEditor in Options then Flags := Flags + [edfEnterWasInKeyDown, edfForceEditingDone];
+        VK_SPACE:  { (CTRL +) Space clicks Menu or Middle }
           if (ssModifier in Shift) or ReadOnly then
             begin  
               if esoSpaceClicksMiddle in Options 
@@ -2658,75 +2687,84 @@ begin
                 else FSpinBtns.BtnMenuClick;
               bKeyUsed := True;
             end;
-        otherwise bKeyUsed := False;
-      end;
+        otherwise
+          bKeyUsed := False;
+      end;  {casew}
       if not bKeyUsed then
         begin
           aKey := Key;
           if FSpinBtns.Reversed then
-            case aKey of  {mirror keys in Y-axis}
+            case aKey of  { mirror keys in Y-axis }
               VK_PRIOR: aKey := VK_NEXT;
-              VK_NEXT: aKey := VK_PRIOR;
-              VK_END: aKey := VK_HOME;
-              VK_HOME: aKey := VK_END;
-              VK_UP: aKey := VK_DOWN;
-              VK_DOWN: aKey := VK_UP;
-            end; {case}
+              VK_NEXT:  aKey := VK_PRIOR;
+              VK_END:   aKey := VK_HOME;
+              VK_HOME:  aKey := VK_END;
+              VK_UP:    aKey := VK_DOWN;
+              VK_DOWN:  aKey := VK_UP;
+            end;
           if not (ssShift in Shift) and
-             (((ssModifier in Shift) and (esoHomeEndCtrl in Options)) or
+            (((ssModifier in Shift) and (esoHomeEndCtrl in Options)) or
             ((ssAlt in Shift) and (esoHomeEndAlt in Options)) or ReadOnly) then     
             case aKey of
               VK_END:
                 begin
+                  KeyInEdit := True;
                   if esoArrowKeysExceed in Options 
                     then Value := FSpinBtns.MinInEdit
-                    else Value := FSpinBtns.Min; 
+                    else Value := FSpinBtns.Min;
+                  KeyInEdit := False;
                   bKeyUsed := True;
                 end;
-              VK_HOME: 
+              VK_HOME:
                 begin
+                  KeyInEdit := True;
                   if esoArrowKeysExceed in Options 
                     then Value := FSpinBtns.MaxInEdit
                     else Value := FSpinBtns.Max;
+                  KeyInEdit := False;
                   bKeyUsed := True;
                 end;
-            end; {case}                  
+            end;
           if not bKeyUsed then   
             if ((esoUpDownOnly in Options) and (([ssShift, ssAlt, ssModifier]*Shift) = [])) or
               ((ssModifier in Shift) and (esoUpDownCtrl in Options)) or
               ((ssAlt in Shift) and (esoUpDownAlt in Options)) or
-              ((ssShift in Shift) and (esoUpDownShift in Options)) then                                          
-              case aKey of
-                VK_PRIOR: 
-                  begin
-                    ResetActualValue;
-                    with FSpinBtns do
-                      SetValue(GetBigIncreasedValue, True, esoArrowKeysExceed in FOptions);
-                    bKeyUsed := True;
-                  end;
-                VK_NEXT: 
-                  begin
-                    ResetActualValue;
-                    with FSpinBtns do
-                      SetValue(GetBigDecreasedValue, True, esoArrowKeysExceed in Options);
-                    bKeyUsed := True;
-                  end;            
-                VK_UP: 
-                  begin
-                    ResetActualValue;
-                    with FSpinBtns do
-                      SetValue(GetIncreasedValue, True, esoArrowKeysExceed in Options);
-                    bKeyUsed := True;
-                  end;
-                VK_DOWN: 
-                  begin
-                    ResetActualValue;
-                    with FSpinBtns do
-                      SetValue(GetDecreasedValue, True, esoArrowKeysExceed in Options);
-                    bKeyUsed := True;
-                  end;
-              end; {case}
-        end;  
+              ((ssShift in Shift) and (esoUpDownShift in Options)) then
+              begin
+                KeyInEdit := True;
+                case aKey of
+                  VK_PRIOR:
+                    begin
+                      ResetActualValue;
+                      with FSpinBtns do
+                        SetValue(GetBigIncreasedValue, True, esoArrowKeysExceed in FOptions);
+                      bKeyUsed := True;
+                    end;
+                  VK_NEXT:
+                    begin
+                      ResetActualValue;
+                      with FSpinBtns do
+                        SetValue(GetBigDecreasedValue, True, esoArrowKeysExceed in Options);
+                      bKeyUsed := True;
+                    end;
+                  VK_UP:
+                    begin
+                      ResetActualValue;
+                      with FSpinBtns do
+                        SetValue(GetIncreasedValue, True, esoArrowKeysExceed in Options);
+                      bKeyUsed := True;
+                    end;
+                  VK_DOWN:
+                    begin
+                      ResetActualValue;
+                      with FSpinBtns do
+                        SetValue(GetDecreasedValue, True, esoArrowKeysExceed in Options);
+                      bKeyUsed := True;
+                    end;
+                end;  {case}
+                KeyInEdit := False;
+              end;
+        end;
       if not bKeyUsed then TextEdited := True;
     end;
   inherited KeyDown(Key, Shift);
@@ -2736,7 +2774,7 @@ procedure TECSpinEdit.KeyPress(var Key: Char);
 begin
   inherited KeyPress(Key);
   if ssModifier in GetKeyShiftState then exit;  
-  if (Key <> Char(VK_BACK)) and (ord(Key) <> 127) then {127 is Delete} 
+  if (Key <> Char(VK_BACK)) and (ord(Key) <> 127) then { 127 is Delete }
     case FValueFormat of
       evfRound, evfExponent, evfMantissa:
         if not ((Key in ['0'..'9', '-']) or ((FDigits > 0)
@@ -2744,12 +2782,13 @@ begin
       evfExponential:
         if not (Key in ['0'..'9', '-', 'e', 'E', DefaultFormatSettings.DecimalSeparator])
           then Key := #0;
-      evfHexadecimal, evfMarkHexadec:
-        if not (Key in ['$', '0'..'9', 'a'..'f', 'A'..'F']) then Key := #0;
-      evfOctal, evfMarkOctal: if not (Key in ['&', '0'..'7']) then Key := #0;
-      evfBinary: if (Key <> '0') and (Key <> '1') then Key := #0;
-      evfDate: if not (Key in ['0'..'9', DefaultFormatSettings.DateSeparator]) then Key := #0;
-      evfTime: if not (Key in ['0'..'9', DefaultFormatSettings.TimeSeparator, '.']) then Key := #0;
+      evfHexadecimal,
+      evfMarkHexadec: if not (Key in ['$', '0'..'9', 'a'..'f', 'A'..'F']) then Key := #0;
+      evfOctal,
+      evfMarkOctal:   if not (Key in ['&', '0'..'7']) then Key := #0;
+      evfBinary:      if (Key <> '0') and (Key <> '1') then Key := #0;
+      evfDate:        if not (Key in ['0'..'9', DefaultFormatSettings.DateSeparator]) then Key := #0;
+      evfTime:        if not (Key in ['0'..'9', DefaultFormatSettings.TimeSeparator, '.']) then Key := #0;
     end;      
 end;
 
@@ -2771,10 +2810,16 @@ begin
   inherited KeyUp(Key, Shift);
 end;
 
+procedure TECSpinEdit.Loaded;
+begin
+  inherited Loaded;
+  PrevValue:=Value;
+end;
+
 procedure TECSpinEdit.RewriteText;
 begin
   {$IFDEF DBGSPINS} DebugLn('TECSpinEdit.RewriteText'); {$ENDIF}
-  Text := GetText(FSpinBtns.FValue, FDigits); 
+  Text := GetText(FSpinBtns.FValue, FDigits);
   TextEdited := False;
 end;
 
@@ -2810,7 +2855,7 @@ procedure TECSpinEdit.SetSpinBtnsPosition;
 begin
   if not IsRightToLeft
     then FSpinBtns.Left := Left + Width + Indent
-    else FSpinBtns.Left := Left - Indent - FSpinBtns.FWidth;
+    else if Left >= 0 then FSpinBtns.Left := Left - Indent - FSpinBtns.FWidth;
 end;
 
 procedure TECSpinEdit.SetVisible(Value: Boolean);
@@ -2819,16 +2864,6 @@ begin
   FSpinBtns.Visible := Value;
   if Value and (esoInCellEditor in Options) then exclude(Flags, edfEnterWasInKeyDown);
   if assigned(OnVisibleChanged) then OnVisibleChanged(self, Value);
-end;
-         
-procedure TECSpinEdit.SwitchOption(AOption: TSEOption; AOn: Boolean);
-var aOptions: TSEOptions;
-begin
-  aOptions := FOptions;
-  if AOn 
-    then Include(aOptions, AOption)
-    else Exclude(aOptions, AOption);
-  Options := aOptions;
 end;
 
 function TECSpinEdit.TryGetValueFromString(AString: string; out AValue: Double): Boolean;
@@ -2914,7 +2949,7 @@ begin
   inherited WMKillFocus(Message);
 end;
 
-{ TECSpinEdit.Getters + Setters }
+{ TECSpinEdit.G/Setters }
 
 function TECSpinEdit.GetController: TECSpinController;
 begin

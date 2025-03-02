@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2015-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2015-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public Licenhse as published by the Free Software Foundation; either version
@@ -117,11 +117,11 @@ type
     procedure SetSelected(AValue: SmallInt);
   protected const
     cDefBreakIndex = 1000;
-    cDefIndent: SmallInt = 4;
+    cDefIndent = 4;
     cDefOptions = [];
   protected
     Ascendant: Boolean;
-    Bitmaps: array [low(TItemState)..eisPushed] of TBitmap;
+    Bitmaps: array[low(TItemState)..eisPushed] of TBitmap;
     DefCursor: TCursor;
     LockCursor: Boolean;
     RedrawMode: TRedrawMode;
@@ -246,7 +246,7 @@ procedure TECHeaderItem.SetOptions(AValue: TECHeaderItemOptions);
 const cRecalcOpts = [ehiVisible];
 var bRecalc: Boolean;
 begin
-  bRecalc:= ((cRecalcOpts*FOptions)<>(cRecalcOpts*AValue));
+  bRecalc:=(cRecalcOpts*FOptions)<>(cRecalcOpts*AValue);
   if FOptions=AValue then exit;
   FOptions:=AValue;
   Changed(bRecalc);
@@ -363,61 +363,51 @@ var i, aLeft: Integer;
 begin
   aLeft:=0;
   for i:=0 to Math.min(BreakIndex, Sections.Count-1) do
-    begin
-      if ehiVisible in Sections[i].Options then
-        begin
-          Sections[i].FBoundLeft:=aLeft;
-          inc(aLeft, Sections[i].Width);
-          Sections[i].FBoundRight:=aLeft;
-        end else
-        begin
-          if i>=1 then
-            begin
-              Sections[i].FBoundLeft:=Sections[i-1].FBoundLeft;
-              Sections[i].FBoundRight:=Sections[i-1].FBoundRight;
-            end else
+    if ehiVisible in Sections[i].Options then
+      begin
+        Sections[i].FBoundLeft:=aLeft;
+        inc(aLeft, Sections[i].Width);
+        Sections[i].FBoundRight:=aLeft;
+      end else
+        if i>=1 then
+          begin
+            Sections[i].FBoundLeft:=Sections[i-1].FBoundLeft;
+            Sections[i].FBoundRight:=Sections[i-1].FBoundRight;
+          end else
             Sections[0].FBoundRight:=0;
-        end;
-    end;
   aLeft:=Width;
   for i:=Sections.Count-1 downto BreakIndex+1 do
-    begin
-      if ehiVisible in Sections[i].Options then
-        begin
-          Sections[i].FBoundRight:=aLeft;
-          dec(aLeft, Sections[i].Width);
-          Sections[i].FBoundLeft:=aLeft;
-        end else
-        begin
-          if i<(Sections.Count-1) then
-            begin
-              Sections[i].FBoundRight:=Sections[i+1].FBoundRight;
-              Sections[i].FBoundLeft:=Sections[i+1].FBoundLeft;
-            end else
+    if ehiVisible in Sections[i].Options then
+      begin
+        Sections[i].FBoundRight:=aLeft;
+        dec(aLeft, Sections[i].Width);
+        Sections[i].FBoundLeft:=aLeft;
+      end else
+        if i<(Sections.Count-1) then
+          begin
+            Sections[i].FBoundRight:=Sections[i+1].FBoundRight;
+            Sections[i].FBoundLeft:=Sections[i+1].FBoundLeft;
+          end else
             Sections[i].FBoundLeft:=Width;
-        end;
-    end;
   i:=BreakIndex;
   if (ehoAutosizeBreakSection in Options) and (i<Sections.Count) then
     if i<(Sections.Count-1)
       then Sections[i].FBoundRight:=FSections[i+1].FBoundLeft
       else Sections[i].FBoundRight:=ClientWidth;
   if IsRightToLeft then
-    begin
-      for i:=0 to Sections.Count-1 do
-        begin
-          aLeft:=Sections[i].FBoundLeft;
-          Sections[i].FBoundLeft:=Width-Sections[i].FBoundRight;
-          Sections[i].FBoundRight:=Width-aLeft;
-        end;
-    end;
+    for i:=0 to Sections.Count-1 do
+      begin
+        aLeft:=Sections[i].FBoundLeft;
+        Sections[i].FBoundLeft:=Width-Sections[i].FBoundRight;
+        Sections[i].FBoundRight:=Width-aLeft;
+      end;
 end;
 
 procedure TCustomECHeader.ChangeBounds(ALeft, ATop, AWidth, AHeight: integer; KeepBase: Boolean);
-var bNeedResize: Boolean;
-    aIState: TItemState;
+var aIState: TItemState;
+    bNeedResize: Boolean;
 begin
-  bNeedResize:= ((AWidth<>Width) or (AHeight<>Height));
+  bNeedResize:=(AWidth<>Width) or (AHeight<>Height);
   inherited ChangeBounds(ALeft, ATop, AWidth, AHeight, KeepBase);
   if bNeedResize then
     begin
@@ -444,19 +434,21 @@ end;
 
 procedure TCustomECHeader.DrawBitmaps;
 const cBkgndsLeft: array[low(TItemState)..eisPushed] of TThemedHeader =
-       (thHeaderItemLeftNormal, thHeaderItemLeftHot, thHeaderItemLeftNormal, thHeaderItemLeftPressed);
+       (thHeaderItemLeftNormal, thHeaderItemLeftHot, thHeaderItemLeftNormal,
+        thHeaderItemLeftNormal, thHeaderItemLeftPressed);
       cBkgndsRight: array[low(TItemState)..eisPushed] of TThemedHeader =
-        (thHeaderItemRightNormal, thHeaderItemRightHot, thHeaderItemRightNormal, thHeaderItemRightPressed);
+        (thHeaderItemRightNormal, thHeaderItemRightHot, thHeaderItemRightNormal,
+         thHeaderItemRightNormal, thHeaderItemRightPressed);
       cContent: array[low(TItemState)..eisPushed] of TThemedButton =
-        (tbPushButtonDisabled, tbPushButtonHot, tbPushButtonNormal, tbPushButtonPressed);
+        (tbPushButtonDisabled, tbPushButtonHot, tbPushButtonNormal,
+         tbPushButtonNormal, tbPushButtonPressed);
       cArFlags: array[TAlignment, Boolean] of Cardinal =
         ((DT_LEFT, DT_RIGHT), (DT_RIGHT, DT_LEFT), (DT_CENTER, DT_CENTER));
       cFlags = DT_VCENTER+DT_END_ELLIPSIS+DT_NOPREFIX;
 var i, aArrowWidth, aImageLeft, aImageTop, aImageWidth: Integer;
     aDetailsBkgnd, aDetailsContent: TThemedElementDetails;
-    aFlags: Cardinal;
-    aRect: TRect;
     aIState: TItemState;
+    aRect: TRect;
     bR2L: Boolean;
 begin
   aRect.Top:=0;
@@ -474,7 +466,6 @@ begin
       Bitmaps[aIState].TransparentClear;
       Bitmaps[aIState].Canvas.Font.Assign(Font);
       aDetailsContent:=ThemeServices.GetElementDetails(cContent[aIState]);
-      aFlags:=DT_VCENTER;
       for i:=0 to Sections.Count-1 do
         if ehiVisible in Sections[i].Options then
           begin
@@ -505,9 +496,8 @@ begin
                 if bR2L or (Sections[i].Alignment=taCenter)
                   then dec(aRect.Right, aImageWidth+cDefIndent);
               end;
-            aFlags:=cArFlags[Sections[i].Alignment, bR2L] or cFlags;
-            ThemeServices.DrawText(Bitmaps[aIState].Canvas, aDetailsContent,
-                                   Sections[i].Text, aRect, aFlags, 0);
+            ThemeServices.DrawText(Bitmaps[aIState].Canvas, aDetailsContent, Sections[i].Text,
+              aRect, cArFlags[Sections[i].Alignment, bR2L] or cFlags, 0);
           end;
     end;
 end;
@@ -529,16 +519,15 @@ begin
   inherited MouseDown(Button, Shift, X, Y);
   if Button=mbLeft then
     if not Sizing then
-      if SizeSection<0
-        then Pushed:=Highlighted
-        else
+      if SizeSection>=0 then
         begin
           MouseCapture:=True;
           if SizeBoundRight
             then SizeInitX:=X-Sections[SizeSection].FBoundRight
             else SizeInitX:=Sections[SizeSection].FBoundLeft-X;
           Sizing:=True;
-        end;
+        end else
+          Pushed:=Highlighted
 end;
 
 procedure TCustomECHeader.MouseLeave;
@@ -559,33 +548,29 @@ begin
         bCanSize:=False;
         bR2L:=IsRightToLeft;
         for i:=0 to Sections.Count-1 do
-          begin
-            if not bCanSize and (ehiVisible in Sections[i].Options) then
-              begin
-                if not ((i=BreakIndex) and (ehoAutosizeBreakSection in Options))
-                  and (ehiSizable in Sections[i].Options) then
-                  begin
-                    if not bR2L xor (i>BreakIndex) then
-                      begin
-                        aBound:=Sections[i].FBoundRight;
-                        SizeBoundRight:=True;
-                      end else
-                      begin
-                        aBound:=Sections[i].FBoundLeft;
-                        SizeBoundRight:=False;
-                      end;
-                    if (X>=(aBound-5)) and (X<=(aBound+2)) then
-                      begin
-                        SizeSection:=i;
-                        bCanSize:=True;
-                      end;
-                  end;
-                if (X>=Sections[i].FBoundLeft) and (X<Sections[i].FBoundRight) then
-                  begin
-                    if ehiEnabled in Sections[i].Options then aHighlighted:=i;
-                  end;
-              end;
-          end;
+          if not bCanSize and (ehiVisible in Sections[i].Options) then
+            begin
+              if not ((i=BreakIndex) and (ehoAutosizeBreakSection in Options))
+                and (ehiSizable in Sections[i].Options) then
+                begin
+                  if not bR2L xor (i>BreakIndex) then
+                    begin
+                      aBound:=Sections[i].FBoundRight;
+                      SizeBoundRight:=True;
+                    end else
+                    begin
+                      aBound:=Sections[i].FBoundLeft;
+                      SizeBoundRight:=False;
+                    end;
+                  if (X>=(aBound-5)) and (X<=(aBound+2)) then
+                    begin
+                      SizeSection:=i;
+                      bCanSize:=True;
+                    end;
+                end;
+              if (X>=Sections[i].FBoundLeft) and (X<Sections[i].FBoundRight) then
+                if ehiEnabled in Sections[i].Options then aHighlighted:=i;
+            end;
         if not bCanSize then SizeSection:=-1;
         ChangeCursor(bCanSize);
         Highlighted:=aHighlighted;
@@ -595,7 +580,7 @@ begin
         if SizeBoundRight
           then i:=X-Sections[SizeSection].FBoundLeft-SizeInitX
           else i:=Sections[SizeSection].FBoundRight-X-SizeInitX;
-        i:=Math.Max(i, Sections[SizeSection].MinWidth);
+        i:=Math.max(i, Sections[SizeSection].MinWidth);
         Sections[SizeSection].Width:=i;
         if (aBound<>i) and assigned(OnSectionTrack) then OnSectionTrack(self, SizeSection, i);
       end;
@@ -630,7 +615,7 @@ var aRect: TRect;
     ThemeServices.DrawElement(Canvas.Handle, aDetails, aRect);
   end;
 
-const cArrows: array [Boolean] of TGlyphDesign = (egdArrowDown, egdArrowUp);
+const cArrows: array[Boolean] of TGlyphDesign = (egdArrowDown, egdArrowUp);
 var aIState: TItemState;
     aSize: TSize;
     bEnabled: Boolean;
@@ -662,9 +647,9 @@ begin
                                  then aIState:=eisHighlighted
                                  else aIState:=eisEnabled;
                       end else
-                      aIState:=eisEnabled;
+                        aIState:=eisEnabled;
                   end else
-                  aIState:=eisDisabled;
+                    aIState:=eisDisabled;
                 Canvas.CopyRect(aRect, Bitmaps[aIState].Canvas, aRect);
               end;
           if not IsRightToLeft then
@@ -702,7 +687,7 @@ begin
                 Canvas.DrawGlyph(aRect, clBtnText, cArrows[Ascendant], aIState);
               end;
         end else
-        PaintNonSectionArea(0, Width);
+          PaintNonSectionArea(0, Width);
     end;
   RedrawMode:=ermFreeRedraw;
 end;
@@ -759,7 +744,7 @@ procedure TCustomECHeader.SetOptions(AValue: TECHeaderOptions);
 const cRecalcOpts = [ehoDropDownGlyph, ehoAutosizeBreakSection];
 var bRecalc: Boolean;
 begin
-  bRecalc:= (FOptions*cRecalcOpts)<>(AValue*cRecalcOpts);
+  bRecalc:=(FOptions*cRecalcOpts)<>(AValue*cRecalcOpts);
   if FOptions=AValue then exit;
   FOptions:=AValue;
   if bRecalc then RecalcRedraw;
@@ -787,7 +772,7 @@ begin
   if FSelected=AValue then
     begin
       if ehoAscDescendant in Options
-        then Ascendant:= not Ascendant
+        then Ascendant:=not Ascendant
         else exit;
     end else
     begin

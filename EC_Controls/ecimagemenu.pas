@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -29,23 +29,23 @@
 unit ECImageMenu;
 {$mode objfpc}{$H+}
 
-//{$DEFINE DBGIMGMENU}  {don't remove, just comment} 
+//{$DEFINE DBGIMGMENU}  {don't remove, just comment}
 
 interface
 
 uses                                                                  
-  Classes, SysUtils, Controls, StdCtrls, Graphics, Forms, ImgList, Math,
-  LCLIntf, LCLProc, LCLType, LMessages, Themes, Types, ECTypes;
+  Classes, SysUtils, Controls, StdCtrls, Forms, Graphics, ImgList, LCLIntf, LCLProc, LCLType,
+  LMessages, Math, Themes, Types, ECTypes;
 
 type    
   { TImageMenuItem }   
   TImageMenuItem = class(TCollectionItem)
   private
-    FCaption: TTranslateString;
-    FDescription: TTranslateString;
+    FCaption: TCaption;
+    FDescription: TCaption;
     FImageIndex: SmallInt;
-    procedure SetCaption(const AValue: TTranslateString);
-    procedure SetDescription(const AValue: TTranslateString);
+    procedure SetCaption(const AValue: TCaption);
+    procedure SetDescription(const AValue: TCaption);
     procedure SetImageIndex(AValue: SmallInt);
   protected const
     cDefCaption = 'MenuItem';   
@@ -55,8 +55,8 @@ type
     constructor Create(ACollection: TCollection); override;
     destructor Destroy; override;
   published
-    property Caption: TTranslateString read FCaption write SetCaption;
-    property Description: TTranslateString read FDescription write SetDescription;
+    property Caption: TCaption read FCaption write SetCaption;
+    property Description: TCaption read FDescription write SetDescription;
     property ImageIndex: SmallInt read FImageIndex write SetImageIndex default -1;
   end;
   
@@ -68,7 +68,6 @@ type
     function GetItems(Index: Integer): TImageMenuItem;
     procedure SetItems(Index: Integer; AValue: TImageMenuItem);
   protected
-    FAddingOrDeletingItem: Boolean;  { Calculate is not needed on Add/Delete item }
     FImageMenu: TCustomECImageMenu;
     function GetOwner: TPersistent; override;
     procedure Notify(Item: TCollectionItem; Action: TCollectionNotification); override;
@@ -99,7 +98,6 @@ type
   protected const
     cDefSpacing = 5;
   protected
-    AfterLoad: Boolean;
     CaptionYPos, DescYPos, ImageYPos: Integer;
     NeedCalculate: Boolean;
     procedure Calculate;
@@ -109,10 +107,8 @@ type
     function DoMouseWheelDown(Shift: TShiftState; MousePos: TPoint): Boolean; override;
     function DoMouseWheelUp(Shift: TShiftState; MousePos: TPoint): Boolean; override;
     procedure DrawItem(Index: Integer; ARect: TRect; {%H-}State: TOwnerDrawState); override;
-    procedure InitializeWnd; override;
     procedure InvalidateNonUpdated;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
-    procedure Loaded; override;
     procedure RecalcInvalidate;
     procedure SetAutoSize(Value: Boolean); override;
     procedure SetBorderStyle(NewStyle: TBorderStyle); override;  
@@ -126,8 +122,9 @@ type
     procedure Invalidate; override;
     procedure Add(const ACaption, ADescription: TTranslateString; AImageIndex: SmallInt);
     procedure Delete(AIndex: Integer);
+    procedure InitializeWnd; override;
     procedure Insert(AIndex: Integer; const ACaption, ADescription: TTranslateString;
-      AImageIndex: SmallInt);
+                AImageIndex: SmallInt);
     property Alternate: Boolean read FAlternate write SetAlternate default False;
     property CaptionAlign: SmallInt read FCaptionAlign write SetCaptionAlign default 0;
     property CaptionFontOptions: TFontOptions read FCaptionFontOptions write SetCaptionFontOptions;
@@ -223,21 +220,21 @@ end;
 function TImageMenuItem.GetDisplayName: string;
 begin
   Result := Caption;
-  if Result = '' then Result := cDefCaption + inttostr(Index);
+  if Result = '' then Result := cDefCaption + intToStr(Index);
 end;   
 
-procedure TImageMenuItem.SetCaption(const AValue: TTranslateString);
+procedure TImageMenuItem.SetCaption(const AValue: TCaption);
 begin
   if FCaption = AValue then exit;
   FCaption := AValue;
-  Changed(Index = 0);  { Measurement is done on the first item } 
+  Changed(True);
 end;
 
-procedure TImageMenuItem.SetDescription(const AValue: TTranslateString);
+procedure TImageMenuItem.SetDescription(const AValue: TCaption);
 begin
   if FDescription = AValue then exit;
   FDescription := AValue;
-  Changed(Index = 0);  { Measurement is done on the first item }
+  Changed(True);
 end;
 
 procedure TImageMenuItem.SetImageIndex(AValue: SmallInt);
@@ -272,37 +269,29 @@ begin
   inherited Notify(Item, Action);
   case Action of 
     cnAdded:
-      begin
-        FAddingOrDeletingItem := True; 
-        with Owner as TCustomECImageMenu do
-          begin
-            Items.Add('');   
-            if not (csLoading in ComponentState) then 
-              TImageMenuItem(Item).FCaption := TImageMenuItem.cDefCaption + inttostr(Item.ID);
-          end;
-      end;
+      with Owner as TCustomECImageMenu do
+        begin
+          Items.Add('');
+          if not (csLoading in ComponentState) then
+            TImageMenuItem(Item).FCaption := TImageMenuItem.cDefCaption + intToStr(Item.ID);
+        end;
     cnDeleting:
-      begin
-        FAddingOrDeletingItem := True;
-        with Owner as TCustomECImageMenu do
-          begin
-            i := ItemIndex;      
-            Items.Delete(Item.Index);
-            if i < Count then ItemIndex := i
-              else if i > 0 then ItemIndex := i - 1;
-          end;
-      end;
+      with Owner as TCustomECImageMenu do
+        begin
+          i := ItemIndex;
+          Items.Delete(Item.Index);
+          if i < Count
+            then ItemIndex := i
+            else if i > 0 then ItemIndex := i - 1;
+        end;
   end;
 end;   
 
 procedure TImageMenuItems.Update(Item: TCollectionItem);
 begin
-  {$IFDEF DBGIMGMENU} DebugLn('TImageMenuItems.Update ', BoolToStr(assigned(Item), 'Item', 'All')); {$ENDIF}
+  {$IFDEF DBGIMGMENU} DebugLn('TImageMenuItems.Update ', boolToStr(assigned(Item), 'Item', 'All')); {$ENDIF}
   inherited Update(Item);
-  if not (csLoading in FImageMenu.ComponentState) and (assigned(Item) or FAddingOrDeletingItem)
-    then FImageMenu.InvalidateNonUpdated
-    else FImageMenu.RecalcInvalidate; 
-  FAddingOrDeletingItem := False;
+  FImageMenu.RecalcInvalidate;
 end;
 
 { TImageMenuItems.Setters }
@@ -356,9 +345,8 @@ begin
 end;
 
 procedure TCustomECImageMenu.Calculate;
-var aCaptionHeight, aDescHeight, aImagesHeight, aLeftHeight, aRightHeight, aItemHeight: Integer;
-    aCaption: string;
-    aBMP: TBitmap;
+var aCaption: string;
+    i, aCaptionHeight, aDescHeight, aImagesHeight, aItemHeight, aTextHeight: Integer;
 begin
   {$IFDEF DBGIMGMENU} DebugLn('TCustomECImageMenu.Calculate'); {$ENDIF}
   if assigned(Images) 
@@ -368,16 +356,24 @@ begin
   aDescHeight := 0;
   if MenuItems.Count > 0 then
     begin
-      aBMP := TBitmap.Create;
-      aBMP.Canvas.Font.Assign(self.Font);  { Description is written with default Font }
-      aCaption := MenuItems[0].Description;
-      if aCaption <> '' then aDescHeight := aBMP.Canvas.TextHeight(aCaption);
-      aBMP.Canvas.Font.Size := CaptionFontOptions.FontSize;
-      aBMP.Canvas.Font.Style := CaptionFontOptions.FontStyles;
-      aCaption := MenuItems[0].Caption;  
-      if aCaption <> '' then aCaptionHeight := aBMP.Canvas.TextHeight(aCaption);
-      FreeAndNil(aBMP);
-    end;     
+      Canvas.Font.Assign(self.Font);  { Description is written with default Font }
+      for i :=0 to MenuItems.Count-1 do
+        begin
+          aCaption := MenuItems[i].Description;
+          if aCaption <> '' then
+            aDescHeight := Math.max(aDescHeight, ThemeServices.GetTextExtent(Canvas.Handle,
+                             ArBtnDetails[True, False], aCaption, 0, nil).Bottom);
+        end;
+      Canvas.Font.Size := CaptionFontOptions.FontSize;
+      Canvas.Font.Style := CaptionFontOptions.FontStyles;
+      for i :=0 to MenuItems.Count-1 do
+        begin
+          aCaption := MenuItems[i].Caption;
+          if aCaption <> '' then
+            aCaptionHeight := Math.max(aCaptionHeight, ThemeServices.GetTextExtent(Canvas.Handle,
+                                ArBtnDetails[True, False], aCaption, 0, nil).Bottom);
+        end;
+    end;
   case FLayout of
     eopTop: 
       begin
@@ -406,13 +402,12 @@ begin
           else aItemHeight := DescYPos;
       end; 
     otherwise  { eopRight, eopLeft }
-      if aImagesHeight > 0
-        then aLeftHeight := aImagesHeight + 2*Spacing
-        else aLeftHeight := Spacing; 
-      aRightHeight := Spacing;
-      if aCaptionHeight > 0 then aRightHeight := aRightHeight + aCaptionHeight + Spacing;
-      if aDescHeight > 0 then aRightHeight := aRightHeight + aDescHeight + Spacing;
-      aItemHeight := Math.max(aLeftHeight, aRightHeight);
+      aItemHeight := Spacing;
+      if aImagesHeight > 0 then inc(aItemHeight, aImagesHeight + Spacing);
+      aTextHeight := Spacing;
+      if aCaptionHeight > 0 then inc(aTextHeight, aCaptionHeight + Spacing);
+      if aDescHeight > 0 then inc(aTextHeight, aDescHeight + Spacing);
+      aItemHeight := Math.max(aItemHeight, aTextHeight);
       ImageYPos := (aItemHeight - aImagesHeight) div 2;
       if (aCaptionHeight > 0) xor (aDescHeight > 0) then
         begin
@@ -423,20 +418,19 @@ begin
           CaptionYPos := (aItemHeight - aCaptionHeight - aDescHeight - Spacing) div 2;
           DescYPos := CaptionYPos + aCaptionHeight + Spacing;
         end;
-  end; 
+  end;  {case}
   inc(UpdateCount);  { this avoids calling Calculate twice }
   ItemHeight := aItemHeight;
   dec(UpdateCount);
   NeedCalculate := False;
-  {$IFDEF DBGIMGMENU} DebugLn(DbgSName(self),'.Calc ', inttostr(aItemHeight)); {$ENDIF}
 end;  
 
 procedure TCustomECImageMenu.CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer; 
-  WithThemeSpace: Boolean);
+            WithThemeSpace: Boolean);
 var aCaption: string;
-    aImageWidth, aTextWidth, i: Integer; 
-    aRect: TRect;
-begin        
+    i, aImageWidth, aTextWidth: Integer;
+begin
+  {$IFDEF DBGIMGMENU} DebugLn('TCustomECImageMenu.CalculatePreferredSize'); {$ENDIF}
   PreferredHeight := 0;
   if assigned(Images)
     then aImageWidth := Images.Width
@@ -444,23 +438,25 @@ begin
   aTextWidth := 0;
   Canvas.Font.Assign(Font);
   for i := 0 to MenuItems.Count - 1 do
-    aTextWidth := Math.max(aTextWidth, Canvas.TextWidth(MenuItems[i].Description));
+    aTextWidth := Math.max(aTextWidth, ThemeServices.GetTextExtent(Canvas.Handle,
+                    ArBtnDetails[True, False], MenuItems[i].Description, DT_LEFT, nil).Right);
   Canvas.Font.Size := CaptionFontOptions.FontSize;
   Canvas.Font.Style := CaptionFontOptions.FontStyles;
   for i := 0 to MenuItems.Count - 1 do 
     begin
       aCaption := MenuItems[i].Caption;
       DeleteAmpersands(aCaption);
-      aTextWidth := Math.max(aTextWidth, Canvas.TextWidth(aCaption));
+      aTextWidth := Math.max(aTextWidth, ThemeServices.GetTextExtent(Canvas.Handle,
+                      ArBtnDetails[True, False], aCaption, DT_LEFT, nil).Right);
     end;
-  LCLIntf.GetClientRect(Handle, {%H-}aRect);  { Calc. left + right border }
-  i := Width - aRect.Right;
+  i := 2*Spacing + Width - ClientWidth;
+  inc(aTextWidth, abs(CaptionAlign));
   if Layout in [eopRight, eopLeft] then
     begin
       if aImageWidth*aTextWidth > 0 then inc(aImageWidth, Spacing);
-      PreferredWidth := aImageWidth + aTextWidth + 2*Spacing + i;
+      PreferredWidth := aImageWidth + aTextWidth + i;
     end else 
-    PreferredWidth := Math.max(aImageWidth, aTextWidth) + 2*Spacing + i;
+      PreferredWidth := Math.max(aImageWidth, aTextWidth) + i;
 end;  
 
 procedure TCustomECImageMenu.Delete(AIndex: Integer);
@@ -475,21 +471,19 @@ var i: Integer;
 begin
   Result := False;
   if Message.Msg = LM_SYSCHAR then 
-    begin
-      if IsEnabled and IsVisible then
-        begin
-          for i := 0 to MenuItems.Count - 1 do
-            if IsAccel(Message.CharCode, MenuItems[i].Caption) then
-              begin
-                Selected[i] := True;
-                SetFocus; 
-                Result := True;  
-                Click;
-                exit;  { Exit! }
-              end;
-          Result := inherited DialogChar(Message);  
-        end;
-    end;
+    if IsEnabled and IsVisible then
+      begin
+        for i := 0 to MenuItems.Count - 1 do
+          if IsAccel(Message.CharCode, MenuItems[i].Caption) then
+            begin
+              Selected[i] := True;
+              SetFocus;
+              Result := True;
+              Click;
+              exit;  { Exit! }
+            end;
+        Result := inherited DialogChar(Message);
+      end;
 end;   
 
 function TCustomECImageMenu.DoMouseWheelDown(Shift: TShiftState; MousePos: TPoint): Boolean;
@@ -513,10 +507,8 @@ begin
 end;
 
 procedure TCustomECImageMenu.DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState);
-var aDetails: TThemedElementDetails;
-    aFlags: Cardinal;
-    aImagePoint: TPoint;
-    aTextRect: TRect;
+var aFlags: Cardinal;
+    aHelpRect: TRect;
     bEnabled: Boolean;
 begin  { do not call inherited ! }
   bEnabled := IsEnabled;                
@@ -529,68 +521,88 @@ begin  { do not call inherited ! }
       if ((Index and 1) = 1) and Alternate then Canvas.Brush.Color :=
         GetMergedColor(Canvas.Brush.Color, ColorToRGB(clForm), 0.5);
     end;
-  if not bEnabled then
-    Canvas.Brush.Color := GetMonochromaticColor(Canvas.Brush.Color);
+  if not bEnabled then Canvas.Brush.Color := GetMonochromaticColor(Canvas.Brush.Color);
   Canvas.FillRect(ARect);
-  aDetails := ThemeServices.GetElementDetails(caThemedContent[caItemState[bEnabled]]);
-  aTextRect.Left := ARect.Left + Spacing;
-  aTextRect.Right := ARect.Right - Spacing;
-  aTextRect.Bottom := ARect.Bottom; 
+  inc(ARect.Left, Spacing);
+  dec(ARect.Right, Spacing);
   if assigned(Images) then
     begin
       case Layout of
         eopRight: 
           begin
-            aImagePoint.X := ARect.Right - Images.Width - Spacing;
-            dec(aTextRect.Right, Images.Width + Spacing);
+            aHelpRect.Left := ARect.Right - Images.Width;
+            dec(ARect.Right, Images.Width + Spacing);
           end;
         eopLeft: 
           begin
-            aImagePoint.X := ARect.Left + Spacing; 
-            inc(aTextRect.Left, Images.Width + Spacing);
+            aHelpRect.Left := ARect.Left;
+            inc(ARect.Left, Images.Width + Spacing);
           end;
-        otherwise aImagePoint.X := (ARect.Right - ARect.Left - Images.Width) div 2; 
+        otherwise
+          aHelpRect.Left :=  Spacing + (ARect.Right - ARect.Left - Images.Width) div 2;
       end;
-      aImagePoint.Y := ARect.Top + ImageYPos;
-      ThemeServices.DrawIcon(Canvas, aDetails, aImagePoint, Images, MenuItems[Index].ImageIndex);
+      aHelpRect.Top := ARect.Top + ImageYPos;
+      ThemeServices.DrawIcon(Canvas, ArBtnDetails[bEnabled, False], aHelpRect.TopLeft, Images, MenuItems[Index].ImageIndex);
     end;  
-  aFlags := DT_END_ELLIPSIS or DT_SINGLELINE;
-  if IsRightToLeft then aFlags := aFlags or DT_RTLREADING;
-  if (Layout in [eopTop, eopBottom]) or (CaptionAlign = 0)
-    then aFlags := aFlags or DT_CENTER
-    else if (Layout = eopRight) xor (CaptionAlign > 0) then aFlags := aFlags or DT_RIGHT;
+  aHelpRect.Bottom := ARect.Bottom;
   if MenuItems[Index].Description <> '' then
     begin
-      aTextRect.Top := ARect.Top + DescYPos;
-      ARect.Left := aTextRect.Left;
-      ARect.Right := aTextRect.Right; 
-      if Layout in [eopTop, eopBottom] then
-        begin
-          if CaptionAlign > 0 then dec(aTextRect.Right, 2*CaptionAlign)
-            else dec(aTextRect.Left, 2*CaptionAlign);         
+      aHelpRect.Left := ARect.Left;
+      aHelpRect.Right := ARect.Right;
+      aHelpRect.Top := ARect.Top + DescYPos;
+        case CaptionAlign of
+          low(SmallInt)..-1:
+            if Layout in [eopTop, eopBottom] then
+              begin
+                aFlags := DT_RIGHT;
+                inc(aHelpRect.Right, CaptionAlign);
+              end else
+              begin
+                aFlags := DT_LEFT;
+                dec(aHelpRect.Left, CaptionAlign);
+              end;
+          0: aFlags := DT_CENTER;
+          1..high(SmallInt):
+            if Layout in [eopTop, eopBottom] then
+              begin
+                aFlags := DT_LEFT;
+                inc(aHelpRect.Left, CaptionAlign);
+              end else
+              begin
+                aFlags := DT_RIGHT;
+                dec(aHelpRect.Right, CaptionAlign);
+              end;
         end;
       Canvas.Font.Assign(Font);
+      aFlags := aFlags or DT_END_ELLIPSIS or caDTRTLFlags[IsRightToLeft] or DT_NOPREFIX or DT_VCENTER;
       if (odSelected in State) and (Font.Color = clDefault) then Canvas.Font.Color := clHighlightText;
-      ThemeServices.DrawText(Canvas, aDetails, MenuItems[Index].Description, 
-        aTextRect, aFlags or DT_NOPREFIX, 0);
-      aTextRect.Left := ARect.Left;
-      aTextRect.Right := ARect.Right;
+      ThemeServices.DrawText(Canvas, ArBtnDetails[bEnabled, False], MenuItems[Index].Description, aHelpRect, aFlags, 0);
     end;
   if MenuItems[Index].Caption <> '' then
     begin
+      aHelpRect.Left := ARect.Left;
+      aHelpRect.Right := ARect.Right;
+      aHelpRect.Top := ARect.Top + CaptionYPos;
+      case CaptionAlign of
+        low(SmallInt)..-1:
+          begin
+            aFlags := DT_LEFT;
+            dec(aHelpRect.Left, CaptionAlign);
+          end;
+        0: aFlags := DT_CENTER;
+        1..high(SmallInt):
+          begin
+            aFlags := DT_RIGHT;
+            dec(aHelpRect.Right, CaptionAlign);
+          end;
+      end;
       if CaptionFontOptions.FontColor <> clDefault
         then Canvas.Font.Color := CaptionFontOptions.FontColor
         else if odSelected in State then Canvas.Font.Color := clHighlightText;
       Canvas.Font.Size := CaptionFontOptions.FontSize;
       Canvas.Font.Style := CaptionFontOptions.FontStyles;
-      aTextRect.Top := ARect.Top + CaptionYPos;
-      if Layout in [eopTop, eopBottom] then
-        begin
-          if CaptionAlign > 0
-            then inc(aTextRect.Left, 2*CaptionAlign)
-            else inc(aTextRect.Right, 2*CaptionAlign);           
-        end;  
-      ThemeServices.DrawText(Canvas, aDetails, MenuItems[Index].Caption, aTextRect, aFlags, 0);
+      aFlags := aFlags or caDTRTLFlags[IsRightToLeft] or DT_SINGLELINE;
+      ThemeServices.DrawText(Canvas, ArBtnDetails[bEnabled, False], MenuItems[Index].Caption, aHelpRect, aFlags, 0);
     end;  
 end;        
 
@@ -601,22 +613,17 @@ begin
     if Recalculate
       then RecalcInvalidate
       else Invalidate;
-end; 
+end;
 
 procedure TCustomECImageMenu.InitializeWnd;
-begin     
-  {$IFDEF DBGIMGMENU} DebugLn('InitWnd ', inttostr(Width), ' ', inttostr(Height), ' Count ', inttostr(MenuItems.Count)); {$ENDIF}
-  if AfterLoad and not NeedCalculate then
-    begin
-      AfterLoad := False;
-      exit;
-    end; 
+begin
+  {$IFDEF DBGIMGMENU} DebugLn('TCustomECImageMenu.InitializeWnd'); {$ENDIF}
   if (MenuItems.Count > 0) and (UpdateCount = 0) then Calculate;
   inherited InitializeWnd;
-end; 
+end;
 
 procedure TCustomECImageMenu.Insert(AIndex: Integer; const ACaption, ADescription: TTranslateString;
-  AImageIndex: SmallInt);
+            AImageIndex: SmallInt);
 var aItem: TCollectionItem;
 begin
   if (AIndex >= 0) and (AIndex <= MenuItems.Count) then
@@ -629,7 +636,7 @@ begin
           Description := ADescription;
           ImageIndex := AImageIndex;
         end;
-      EndUpdate(False);
+      EndUpdate(AutoSize);
     end;
 end;        
 
@@ -649,14 +656,7 @@ end;
 procedure TCustomECImageMenu.KeyDown(var Key: Word; Shift: TShiftState);
 begin
   inherited KeyDown(Key, Shift);
-  if Key in [VK_RETURN, VK_SPACE] then Click;
-end; 
-
-procedure TCustomECImageMenu.Loaded;
-begin
-  {$IFDEF DBGIMGMENU} DebugLn('TCustomECImageMenu.Loaded'); {$ENDIF}
-  inherited Loaded;
-  AfterLoad := True;       
+  if (Key in [VK_RETURN, VK_SPACE]) and (Shift*[ssShift, ssAlt, ssCtrl, ssMeta] = []) then Click;
 end; 
 
 procedure TCustomECImageMenu.RecalcInvalidate;
@@ -717,7 +717,7 @@ procedure TCustomECImageMenu.SetCaptionAlign(AValue: SmallInt);
 begin
   if FCaptionAlign = AValue then exit;
   FCaptionAlign := AValue;
-  InvalidateNonUpdated;
+  RecalcInvalidate;
 end;       
 
 procedure TCustomECImageMenu.SetCaptionFontOptions(AValue: TFontOptions);
@@ -758,4 +758,5 @@ begin
 end;         
 
 end.
+
 

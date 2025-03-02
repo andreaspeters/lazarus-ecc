@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2013-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2013-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,14 +34,14 @@ unit ECRuler;
 interface
 
 uses
-  Classes, SysUtils, Controls, Graphics, ECScale, ECTypes, Forms, Math, LCLIntf,
-  LMessages, {$IFDEF DBGRULER} LCLProc, {$ENDIF} LCLType, Themes, Types;
+  Classes, SysUtils, Controls, Forms, Graphics, LCLIntf, {$IFDEF DBGRULER} LCLProc, {$ENDIF}
+  LCLType, LMessages, Math, Themes, Types, ECScale, ECTypes;
 
 type 
   {$PACKENUM 2}
   TPointerMode = (epmNone, epmFixed, epmMovable);
   TPointerStyle = (epsSimple, epsDashed, epsDotted);
-  { Event }
+  { event }
   TOnChangePosition = procedure(Sender: TObject; APosition: Double) of object;
   
   { TECRulerScale }
@@ -54,7 +54,6 @@ type
   published
     property DateTimeFormat;
     property Digits;
-   { property FontOrientation; }
     property LogarithmBase;
     property Max;
     property Min;
@@ -121,9 +120,9 @@ type
     Background: TBitmap;
     CurrInvRect: TRect;
     FullBorderWidth: SmallInt;
+    LengthPerPixel: Double;
     PointerOverlay: Integer;
     RedrawPointer: procedure(ACoord: Integer) of object;
-    ScaleLength: Double;
     ScalePxLength, ScalePxStart: Integer;
     TimeFormat: TFormatSettings;
     WasEnabled: Boolean;  { state of IsEnabled from previous Paint }
@@ -248,14 +247,14 @@ constructor TCustomECRuler.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   ControlStyle := ControlStyle + [csNoFocus]
-                               - [csSetCaption];
+                               - [csCaptureMouse, csSetCaption];
   FCaptionPos := ebpBottomRight;
   FMouseCoord := low(Integer);
   FOrientation := eooHorizontal;
   RedrawPointer := @RedrawHorizontal;
   FPointerColor := clDefault;
   FPointerMode := cDefPointerMode;
-  PointerWidth := cDefPointerWidth;  {Set PointerOverlay}
+  PointerWidth := cDefPointerWidth;  { set PointerOverlay }
   FStyle := eosPanel;
   AutoSize := True;
   TabStop := False;
@@ -290,8 +289,14 @@ begin
   inherited Destroy;
 end;
 
-procedure TCustomECRuler.CalculatePreferredSize(var PreferredWidth, 
-            PreferredHeight: Integer; WithThemeSpace: Boolean);
+procedure TCustomECRuler.BeginUpdate;
+begin
+  inherited BeginUpdate;
+  FScale.BeginUpdate;
+end;
+
+procedure TCustomECRuler.CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer;
+            WithThemeSpace: Boolean);
 var aSize: Integer;
 begin
   Canvas.Font.Size := FScaleFontOptions.FontSize;
@@ -308,12 +313,6 @@ begin
     end;
 end;
 
-procedure TCustomECRuler.BeginUpdate;
-begin
-  inherited BeginUpdate;
-  FScale.BeginUpdate;
-end;
-
 procedure TCustomECRuler.Calculate;
 var aBorderWidth, aLength: Integer;
 begin
@@ -322,10 +321,10 @@ begin
   if Orientation = eooHorizontal 
     then aLength := Width
     else aLength := Height;
-  aLength := aLength - IndentTopLeft - IndentBottomRight - 2*aBorderWidth;
-  ScaleLength := Max - Min;
+  dec(aLength, IndentTopLeft + IndentBottomRight + 2*aBorderWidth);
   ScalePxLength := aLength;
   ScalePxStart := IndentTopLeft + aBorderWidth;
+  LengthPerPixel := (Max - Min)/Math.max(aLength - 1, 1);
   FScale.CalcTickPosAndValues(aLength, Reversed);
 end;
 
@@ -345,68 +344,60 @@ var aColor: TColor;
 begin
   {$IFDEF DBGRULER} DebugLn('ECRuler DrawBackground'); {$ENDIF}
   Background.SetSize(Width, Height);          
-  aColor := ColorToRGB(GetColorResolvingDefault(Color, Parent.Brush.Color));
+  aColor := ColorToRGB(GetColorResolvingDefAndEnabled(Color, Parent.Brush.Color, IsEnabled));
   if (aColor and $FF) > 0
-    then dec(aColor)
-    else inc(aColor);
-  Background.TransparentColor := aColor;
+    then Background.TransparentColor := aColor - 1
+    else Background.TransparentColor := aColor + 1;
   Background.TransparentClear;
   case Style of
-    eosButton: Background.Canvas.DrawButtonBackground(ClientRect, True);
-    eosPanel: Background.Canvas.DrawPanelBackground(ClientRect, BevelInner, BevelOuter,
-                BevelSpace, BevelWidth, Color3DDark, Color3DLight, 
-                GetColorResolvingDefault(Color, Parent.Brush.Color));
+    eosButton:      Background.Canvas.DrawButtonBackground(ClientRect, caItemState[True]);
+    eosPanel:       Background.Canvas.DrawPanelBackground(ClientRect, BevelInner, BevelOuter,
+                      BevelSpace, BevelWidth, Color3DDark, Color3DLight, aColor, IsEnabled);
     eosThemedPanel: Background.Canvas.DrawThemedPanelBkgnd(ClientRect);
-    eosFinePanel: Background.Canvas.DrawFinePanelBkgnd(ClientRect, BevelOuter, BevelWidth,
-                    Color3DDark, Color3DLight, GetColorResolvingDefault(Color, Parent.Brush.Color), False);
+    eosFinePanel:   Background.Canvas.DrawFinePanelBkgnd(ClientRect, BevelOuter, BevelWidth,
+                      Color3DDark, Color3DLight, aColor, Color <> clDefault, IsEnabled);
   end;
   DrawScaleAndCaption(Background.Canvas);
-  SetPointerPenStyle;
 end;
 
 procedure TCustomECRuler.DrawScaleAndCaption(ACanvas: TCanvas);
-const cIndent = 3;
-var aFlags, aHelpFlag: Cardinal;
-    i, j, aAbsCaptionIndent, aBorderWidth, aBottom, aRight: Integer;
-    aRect: TRect;
-    aSize: TSize;
+const cBaseDTFlags = DT_SINGLELINE or DT_NOPREFIX or DT_MODIFYSTRING or DT_END_ELLIPSIS;
+      cIndent = 3;
+var aFlags: Cardinal;
+    i, j, aBorderWidth, aBottom, aRight: Integer;
 begin
   aBorderWidth := GetBorderWidth;
   ACanvas.Font.Assign(Font);
   if Caption <> '' then
     begin
       ACanvas.Font.Color := GetColorResolvingDefault(ACanvas.Font.Color, clBtnText);
-      aFlags := DT_NOPREFIX or DT_MODIFYSTRING or DT_END_ELLIPSIS or DT_SINGLELINE;
-      if IsRightToLeft then aFlags := aFlags or DT_RTLREADING;
-      aHelpFlag := DT_TOP;
+      aFlags := DT_LEFT;
+      aRight := Width;
       aBottom := Height;
-      aRight := Width;   
-      aSize := ACanvas.TextExtent(Caption);
-      aAbsCaptionIndent := abs(CaptionAlign);
       if Orientation = eooHorizontal then
-        begin  { Horizontal }
+        begin  { horizontal }
           if FScale.TickVisible > etvNone then
             begin
               if ScalePos = ebpTopLeft 
                 then j := Math.max(aBorderWidth + FScale.TickIndent, cIndent)
-                else j := aBottom - Math.max(FScale.TickIndent + aBorderWidth, cIndent) - aSize.cy;
+                else j := aBottom - Math.max(FScale.TickIndent + aBorderWidth, cIndent) - ACanvas.TextExtent(Caption).cy;
             end else
             begin
               if FScalePos = ebpTopLeft 
                 then j := Math.max(aBorderWidth + FScale.ValueIndent, cIndent)
-                else j := aBottom - Math.max(aBorderWidth + FScale.ValueIndent, cIndent) - aSize.cy;
+                else j := aBottom - Math.max(aBorderWidth + FScale.ValueIndent, cIndent) - ACanvas.TextExtent(Caption).cy;
             end;
           if CaptionPos = ebpTopLeft then 
             begin
               i := aBorderWidth;
               aRight := ScalePxStart;
               case CaptionAlign of
-                low(CaptionAlign)..-1: inc(i, aAbsCaptionIndent);
-                0: aHelpFlag := DT_CENTER;
+                low(CaptionAlign)..-1: inc(i, abs(CaptionAlign));
+                0: aFlags := DT_CENTER;
                 1..high(CaptionAlign): 
                   begin
-                    aHelpFlag := DT_RIGHT;
-                    dec(aRight, aAbsCaptionIndent);
+                    aFlags := DT_RIGHT;
+                    dec(aRight, abs(CaptionAlign));
                   end;
               end;
             end else 
@@ -416,38 +407,36 @@ begin
               case CaptionAlign of
                 low(SmallInt)..-1: 
                   begin
-                    aHelpFlag := DT_RIGHT;
-                    dec(aRight, aAbsCaptionIndent);
+                    aFlags := DT_RIGHT;
+                    dec(aRight, abs(CaptionAlign));
                   end;
-                0: aHelpFlag := DT_CENTER;
-                1..high(CaptionAlign): inc(i, aAbsCaptionIndent);
+                0: aFlags := DT_CENTER;
+                1..high(CaptionAlign): inc(i, abs(CaptionAlign));
               end;
             end;
           dec(aBottom, aBorderWidth);
         end else                                               
-        begin  { Vertical }
-          if FScale.TickVisible > etvNone then
-            begin
+        begin  { vertical }
+          if FScale.TickVisible > etvNone
+            then
               if ScalePos = ebpTopLeft 
                 then i := Math.max(aBorderWidth + FScale.TickIndent, cIndent)
-                else i := aRight - Math.max(FScale.TickIndent + aBorderWidth, cIndent) - aSize.cx;
-            end else
-            begin
+                else i := aRight - Math.max(FScale.TickIndent + aBorderWidth, cIndent) - ACanvas.TextExtent(Caption).cx
+            else
               if ScalePos = ebpTopLeft 
                 then i := Math.max(aBorderWidth + FScale.ValueIndent, cIndent)
-                else i := aRight - Math.max(aBorderWidth + FScale.ValueIndent, cIndent) - aSize.cx;
-            end;
+                else i := aRight - Math.max(aBorderWidth + FScale.ValueIndent, cIndent) - ACanvas.TextExtent(Caption).cx;
           if CaptionPos = ebpTopLeft then
             begin
               j := aBorderWidth;
               aBottom := ScalePxStart;
               case CaptionAlign of
-                low(CaptionAlign)..-1: inc(j, aAbsCaptionIndent);
-                0: aHelpFlag := DT_VCENTER;
+                low(CaptionAlign)..-1: inc(j, abs(CaptionAlign));
+                0: aFlags := DT_VCENTER;
                 1..high(CaptionAlign): 
                   begin
-                    aHelpFlag := DT_BOTTOM;
-                    dec(aBottom, aAbsCaptionIndent);
+                    aFlags := DT_BOTTOM;
+                    dec(aBottom, abs(CaptionAlign));
                   end;
               end;
             end else
@@ -457,40 +446,30 @@ begin
               case CaptionAlign of
                 low(SmallInt)..-1: 
                   begin
-                    aHelpFlag := DT_BOTTOM;
-                    dec(aBottom, aAbsCaptionIndent);
+                    aFlags := DT_BOTTOM;
+                    dec(aBottom, abs(CaptionAlign));
                   end;
-                0: aHelpFlag := DT_VCENTER;
-                1..high(CaptionAlign): inc(j, aAbsCaptionIndent);
+                0: aFlags := DT_VCENTER;
+                1..high(CaptionAlign): inc(j, abs(CaptionAlign));
               end;   
             end;
           dec(aRight, aBorderWidth);
         end;
-      aRect := Rect(i, j, aRight, aBottom);
-      aFlags := aFlags or aHelpFlag;
-      with ThemeServices do 
-        DrawText(ACanvas, GetElementDetails(caThemedContent[caItemState[IsEnabled]]), 
-          Caption, aRect, aFlags, 0);
-    end; 
-  ACanvas.Font.Color := GetColorResolvingDefault(FScaleFontOptions.FontColor, clBtnText);
-  ACanvas.Font.Orientation := FScale.FontOrientation;
-  ACanvas.Font.Size := FScaleFontOptions.FontSize;              
-  ACanvas.Font.Style := FScaleFontOptions.FontStyles;
-  if Orientation = eooHorizontal then
-    begin
-      if ScalePos = ebpTopLeft 
-        then FScale.Draw(ACanvas, True, True, eopBottom, 
-               Color3DDark, Color3DLight, Point(ScalePxStart, aBorderWidth - 1), [])
-        else FScale.Draw(ACanvas, True, True, eopTop, 
-               Color3DDark, Color3DLight, Point(ScalePxStart, Height - aBorderWidth), []);
-    end else
-    begin
-      if ScalePos = ebpTopLeft 
-        then FScale.Draw(ACanvas, True, True, eopRight, 
-               Color3DDark, Color3DLight, Point(aBorderWidth - 1, ScalePxStart), [])     
-        else FScale.Draw(ACanvas, True, True, eopLeft,
-               Color3DDark, Color3DLight, Point(Width - aBorderWidth, ScalePxStart), []);
-    end;                 
+      aFlags := aFlags or cBaseDTFlags or caDTRTLFlags[IsRightToLeft];
+      ThemeServices.DrawText(ACanvas, ArBtnDetails[IsEnabled, False], Caption, Rect(i, j, aRight, aBottom), aFlags, 0);
+    end;
+  FScaleFontOptions.ApplyTo(ACanvas.Font, clBtnText);
+  if Orientation = eooHorizontal
+    then if ScalePos = ebpTopLeft
+           then FScale.Draw(ACanvas, True, True, eopBottom, Color3DDark, Color3DLight,
+                            Point(ScalePxStart, aBorderWidth - 1), [])
+           else FScale.Draw(ACanvas, True, True, eopTop, Color3DDark, Color3DLight,
+                            Point(ScalePxStart, Height - aBorderWidth), [])
+    else if ScalePos = ebpTopLeft
+           then FScale.Draw(ACanvas, True, True, eopRight, Color3DDark, Color3DLight,
+                            Point(aBorderWidth - 1, ScalePxStart), [])
+           else FScale.Draw(ACanvas, True, True, eopLeft, Color3DDark, Color3DLight,
+                            Point(Width - aBorderWidth, ScalePxStart), []);
 end;
 
 procedure TCustomECRuler.EndUpdate(Recalculate: Boolean);
@@ -510,11 +489,8 @@ begin
 end;
 
 function TCustomECRuler.MouseCoordToPosition(AMouseCoord: Integer): Double;
-var aScalePxLength: Integer;
 begin
-  aScalePxLength := ScalePxLength;
-  if aScalePxLength <= 1 then aScalePxLength := 2;
-  Result := (AMouseCoord - ScalePxStart)*ScaleLength/(aScalePxLength - 1);
+  Result := (AMouseCoord - ScalePxStart)*LengthPerPixel;
   if Reversed then Result := Max - Result;
 end;
 
@@ -546,7 +522,6 @@ begin
 end;
 
 procedure TCustomECRuler.Paint;
-var bEnabled: Boolean;
     
   procedure DrawPointer;
   var aBorderWidth: SmallInt;
@@ -556,7 +531,8 @@ var bEnabled: Boolean;
       then Canvas.Line(MouseCoord, aBorderWidth + 1, MouseCoord, self.Height - aBorderWidth)
       else Canvas.Line(aBorderWidth + 1, MouseCoord, self.Width - aBorderWidth, MouseCoord);        
   end;
-    
+
+var bEnabled: Boolean;
 begin
   {$IFDEF DBGRULER} DebugLn('Ruler Paint'); {$ENDIF}
   inherited Paint;
@@ -569,7 +545,11 @@ begin
     end;
   if not Transparent then
     begin
-      if RedrawMode >= ermRedrawBkgnd then DrawBackground;
+      if RedrawMode >= ermRedrawBkgnd then
+        begin
+          DrawBackground;
+          SetPointerPenStyle;
+        end;
       if RedrawMode >= ermFreeRedraw then Canvas.Draw(0, 0, Background);
       if bEnabled and (PointerMode > epmNone) then
         begin
@@ -617,8 +597,8 @@ begin
 end;
 
 procedure TCustomECRuler.RedrawHorizontal(X: Integer);
-var aRect: TRect;
-    aBorderWidth, i: Integer;
+var aBorderWidth, i: Integer;
+    aRect: TRect;
 begin
   if MouseCoord <> X then
     begin
@@ -638,13 +618,13 @@ begin
           FInvalidRect.Right := Math.max(FInvalidRect.Right, aRect.Right);
           InvalidateRect(Handle, @FInvalidRect, False);
         end else
-        Invalidate;
+          Invalidate;
     end;
 end;
 
 procedure TCustomECRuler.RedrawVertical(Y: Integer);
-var aRect: TRect;
-    aBorderWidth, j: Integer;
+var aBorderWidth, j: Integer;
+    aRect: TRect;
 begin
   if MouseCoord <> Y then
     begin
@@ -664,7 +644,7 @@ begin
           FInvalidRect.Bottom := Math.max(FInvalidRect.Bottom, aRect.Bottom);
           InvalidateRect(Handle, @FInvalidRect, False);
         end else
-        Invalidate;
+          Invalidate;
     end;
 end;
 
@@ -710,7 +690,7 @@ end;
 
 function TCustomECRuler.GetPosition: Double;
 begin
-   Result := MouseCoordToPosition(MouseCoord)
+  Result := MouseCoordToPosition(MouseCoord)
 end;
 
 procedure TCustomECRuler.SetCaptionAlign(AValue: SmallInt);
@@ -795,7 +775,7 @@ procedure TCustomECRuler.SetPosition(AValue: Double);
 var aCoord: Integer;
 begin
   if Reversed then AValue := Max - AValue;
-  aCoord := round(AValue*ScalePxLength/ScaleLength) + ScalePxStart;
+  aCoord := round(AValue/LengthPerPixel) + ScalePxStart;
   if PositionToHint then Hint := FScale.GetStringPosition(AValue); 
   if (PointerMode > epmNone) and WasEnabled then RedrawPointer(aCoord);
 end;

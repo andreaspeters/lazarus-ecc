@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014-2017 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -34,7 +34,7 @@ unit ECLink;
 interface
 
 uses
-  Classes, SysUtils, Controls, Forms, Graphics, LCLIntf, LCLType, LMessages, Themes, Types;
+  Classes, SysUtils, Controls, Forms, Graphics, LCLIntf, LCLType, LMessages, Themes, Types, ECTypes;
 
 type
   {$PACKENUM 2}
@@ -49,6 +49,8 @@ type
     FAlignment: TAlignment;
     FColorHovered: TColor;
     FColorVisited: TColor;
+    FDefColorHov: TColor;
+    FDefColorVis: TColor;
     FHoveredUnderlined: Boolean;
     FLayout: TTextLayout;
     FLink: string;
@@ -157,6 +159,15 @@ begin
   FShowAccelChar:=True;
   FTransparent:=True;
   AccessibleRole:=larButton;
+  if IsColorDark(ColorToRGB(clBtnText)) then
+    begin
+      FDefColorHov:=$F00000;
+      FDefColorVis:=$800080;
+    end else
+    begin
+      FDefColorHov:=$FF6060;
+      FDefColorVis:=$D040D0;
+    end;
 end;
 
 procedure TCustomECLink.AutosizeInvalidate;
@@ -169,8 +180,8 @@ begin
   Invalidate;
 end;
 
-procedure TCustomECLink.CalculatePreferredSize(var PreferredWidth,
-            PreferredHeight: Integer; WithThemeSpace: Boolean);
+procedure TCustomECLink.CalculatePreferredSize(var PreferredWidth, PreferredHeight: Integer;
+            WithThemeSpace: Boolean);
 var aExtent: TSize;
 begin
   aExtent:=Canvas.TextExtent(Caption);
@@ -183,7 +194,7 @@ begin
   case LinkType of
     eltFile: OpenDocument(Link);
     eltMail: OpenURL('mailto:'+Link);
-    eltWWW: OpenURL(Link);
+    eltWWW:  OpenURL(Link);
   end;
   inherited Click;
   FVisited:=True;
@@ -206,13 +217,13 @@ begin
           Result:=True;
           Click;
         end else
-        Result:=inherited DialogChar(Message);
+          Result:=inherited DialogChar(Message);
     end;
 end;
 
 function TCustomECLink.IsLinkStored: Boolean;
 begin
-  Result:= (LinkType>eltClick);
+  Result:=(LinkType>eltClick);
 end;
 
 procedure TCustomECLink.MouseEnter;
@@ -228,13 +239,11 @@ begin
 end;
 
 procedure TCustomECLink.Paint;
+const caAlignment: array[TAlignment] of Cardinal = (DT_LEFT, DT_RIGHT, DT_CENTER);
+      caLayout: array[TTextLayout] of Cardinal = (DT_TOP, DT_CENTER, DT_BOTTOM);
 var aColor: TColor;
-    aDetails: TThemedElementDetails;
     aFlags: Cardinal;
     aStyles: TFontStyles;
-const caElementDetails: array [Boolean] of TThemedButton = (tbPushButtonDisabled, tbPushButtonNormal);
-      caAlignment: array [Boolean, TAlignment] of Cardinal = ((DT_LEFT, DT_RIGHT, DT_CENTER),
-        (DT_RIGHT or DT_RTLREADING, DT_LEFT or DT_RTLREADING, DT_CENTER or DT_RTLREADING));
 begin
   inherited Paint;
   if not Transparent and (Color<>clDefault) then
@@ -244,35 +253,31 @@ begin
     end;
   aColor:=Font.Color;
   aStyles:=Font.Style;
-  if MouseEntered then
+  if MouseInClient then
     begin
       if HoveredUnderlined then aStyles:=aStyles+[fsUnderline];
       if ColorHovered=clDefault
-        then aColor:=clBlue
+        then aColor:=FDefColorHov
         else aColor:=ColorHovered;
     end else
-    if Visited and (ColorVisited<>clDefault) then aColor:=ColorVisited;
+      if Visited then
+        if ColorVisited=clDefault
+          then aColor:=FDefColorVis
+          else aColor:=ColorVisited;
   Canvas.Font.Color:=aColor;
   Canvas.Font.Style:=aStyles;
-  aDetails:=ThemeServices.GetElementDetails(caElementDetails[IsEnabled]);
-  aFlags:=DT_SINGLELINE or caAlignment[IsRightToLeft, Alignment];
-  case Layout of
-    tlCenter: aFlags:=aFlags or DT_VCENTER;
-    tlBottom: aFlags:=aFlags or DT_BOTTOM;
-  end;
+  aFlags:=DT_SINGLELINE or caAlignment[Alignment] or caLayout[Layout] or caDTRTLFlags[IsRightToLeft];
   if not ShowAccelChar then aFlags:=aFlags or DT_NOPREFIX;
-  ThemeServices.DrawText(Canvas, aDetails, Caption, ClientRect, aFlags, 0);
+  ThemeServices.DrawText(Canvas, ArBtnDetails[IsEnabled, False], Caption, ClientRect, aFlags, 0);
 end;
 
 procedure TCustomECLink.SetAction(Value: TBasicAction);
 begin
   inherited SetAction(Value);
   if Value=nil then
-    begin
-      if Link<>''
-        then Caption:=Link
-        else if Name<>'' then Caption:=Name;
-    end;
+    if Link<>''
+      then Caption:=Link
+      else if Name<>'' then Caption:=Name;
   AutosizeInvalidate;
 end;
 

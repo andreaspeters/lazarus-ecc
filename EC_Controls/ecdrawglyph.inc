@@ -276,7 +276,7 @@ var aEvenH, aEvenW, x, y, x2, y2: SmallInt;
   function GetGlyphColor(AColor: TColor): TColor;
   begin
     Result := AColor;
-    if AState in [eisHighlighted, eisPushedHihlighted]
+    if AState in [eisHighlighted, eisPushedHilighted]
       then Result := GetMergedColor(clWhite, Result, 0.27)
       else if AState in [eisDisabled, eisPushedDisabled] then
              Result := GetMergedMonoColor(Pixels[Width div 2, Height div 2], Result, 0.67);
@@ -284,16 +284,16 @@ var aEvenH, aEvenW, x, y, x2, y2: SmallInt;
 
 const cRadioOff: array[TItemState] of TThemedButton = (tbRadioButtonUncheckedDisabled,
         tbRadioButtonUncheckedHot, tbRadioButtonUncheckedNormal, tbRadioButtonUncheckedNormal,
-        tbRadioButtonUncheckedHot, tbRadioButtonUncheckedDisabled);
+        tbRadioButtonUncheckedNormal, tbRadioButtonUncheckedHot, tbRadioButtonUncheckedDisabled);
       cRadioOn: array[TItemState] of TThemedButton = (tbRadioButtonCheckedDisabled,
         tbRadioButtonCheckedHot, tbRadioButtonCheckedNormal, tbRadioButtonCheckedNormal,
-        tbRadioButtonCheckedHot, tbRadioButtonCheckedDisabled);
+        tbRadioButtonCheckedNormal, tbRadioButtonCheckedHot, tbRadioButtonCheckedDisabled);
       cCheckOff: array[TItemState] of TThemedButton = (tbCheckBoxUncheckedDisabled,
         tbCheckBoxUncheckedHot, tbCheckBoxUncheckedNormal, tbCheckBoxUncheckedNormal,
-        tbCheckBoxUncheckedHot, tbCheckBoxUncheckedDisabled);
+        tbCheckBoxUncheckedNormal, tbCheckBoxUncheckedHot, tbCheckBoxUncheckedDisabled);
       cCheckOn: array[TItemState] of TThemedButton = (tbCheckBoxCheckedDisabled,
         tbCheckBoxCheckedHot, tbCheckBoxCheckedNormal, tbCheckBoxCheckedNormal,
-        tbCheckBoxCheckedHot, tbCheckBoxCheckedDisabled);
+        tbCheckBoxCheckedNormal, tbCheckBoxCheckedHot, tbCheckBoxCheckedDisabled);
 begin
   AGlyphColor := GetGlyphColor(GetColorResolvingDefault(AGlyphColor, clBtnText));
   Brush.Color := AGlyphColor;

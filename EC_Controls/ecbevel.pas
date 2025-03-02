@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2014-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2014-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -38,7 +38,7 @@ type
   {$PACKENUM 2}
   TPointPos = (eppNone, eppTopLeft, eppTopRight, eppBottomRight, eppBottomLeft);
   { event }
-  TOnGetCoordinate = procedure (Sender: TObject; var AValue: Integer) of object;
+  TOnGetCoordinate = procedure(Sender: TObject; var AValue: Integer) of object;
 
   { TECBevel }
   TECBevel = class(TGraphicControl)
@@ -113,7 +113,7 @@ implementation
 constructor TECBevel.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  ControlStyle:=ControlStyle-[csSetCaption,csOpaque];
+  ControlStyle:=ControlStyle-[csSetCaption, csOpaque];
   FPointA:=eppNone;
   FPointB:=eppNone;
   FStyle:=bsLowered;
@@ -130,7 +130,7 @@ begin
       FShape:=TECBevel(Source).FShape;
       FStyle:=TECBevel(Source).Style;
     end else
-    inherited Assign(Source);
+      inherited Assign(Source);
 end;
 
 class function TECBevel.GetControlClassDefaultSize: TSize;
@@ -140,7 +140,7 @@ begin
 end;
 
 procedure TECBevel.Paint;
-var AColor, BColor: TColor;
+var aColor, bColor: TColor;
     aTL, aTR, aBL, aBR: TPoint;
     x, y: Integer;
 begin
@@ -149,13 +149,13 @@ begin
       case Style of
         bsLowered:
           begin
-            AColor:=cl3DShadow;
-            BColor:=cl3DHilight;
+            aColor:=cl3DShadow;
+            bColor:=cl3DHilight;
           end;
         bsRaised:
           begin
-            AColor:=cl3DHilight;
-            BColor:=cl3DShadow;
+            aColor:=cl3DHilight;
+            bColor:=cl3DShadow;
           end;
       end;
       if (Shape in [bsBox, bsFrame]) or (PointA=eppNone) then
@@ -199,10 +199,13 @@ begin
               if y>=Height then y:=0;
               x:=Width-1;
             end;
-        end;
+        end;  {case}
       with Canvas do
         begin
-          Pen.Color:=AColor;
+          Pen.Color:=aColor;
+          Pen.EndCap:=pecFlat;
+          Pen.JoinStyle:=pjsBevel;
+          Pen.Style:=psSolid;
           Pen.Width:=1;
           if (Shape in [bsBox, bsFrame]) or (PointA=eppNone) then
             case Shape of
@@ -212,9 +215,9 @@ begin
                   if aBL.X>0 then
                     begin
                       LineTo(aBL.X, aBL.Y);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       LineTo(0, aBL.Y);
-                      Pen.Color:=AColor;
+                      Pen.Color:=aColor;
                     end;
                   LineTo(0, aTL.Y);
                   if aTL.X>0 then
@@ -223,13 +226,13 @@ begin
                       LineTo(aTL.X, 0);
                     end;
                   LineTo(aTR.X, 0);
-                  Pen.Color:=BColor;
+                  Pen.Color:=bColor;
                   if aTR.Y>0 then
                     begin
                       LineTo(aTR.X, aTR.Y);
-                      Pen.Color:=AColor;
+                      Pen.Color:=aColor;
                       LineTo(self.Width-1, aTR.Y);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                     end;
                   LineTo(self.Width-1, aBR.Y);
                   if aBR.Y<(self.Height-1) then
@@ -245,67 +248,67 @@ begin
                   if aBL.X>0 then
                     begin
                       LineTo(aBL.X, aBL.Y-1);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(aBL.X+1, self.Height-1);
                       LineTo(PenPos.X, aBL.Y-1);
                       MoveTo(aBL.X-1, aBL.Y);
                       LineTo(0, aBL.Y);
-                      Pen.Color:=AColor;
+                      Pen.Color:=aColor;
                       MoveTo(aBL.X, aBL.Y-1);
                       LineTo(0, aBL.Y-1);
                     end;
                   MoveTo(0, aBL.Y-1);
                   LineTo(0, aTL.Y);
-                  Pen.Color:=BColor;
+                  Pen.Color:=bColor;
                   MoveTo(1, aBL.Y-2);
                   LineTo(1, aTL.Y+1);
-                  Pen.Color:=AColor;
+                  Pen.Color:=aColor;
                   if aTL.X>0 then
                     begin
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       LineTo(aTL.X+1, aTL.Y+1);
                       LineTo(PenPos.X, 1);
-                      Pen.Color:=AColor;
+                      Pen.Color:=aColor;
                       MoveTo(0, aTL.Y);
                       LineTo(aTL.X, aTL.Y);
                       LineTo(aTL.X, 0);
                     end;
                   MoveTo(aTL.X, 0);
                   LineTo(aTR.X, 0);
-                  Pen.Color:=BColor;
+                  Pen.Color:=bColor;
                   MoveTo(aTL.X+1, 1);
                   LineTo(aTR.X+1, 1);
                   if aTR.Y>0 then
                     begin
                       LineTo(aTR.X+1, aTR.Y);
-                      Pen.Color:=AColor;
+                      Pen.Color:=aColor;
                       MoveTo(aTR.X, 0);
                       LineTo(aTR.X, aTR.Y);
                       MoveTo(aTR.X, aTR.Y);
                       LineTo(self.Width-1, aTR.Y);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(aTR.X+1, aTR.Y+1);
                       LineTo(self.Width-2, PenPos.Y);
                     end;
                   MoveTo(self.Width-1, aTR.Y);
                   LineTo(PenPos.X, aBR.Y);
-                  Pen.Color:=AColor;
+                  Pen.Color:=aColor;
                   MoveTo(self.Width-2, aTR.Y);
                   LineTo(PenPos.X, aBR.Y);
-                  Pen.Color:=BColor;
+                  Pen.Color:=bColor;
                   if aBR.Y<(self.Height-1) then
                     begin
                       LineTo(aBR.X, aBR.Y);
                       LineTo(aBR.X, self.Height-1);
-                      Pen.Color:=AColor;
+                      Pen.Color:=aColor;
                       MoveTo(self.Width-2, aBR.Y-1);
                       LineTo(aBR.X-1, aBR.Y-1);
                       LineTo(PenPos.X, self.Height-1);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                     end;
                   MoveTo(aBL.X, self.Height-1);
                   LineTo(aBR.X, PenPos.Y);
-                  Pen.Color:=AColor;
+                  Pen.Color:=aColor;
                   MoveTo(aBR.X-1, self.Height-2);
                   LineTo(aBL.X, PenPos.Y);
                 end;
@@ -317,7 +320,7 @@ begin
                       LineTo(x, 0);
                       LineTo(x, y-1);
                       LineTo(self.Width-1, PenPos.Y);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(0, 1);
                       LineTo(x-1, 1);
                       MoveTo(x+1, 0);
@@ -327,7 +330,7 @@ begin
                     end else
                     begin
                       LineTo(self.Width-1, 0);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(0, 1);
                       LineTo(self.Width-1, 1);
                     end;
@@ -340,7 +343,7 @@ begin
                       LineTo(x, PenPos.Y);
                       LineTo(x, 0);
                       LineTo(self.Width-1, 0);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(0, y);
                       LineTo(x+1, y);
                       LineTo(x+1, 1);
@@ -348,7 +351,7 @@ begin
                     end else
                     begin
                       LineTo(self.Width-1, PenPos.Y);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(0, y);
                       LineTo(self.Width-1, y);
                     end;
@@ -361,7 +364,7 @@ begin
                       LineTo(0, y);
                       LineTo(x-1, y);
                       LineTo(PenPos.X, self.Height-1);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(1, 0);
                       LineTo(1, y-1);
                       MoveTo(0, y+1);
@@ -371,7 +374,7 @@ begin
                     end else
                     begin
                       LineTo(0, self.Height-1);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(1, 0);
                       LineTo(1, self.Height-1);
                     end;
@@ -384,7 +387,7 @@ begin
                       LineTo(PenPos.X, y);
                       LineTo(0, y);
                       LineTo(0, self.Height-1);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(x, 0);
                       LineTo(x, y+1);
                       LineTo(1, PenPos.Y);
@@ -392,12 +395,12 @@ begin
                     end else
                     begin
                       LineTo(x-1, self.Height-1);
-                      Pen.Color:=BColor;
+                      Pen.Color:=bColor;
                       MoveTo(x, 0);
                       LineTo(x, self.Height-1);
                     end;
                 end;
-            end else
+            end else  {case}
             begin
               x:=self.Width;
               y:=self.Height;
@@ -407,7 +410,7 @@ begin
                     MoveTo(0, y-1);
                     LineTo(0, 0);
                     LineTo(x-1, 0);
-                    Pen.Color:=BColor;
+                    Pen.Color:=bColor;
                     MoveTo(1, y-1);
                     LineTo(1, 1);
                     LineTo(x-1, 1);
@@ -418,7 +421,7 @@ begin
                     LineTo(x-1, 0);
                     MoveTo(x-2, 1);
                     LineTo(x-2, y-1);
-                    Pen.Color:=BColor;
+                    Pen.Color:=bColor;
                     MoveTo(0, 1);
                     LineTo(x-2, 1);
                     MoveTo(x-1, 1);
@@ -430,7 +433,7 @@ begin
                     LineTo(0, y-1);
                     MoveTo(1, y-2);
                     LineTo(x-1, y-2);
-                    Pen.Color:=BColor;
+                    Pen.Color:=bColor;
                     MoveTo(1, 0);
                     LineTo(1, y-2);
                     MoveTo(1, y-1);
@@ -441,18 +444,16 @@ begin
                     MoveTo(0, y-2);
                     LineTo(x-2, y-2);
                     LineTo(x-2, 0);
-                    Pen.Color:=BColor;
+                    Pen.Color:=bColor;
                     MoveTo(0, y-1);
                     LineTo(x-1, y-1);
                     LineTo(x-1, 0);
                   end;
-              end;
+              end;  {case}
             end;
         end;
-    end else
-    begin
+    end else  { themed }
       Canvas.DrawThemedPanelBkgnd(ClientRect);
-    end;
   inherited Paint;
 end;
 

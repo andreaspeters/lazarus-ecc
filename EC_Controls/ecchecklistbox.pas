@@ -1,7 +1,7 @@
 {**************************************************************************************************
  This file is part of the Eye Candy Controls (EC-C)
 
-  Copyright (C) 2015-2016 Vojtěch Čihák, Czech Republic
+  Copyright (C) 2015-2020 Vojtěch Čihák, Czech Republic
 
   This library is free software; you can redistribute it and/or modify it under the terms of the
   GNU Library General Public License as published by the Free Software Foundation; either version
@@ -32,8 +32,7 @@ unit ECCheckListBox;
 interface
 
 uses
-  SysUtils, Classes, Controls, LCLType, StdCtrls, Graphics, LMessages, Themes,
-  ExtendedStrings, ECTypes, Types;
+  SysUtils, Classes, Controls, StdCtrls, Graphics, LCLType, LMessages, Themes, Types, ECTypes;
 
 type
   TOnItemClickEvent = procedure(Sender: TObject; AColumn, AIndex: Integer) of object;
@@ -170,6 +169,7 @@ type
     property ItemHeight stored IsItemHeightStored;
     property Items;
     property ItemIndex;
+    property MultiSelect;
     property ParentBidiMode;
     property ParentFont;
     property ParentShowHint;
@@ -230,7 +230,6 @@ begin
   SetLength(FStates, cDefCheckColumns, 0);
   Style:=lbOwnerDrawVariable;  { because of Win32 - it doesn't like lbOwnerDrawFixed }
   FNeedMeasure:=True;
-  FBorder:=2;  { should be done better }
   aDetails:=ThemeServices.GetElementDetails(tbCheckBoxCheckedNormal);
   FCheckSize:=ThemeServices.GetDetailSize(aDetails);
   AccessibleRole:=larListBox;
@@ -317,31 +316,30 @@ begin
 end;
 
 procedure TCustomECCheckListBox.DrawItem(Index: Integer; ARect: TRect; State: TOwnerDrawState);
-                              { Enabled, State, Highlighted }
-const caCheckThemes: array [Boolean, TCheckBoxState, Boolean] of TThemedButton =
-                     { normal, highlighted }
+                           { Enabled, State, Highlighted }
+const caCheckThemes: array[Boolean, TCheckBoxState, Boolean] of TThemedButton =
         (((tbCheckBoxUncheckedDisabled, tbCheckBoxUncheckedDisabled),  { disabled, unchecked }
           (tbCheckBoxCheckedDisabled, tbCheckBoxCheckedDisabled),      { disabled, checked }
           (tbCheckBoxMixedDisabled, tbCheckBoxMixedDisabled)),         { disabled, grayed }
          ((tbCheckBoxUncheckedNormal, tbCheckBoxUncheckedHot),         { enabled, unchecked }
           (tbCheckBoxCheckedNormal, tbCheckBoxCheckedHot),             { enabled, checked }
-          (tbCheckBoxMixedNormal, tbCheckBoxMixedHot)));               { enabled, grayed }
-      cPadding: SmallInt = 2;
+ {normal} (tbCheckBoxMixedNormal, tbCheckBoxMixedHot))); {highlighted} { enabled, grayed }
+      cPadding = 2;
 var aDetails: TThemedElementDetails;
     bEnabled, bRightToLeft: Boolean;
     aFlags: Cardinal;
+    aGlyphWidth: SmallInt;
     anyRect: TRect;
     aState: TCheckBoxState;
     i, aHovered, aImgIdx, aLeft: Integer;
-    aGlyphWidth: SmallInt;
 begin  { do not call inherited ! }
   bEnabled:=IsEnabled;
   if odSelected in State then
-    if not Focused then Canvas.Brush.Color:=
-      GetMergedColor(Canvas.Brush.Color, GetColorResolvingDefault(Color, Brush.Color), 0.6);
+    if not Focused then
+      Canvas.Brush.Color:=GetMergedColor(Canvas.Brush.Color, GetColorResolvingDefault(Color, Brush.Color), 0.6);
   if not bEnabled then Canvas.Brush.Color:=GetMonochromaticColor(Canvas.Brush.Color);
   Canvas.FillRect(ARect);
-  bRightToLeft:= (FRightToLeft xor (Alignment=taRightJustify));
+  bRightToLeft:=(FRightToLeft xor (Alignment=taRightJustify));
   if not assigned(Images) then
     begin
       aGlyphWidth:=FCheckSize.cx;
@@ -370,12 +368,11 @@ begin  { do not call inherited ! }
             then FCheckArea:=ClientRect.Right+(Width-FBorder-ClientWidth)-aLeft+(Spacing-aGlyphWidth) div 2
             else FCheckArea:=aLeft+(Width-FBorder-ClientWidth)-(Spacing-aGlyphWidth) div 2;
         end;
-      aFlags:=DT_END_ELLIPSIS+DT_VCENTER+DT_SINGLELINE+DT_NOPREFIX;
-      if FRightToLeft then aFlags:=aFlags or DT_RTLREADING;
+      aFlags:=DT_END_ELLIPSIS or DT_VCENTER or DT_SINGLELINE or DT_NOPREFIX or caDTRTLFlags[FRightToLeft];
       case TextAlign of
-        taLeftJustify: if bRightToLeft then aFlags:=aFlags or DT_RIGHT;
+        taLeftJustify:  if bRightToLeft then aFlags:=aFlags or DT_RIGHT;
         taRightJustify: if not bRightToLeft then aFlags:=aFlags or DT_RIGHT;
-        taCenter: aFlags:= aFlags or DT_CENTER;
+        taCenter:       aFlags:=aFlags or DT_CENTER;
       end;
       FFlags:=aFlags;
       FGlyphWidth:=aGlyphWidth;
@@ -409,14 +406,13 @@ begin  { do not call inherited ! }
       if assigned(Images) then
         case aState of
           cbUnchecked: aImgIdx:=ImgIdxUnchecked;
-          cbChecked: aImgIdx:=ImgIdxChecked;
-          cbGrayed: aImgIdx:=ImgIdxGrayed;
+          cbChecked:   aImgIdx:=ImgIdxChecked;
+          cbGrayed:    aImgIdx:=ImgIdxGrayed;
         end;
       if assigned(OnGetImageIndex) then OnGetImageIndex(self, i, Index, aState, aImgIdx);
       if aImgIdx=-1
         then ThemeServices.DrawElement(Canvas.Handle, aDetails, anyRect)
-        else if aImgIdx>=0
-               then ThemeServices.DrawIcon(Canvas, aDetails, anyRect.TopLeft, Images, aImgIdx);
+        else if aImgIdx>=0 then ThemeServices.DrawIcon(Canvas, aDetails, anyRect.TopLeft, Images, aImgIdx);
       if Grid and (bRightToLeft or (i<(CheckColumns-1))) then
         begin
           Canvas.MoveTo(anyRect.Left+(Spacing+aGlyphWidth) div 2, ARect.Top);
@@ -470,6 +466,7 @@ procedure TCustomECCheckListBox.InitializeWnd;
 begin
   inherited InitializeWnd;
   CalcTextHeight;
+  FBorder:=(Width-ClientWidth) div 2;
   FNeedMeasure:=True;
 end;
 
@@ -499,17 +496,14 @@ end;
 procedure TCustomECCheckListBox.KeyDown(var Key: Word; Shift: TShiftState);
 begin
   inherited KeyDown(Key, Shift);
-  if (CheckColumns>0) and (ItemIndex>=0) then
-    begin
-      case Key of
-        VK_SPACE: Toggle(0, ItemIndex);
-        VK_1..VK_9:
-          if (Key-VK_1)<CheckColumns then
-            begin
-              Toggle(Key-VK_1, ItemIndex);
-              Key:=0;
-            end;
-      end;
+  if (Shift*[ssShift, ssAlt, ssCtrl, ssMeta]=[]) and (CheckColumns>0) and (ItemIndex>=0) then
+    case Key of
+      VK_SPACE:   Toggle(0, ItemIndex);
+      VK_1..VK_9: if (Key-VK_1)<CheckColumns then
+                    begin
+                      Toggle(Key-VK_1, ItemIndex);
+                      Key:=0;
+                    end;
     end;
 end;
 
@@ -544,21 +538,17 @@ begin
       if aClmnsM1>=0 then
         begin
           aLimit:=FCheckArea;
-          if not (FRightToLeft xor (Alignment=taRightJustify)) then
-            begin
-              while (X>=aLimit) and (i<aClmnsM1) do
-               begin
-                 inc(aLimit, Spacing);
-                 inc(i);
-               end;
-            end else
-            begin
-              while (X<aLimit) and (i<aClmnsM1) do
-               begin
-                 dec(aLimit, Spacing);
-                 inc(i);
-               end;
-            end;
+          if not (FRightToLeft xor (Alignment=taRightJustify))
+            then while (X>=aLimit) and (i<aClmnsM1) do
+                   begin
+                     inc(aLimit, Spacing);
+                     inc(i);
+                   end
+            else while (X<aLimit) and (i<aClmnsM1) do
+                   begin
+                     dec(aLimit, Spacing);
+                     inc(i);
+                   end;
         end;
     end;
   Hovered:=Point(i, aRow);
@@ -567,8 +557,7 @@ end;
 procedure TCustomECCheckListBox.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
-  if (Button=mbLeft) and (Hovered.X>=0) and (Hovered.Y>=0)
-    then Toggle(Hovered.X, Hovered.Y);
+  if (Button=mbLeft) and (Hovered.X>=0) and (Hovered.Y>=0) then Toggle(Hovered.X, Hovered.Y);
 end;
 
 procedure TCustomECCheckListBox.RecalcInvalidate;
@@ -585,26 +574,22 @@ begin
   SetLength(arStates, CheckColumns);
   for i:=0 to CheckColumns-1 do
     arStates[i]:=FStates[i, CurIndex];
-  if CurIndex<NewIndex then
-    begin
-      for j:=CurIndex to NewIndex-1 do
-        for i:=0 to CheckColumns-1 do
-          FStates[i, j]:=FStates[i, j+1];
-    end else
-    begin
-      for j:=CurIndex downto NewIndex+1 do
-        for i:=0 to CheckColumns-1 do
-          FStates[i, j]:=FStates[i, j-1];
-    end;
+  if CurIndex<NewIndex
+    then  for j:=CurIndex to NewIndex-1 do
+            for i:=0 to CheckColumns-1 do
+              FStates[i, j]:=FStates[i, j+1]
+    else  for j:=CurIndex downto NewIndex+1 do
+            for i:=0 to CheckColumns-1 do
+              FStates[i, j]:=FStates[i, j-1];
   for i:=0 to CheckColumns-1 do
     FStates[i, NewIndex]:=arStates[i];
 end;
 
 procedure TCustomECCheckListBox.SetBorderStyle(NewStyle: TBorderStyle);
 begin
-  if NewStyle=bsNone  { should be done better }
+  if NewStyle=bsNone
     then FBorder:=0
-    else FBorder:=2;
+    else FBorder:=(Width-ClientWidth) div 2;
   inherited SetBorderStyle(NewStyle);
 end;
 
@@ -615,12 +600,9 @@ begin
 end;
 
 procedure TCustomECCheckListBox.Toggle(AColumn, AIndex: Integer);
-const caNewStateMap: array [TCheckBoxState, Boolean] of TCheckBoxState =
-  { False (AllowGrayed) True }
-  ((cbChecked, cbGrayed),       { cbUnchecked }
-   (cbUnChecked, cbUnChecked),  { cbChecked }
-   (cbChecked, cbChecked));     { cbGrayed }
-begin
+const caNewStateMap: array[TCheckBoxState, Boolean] of TCheckBoxState =
+        ((cbChecked, cbGrayed), (cbUnChecked, cbUnChecked), (cbChecked, cbChecked));
+begin          { cbUnchecked, cbChecked, cbGrayed; AllowGrayed }
   FItemClickEvent:=True;
   State[AColumn, AIndex]:=caNewStateMap[FStates[AColumn, AIndex], AllowGrayed];
   FItemClickEvent:=False;
@@ -628,6 +610,7 @@ end;
 
 procedure TCustomECCheckListBox.WMSize(var Message: TLMSize);
 begin
+  inherited WMSize(Message);
   FNeedMeasure:=True;
 end;
 
@@ -635,7 +618,7 @@ end;
 
 function TCustomECCheckListBox.GetChecked(AColumn: Integer; AIndex: Integer): Boolean;
 begin
-  Result:= (FStates[AColumn, AIndex]=cbChecked);
+  Result:=(FStates[AColumn, AIndex]=cbChecked);
 end;
 
 function TCustomECCheckListBox.GetState(AColumn: Integer; AIndex: Integer): TCheckBoxState;
@@ -645,7 +628,7 @@ end;
 
 function TCustomECCheckListBox.IsItemHeightStored: Boolean;
 begin
-  Result:= not AutosizeItemHeight;
+  Result:=not AutosizeItemHeight;
 end;
 
 procedure TCustomECCheckListBox.SetAlignment(AValue: TLeftRight);
